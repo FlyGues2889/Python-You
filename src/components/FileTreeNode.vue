@@ -232,7 +232,7 @@ const cancelInline = () => {
         <!-- Inline Create Row inside this folder -->
         <div
           v-if="creatingParentId === item.id"
-          class="tree-node-item inline-edit-row"
+          class="tree-node-item"
           :style="{ paddingLeft: `${((depth || 0) + 1) * 16 + 12}px` }"
         >
           <span class="node-spacer"></span>
@@ -314,7 +314,7 @@ const cancelInline = () => {
   background-color: transparent;
   color: var(--text-color);
   font-weight: 600;
-  border: 1px solid var(--secondary, var(--secondary, #625b71));
+  border: 1px solid var(--secondary);
   border-radius: 9999px;
 }
 
@@ -385,6 +385,8 @@ const cancelInline = () => {
   border-radius: 9999px;
   position: absolute;
   right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .expand-enter-active,

@@ -1,10 +1,9 @@
 ﻿<script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue';
-import { type TutorialStage, type TutorialTopic, getLocalizedTutorialStages, tutorialUI } from './tutorialData';
-import MD3Input from '../MD3Components/MD3Input.vue';
-import MD3FAB from '../MD3Components/MD3FAB.vue';
-import MD3IconButton from '../MD3Components/MD3IconButton.vue';
-import MD3Button from '../MD3Components/MD3Button.vue';
+import { type TutorialStage, type TutorialTopic, getLocalizedTutorialStages } from './tutorialData';
+import { useI18n } from '../../utils/i18n';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   activeTopicId: string;
@@ -24,7 +23,6 @@ const quizDone = (topicId: string): boolean => {
   return !!stat && stat.total > 0 && stat.correct === stat.total;
 };
 
-const ui = tutorialUI;
 const stages = computed(() => getLocalizedTutorialStages());
 
 const searchQuery = ref('');
@@ -146,34 +144,35 @@ const filteredStages = computed(() => {
 <template>
   <div class="tutorial-tree-container" :class="{ 'is-collapsed': collapsed }">
     <!-- Collapse Toggle Button -->
-    <div class="tree-collapse-toggle" :title="collapsed ? ui.expandCatalog : ui.collapseCatalog">
-      <MD3IconButton variant="standard" size="S" :icon="collapsed ? 'arrow_menu_open' : 'arrow_menu_close'"
-        @click="emit('toggle-collapse')" />
+    <div class="tree-collapse-toggle" :title="collapsed ? t('tutorialExpandCatalog') : t('tutorialCollapseCatalog')">
+      <m3e-icon-button size="extra-small" @click="emit('toggle-collapse')"  width="narrow" variant="outlined">
+        <span class="material-symbols-rounded-fill">{{ collapsed ? 'right_panel_close' : 'left_panel_close' }}</span>
+      </m3e-icon-button>
     </div>
 
     <div v-if="!collapsed" class="tree-content">
       <!-- Header -->
       <div class="tree-header">
         <div class="tree-title-group">
-          <span class="material-symbols-rounded header-icon">menu_book</span>
-          <span class="tree-title">{{ ui.tutorialCatalog }}</span>
-          <MD3Button class="quiz-catalog-toggle" variant="text" size="S" icon="compare_arrows" title="切换测验目录"
+          <span class="tree-title">{{ t('tutorialCatalog') }}</span>
+          <m3e-button class="quiz-catalog-toggle" variant="outlined" size="extra-small" :title="t('toggleQuizCatalog')"
             @click="emit('toggle-quiz-directory')">
-            测验
-          </MD3Button>
+            <span slot="icon" class="material-symbols-rounded">fact_check</span>
+            {{ t('quizShort') }}
+          </m3e-button>
         </div>
       </div>
 
       <!-- Search Input -->
       <div class="search-box">
-        <MD3Input v-model="searchQuery" icon="search" :placeholder="ui.searchPlaceholder" />
-        <button v-if="searchQuery" class="clear-search-btn" @click="searchQuery = ''">
-          <span class="material-symbols-rounded">close</span>
-        </button>
+        <m3e-search-bar class="tree-search-bar" clearable @clear="searchQuery = ''">
+          <span slot="leading" class="material-symbols-rounded">search</span>
+          <input slot="input" v-model="searchQuery" :placeholder="t('tutorialSearchPlaceholder')" />
+        </m3e-search-bar>
       </div>
 
       <!-- Tree Items List -->
-      <div class="tree-nodes-list custom-scrollbar">
+      <m3e-content-pane class="tree-nodes-list">
         <div v-for="stage in filteredStages" :key="stage.id" class="stage-block">
           <!-- Stage Header Folder -->
           <div class="stage-header-item" @click="toggleStage(stage.id)">
@@ -200,7 +199,8 @@ const filteredStages = computed(() => {
                 <span v-if="completedTopics?.has(topic.id)"
                   class="material-symbols-rounded completed-check">check_circle</span>
                 <span v-if="quizStats?.[topic.id]?.total > 0" class="material-symbols-rounded quiz-state-icon"
-                  :class="{ 'is-done': quizDone(topic.id) }" :title="quizDone(topic.id) ? '测验已完成' : '测验未完成'">{{
+                  :class="{ 'is-done': quizDone(topic.id) }"
+                  :title="quizDone(topic.id) ? t('quizDoneTitle') : t('quizNotDoneTitle')">{{
                     quizDone(topic.id) ? 'done_all' : 'quiz' }}</span>
               </div>
             </div>
@@ -233,7 +233,8 @@ const filteredStages = computed(() => {
                       <span v-if="completedTopics?.has(topic.id)"
                         class="material-symbols-rounded completed-check">check_circle</span>
                       <span v-if="quizStats?.[topic.id]?.total > 0" class="material-symbols-rounded quiz-state-icon"
-                        :class="{ 'is-done': quizDone(topic.id) }" :title="quizDone(topic.id) ? '测验已完成' : '测验未完成'">{{
+                        :class="{ 'is-done': quizDone(topic.id) }"
+                        :title="quizDone(topic.id) ? t('quizDoneTitle') : t('quizNotDoneTitle')">{{
                           quizDone(topic.id) ? 'done_all' : 'quiz' }}</span>
                     </div>
                   </div>
@@ -244,12 +245,14 @@ const filteredStages = computed(() => {
         </div>
 
         <div v-if="filteredStages.length === 0" class="empty-search-notice">
-          未找到匹配的教程内容
+          {{ t('noTutorialMatch') }}
         </div>
-      </div>
+      </m3e-content-pane>
 
-      <!-- MD3 FAB: Locate current topic -->
-      <MD3FAB icon="my_location" title="定位当前课程在目录中的位置" size="S" @click="scrollToActiveTopic" />
+      <!-- FAB: Locate current topic -->
+      <m3e-fab class="locate-fab" size="small" :title="t('locateCurrentTopic')" @click="scrollToActiveTopic">
+        <span class="material-symbols-rounded">my_location</span>
+      </m3e-fab>
     </div>
   </div>
 </template>
@@ -260,7 +263,6 @@ const filteredStages = computed(() => {
   min-width: 280px;
   height: 100%;
   background-color: var(--surface-color);
-  border-right: 1px solid var(--border-color-muted);
   display: flex;
   flex-direction: column;
   position: relative;
@@ -276,13 +278,12 @@ const filteredStages = computed(() => {
 
 .tree-collapse-toggle {
   position: absolute;
-  right: -36px;
+  right: -43px;
   top: 50%;
   transform: translateY(-50%);
   width: 36px;
   height: 36px;
-  background-color: var(--surface-color);
-  border: 1px solid var(--border-color-muted);
+  background-color: var(--bg-color);
   border-left: none;
   border-radius: 0 1rem 1rem 0;
   display: flex;
@@ -293,22 +294,6 @@ const filteredStages = computed(() => {
   z-index: 20;
   box-shadow: none;
   transition: background-color 0.15s, color 0.15s;
-}
-
-.tree-collapse-toggle :deep(.m3-icon-button) {
-  margin: 0;
-  width: 32px;
-  height: 32px;
-  min-width: 32px;
-  color: inherit;
-}
-
-.tree-collapse-toggle:hover {
-  background-color: var(--secondary-container);
-}
-
-.tree-collapse-toggle:hover :deep(.m3-icon-button) {
-  color: var(--primary);
 }
 
 .tree-content {
@@ -335,11 +320,8 @@ const filteredStages = computed(() => {
   color: var(--primary);
 }
 
-.header-icon {
-  font-size: 1.25rem;
-}
-
 .tree-title {
+  margin-left: 0.8rem;
   font-size: 0.9375rem;
   font-weight: 700;
   color: var(--text-color);
@@ -353,23 +335,20 @@ const filteredStages = computed(() => {
   border-bottom: none;
 }
 
-.clear-search-btn {
-  position: absolute;
-  right: 18px;
-  background: none;
-  border: none;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px;
+.tree-search-bar {
+  flex: 1;
 }
 
 .tree-nodes-list {
   flex: 1;
-  overflow-y: auto;
-  padding: 8px 4px;
+  min-height: 0;
+  /* host 自身 overflow 为 visible 时 flex item 的 min-height:auto 会取内容高度，
+     把 host 撑高导致 shadow 内滚动容器失去滚动空间 → 必须显式归零 */
+  /* 背景/内边距由 m3e-content-pane 的 shadow 内元素绘制，经变量控制
+     （与父级同色 surface；树列表无圆角；定位当前主题用 scrollIntoView 自动滚入） */
+  --m3e-content-pane-container-padding: 4px;
+  --m3e-content-pane-container-shape: 0;
+  --m3e-content-pane-container-color: var(--surface-color);
 }
 
 .stage-block {
@@ -381,7 +360,7 @@ const filteredStages = computed(() => {
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
-  border-radius: 8px;
+  border-radius: 999px;
   cursor: pointer;
   transition: background-color 0.15s;
   min-width: 0;
@@ -547,6 +526,15 @@ const filteredStages = computed(() => {
 
 .quiz-catalog-toggle {
   margin-left: auto;
-  color: var(--text-tertiary);
+}
+
+.locate-fab {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 10;
+
+  --m3e-fab-container-height: 3rem;
+  --m3e-fab-icon-size: var(--text-size-s);
 }
 </style>

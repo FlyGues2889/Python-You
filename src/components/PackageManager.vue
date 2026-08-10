@@ -4,9 +4,6 @@ import { pythonRunner } from '../utils/pythonRunner';
 import { ConsoleOutput, FSItem } from '../types';
 import { useI18n } from '../utils/i18n';
 import PageHeader from './PageHeader.vue';
-import MD3Input from './MD3Components/MD3Input.vue';
-import MD3IconButton from './MD3Components/MD3IconButton.vue';
-import MD3Button from './MD3Components/MD3Button.vue';
 import { syncWorkspacePackages, saveInstalledPackages } from '../utils/packageUtils';
 
 const props = defineProps<{
@@ -149,7 +146,7 @@ const handleUninstall = (pkgName: string) => {
 </script>
 
 <template>
-  <div class="package-manager-container custom-scrollbar">
+  <m3e-content-pane class="package-manager-container">
     <!-- Top Header -->
     <PageHeader :title="t('pkgTitle')" :subtitle="t('pkgSubtitle')" />
 
@@ -157,13 +154,17 @@ const handleUninstall = (pkgName: string) => {
     <div class="install-section">
       <div class="install-bar-card">
         <div class="input-flex-grow">
-          <MD3Input v-model="customPackageName" icon="search" :placeholder="t('pkgSearchPlaceholder')"
-            @enter="handleInstall(customPackageName)" @input="filterQuery = customPackageName" />
+          <m3e-search-bar clearable @clear="customPackageName = ''; filterQuery = ''">
+            <span slot="leading" class="material-symbols-rounded">search</span>
+            <input slot="input" v-model="customPackageName" :placeholder="t('pkgSearchPlaceholder')"
+              @input="filterQuery = customPackageName" @keydown.enter.prevent="handleInstall(customPackageName)" />
+          </m3e-search-bar>
         </div>
-        <MD3Button variant="filled" size="M" icon="download" :disabled="installingSet.has(customPackageName.trim().toLowerCase()) || !customPackageName.trim()"
+        <m3e-button variant="filled" size="small" :disabled="installingSet.has(customPackageName.trim().toLowerCase()) || !customPackageName.trim()"
           @click="handleInstall(customPackageName)">
+          <span slot="icon" class="material-symbols-rounded">download</span>
           {{ installingSet.has(customPackageName.trim().toLowerCase()) ? t('installing') : t('installPkg') }}
-        </MD3Button>
+        </m3e-button>
       </div>
     </div>
 
@@ -194,9 +195,11 @@ const handleUninstall = (pkgName: string) => {
             </div>
 
             <div class="item-right">
-              <MD3Button variant="outlined" color="secondary" size="S" icon="delete" @click="handleUninstall(pkg.name)">
+              <m3e-button variant="outlined" size="extra-small"
+                @click="handleUninstall(pkg.name)">
+                <span slot="icon" class="material-symbols-rounded">delete</span>
                 {{ t('uninstall') }}
-              </MD3Button>
+              </m3e-button>
             </div>
           </div>
         </div>
@@ -230,10 +233,11 @@ const handleUninstall = (pkgName: string) => {
             </div>
 
             <div class="item-right">
-              <MD3Button variant="filled" size="S" icon="download" :disabled="installingSet.has(pkg.name.toLowerCase())"
+              <m3e-button variant="filled" size="extra-small" :disabled="installingSet.has(pkg.name.toLowerCase())"
                 @click="handleInstall(pkg.name)">
+                <span slot="icon" class="material-symbols-rounded">download</span>
                 {{ installingSet.has(pkg.name.toLowerCase()) ? t('installing') : t('loadPkg') }}
-              </MD3Button>
+              </m3e-button>
             </div>
           </div>
         </div>
@@ -242,18 +246,18 @@ const handleUninstall = (pkgName: string) => {
         </div>
       </div>
     </div>
-  </div>
+  </m3e-content-pane>
 </template>
 
 <style scoped>
 .package-manager-container {
-  padding: 2rem;
-  max-width: 900px;
-  margin: 0 auto;
-  width: 100%;
   height: 100%;
-  overflow-y: auto;
-  box-sizing: border-box;
+  /* 与 REPL 终端卡片一致：surface 色卡片充满整个页面，留 12px 外边距与 10px 圆角；
+     背景/圆角/内边距由 m3e-content-pane 的 shadow 内元素绘制，经变量控制 */
+  margin: 0 12px 12px;
+  --m3e-content-pane-container-shape: 10px;
+  --m3e-content-pane-container-color: var(--surface-color);
+  --m3e-content-pane-container-padding: 2rem;
 }
 
 .install-section {
@@ -264,10 +268,7 @@ const handleUninstall = (pkgName: string) => {
   display: flex;
   align-items: center;
   gap: 12px;
-  background-color: transparent;
-  border: none;
   padding: 4px 0;
-  box-shadow: none;
 }
 
 .input-flex-grow {
@@ -321,7 +322,7 @@ const handleUninstall = (pkgName: string) => {
 }
 
 .pkg-list-item.is-installed {
-  background-color: var(--secondary-container, var(--secondary-container));
+  background-color: var(--secondary-container);
 
   .pkg-icon-wrapper {
     background-color: var(--primary);
@@ -407,4 +408,5 @@ const handleUninstall = (pkgName: string) => {
 .item-right {
   flex-shrink: 0;
 }
+
 </style>

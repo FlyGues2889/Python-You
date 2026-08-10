@@ -1,0 +1,43 @@
+/* m3eStyle.css —— 项目统一的 m3e 组件样式
+ * 把原本散落在各组件里的重复 token 覆盖集中到这里统一管理；
+ * 组件内仅保留各自的特殊尺寸（如 REPL 输入框 36px）与语义色。
+ * 本文件由 index.css 引入，全局生效。 */
+
+/* 搜索栏统一尺寸：40px 高、全圆角、--text-size-sm 输入文字（查找/替换/文件搜索等全部搜索框共用）；
+   内部 clear 按钮随容器缩小为 32px/18px（否则默认 56px 按钮会撑爆容器）。 */
+m3e-search-bar {
+  --m3e-search-bar-container-height: 40px;
+  --m3e-search-bar-container-shape: 9999px;
+  --m3e-search-bar-input-text-font-size: var(--text-size-sm) !important;
+  --m3e-icon-button-medium-container-height: 32px;
+  --m3e-icon-button-medium-icon-size: 18px;
+}
+
+/* 菜单项统一密度与图标：行高 44px → 36px 紧凑显示；
+   图标 0.9rem、图标与文字间距 0.5rem。 */
+m3e-menu-item {
+  --md-sys-density-scale: -2;
+  --m3e-menu-item-icon-size: var(--text-size-sm);
+  --m3e-menu-item-icon-label-space: 0.5rem;
+}
+
+/* 主布局 split-pane 拖拽手柄：全局唯一布局组件 */
+m3e-split-pane {
+  --m3e-split-pane-drag-handle-container-width: 8px;
+  --m3e-split-pane-drag-handle-width: 2px;
+  --m3e-split-pane-drag-handle-pressed-width: 6px;
+}
+
+m3e-button {
+  --m3e-button-extra-small-label-text-font-size: var(--text-size-xs);
+  --m3e-button-disabled-container-color: none;
+}
+
+m3e-icon-button {
+  --m3e-filled-icon-button-disabled-icon-opacity: 0.3;
+}
+
+m3e-nav-rail {
+  --m3e-nav-bar-height: 100vh;
+  --m3e-nav-rail-top-space: 1rem;
+}

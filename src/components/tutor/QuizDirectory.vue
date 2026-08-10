@@ -2,8 +2,10 @@
 import { computed, ref, watch } from 'vue';
 import { getTopicQuizScore, type QuizScore } from './quizData';
 import { getLocalizedTutorialStages, type TutorialStage, type TutorialTopic } from './tutorialData';
-import MD3IconButton from '../MD3Components/MD3IconButton.vue';
 import TutorialFormattedText from './TutorialFormattedText.vue';
+import { useI18n } from '../../utils/i18n';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   activeTopicId?: string;
@@ -43,18 +45,15 @@ const topicRows = (stage: TutorialStage): TutorialTopic[] => {
 </script>
 
 <template>
-  <div class="quiz-directory custom-scrollbar">
+  <m3e-content-pane class="quiz-directory">
     <div class="quiz-dir-wrapper">
       <div class="quiz-dir-header">
-        <MD3IconButton
-          icon="arrow_back"
-          size="S"
-          title="返回教程"
-          @click="emit('back-to-tutorial')"
-        />
+        <m3e-icon-button size="small" :title="t('backToTutorial')" @click="emit('back-to-tutorial')">
+          <span class="material-symbols-rounded">arrow_back</span>
+        </m3e-icon-button>
         <div>
-          <div class="dir-title">测验目录</div>
-          <div class="dir-subtitle">每节课后完成测验，巩固所学知识</div>
+          <div class="dir-title">{{ t('quizDirectoryTitle') }}</div>
+          <div class="dir-subtitle">{{ t('quizDirectorySubtitle') }}</div>
         </div>
       </div>
 
@@ -79,7 +78,7 @@ const topicRows = (stage: TutorialStage): TutorialTopic[] => {
             <span
               v-if="getScore(topic.id).total === 0"
               class="dir-score-chip chip-none"
-            >暂无</span>
+            >{{ t('scoreNone') }}</span>
             <span
               v-else-if="getScore(topic.id).correct === getScore(topic.id).total && getScore(topic.id).total > 0"
               class="dir-score-chip chip-done"
@@ -95,17 +94,23 @@ const topicRows = (stage: TutorialStage): TutorialTopic[] => {
         </div>
       </div>
     </div>
-  </div>
+  </m3e-content-pane>
 </template>
 
 <style scoped>
 .quiz-directory {
   flex: 1;
+  min-height: 0;
   height: 100%;
-  overflow-y: auto;
-  background-color: var(--bg-color);
-  padding: 32px 48px;
-  box-sizing: border-box;
+  /* host 自身 overflow 为 visible 时 flex item 的 min-height:auto 会取内容高度，
+     把 host 撑高导致 shadow 内滚动容器失去滚动空间 → 必须显式归零 */
+  /* 外边距留在 host 上（露出的空隙由父级 --bg-color 填充 → 边距可见）；
+     背景/圆角/内边距由 m3e-content-pane 的 shadow 内元素绘制，经变量控制
+     （与 REPL 终端主体一致:surface 色 + 10px 圆角 + 32px 内边距） */
+  margin: 0 12px 12px;
+  --m3e-content-pane-container-shape: 10px;
+  --m3e-content-pane-container-color: var(--surface-color);
+  --m3e-content-pane-container-padding: 32px;
   user-select: text;
 }
 
@@ -119,11 +124,6 @@ const topicRows = (stage: TutorialStage): TutorialTopic[] => {
   align-items: center;
   gap: 12px;
   margin-bottom: 24px;
-}
-
-.dir-icon {
-  font-size: 2rem;
-  color: var(--primary);
 }
 
 .dir-title {
@@ -148,7 +148,6 @@ const topicRows = (stage: TutorialStage): TutorialTopic[] => {
   gap: 8px;
   padding: 8px 12px;
   border-radius: 10px;
-  background-color: var(--surface-variant);
   margin-bottom: 6px;
 }
 
@@ -167,8 +166,9 @@ const topicRows = (stage: TutorialStage): TutorialTopic[] => {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-left: 1.6rem;
   padding: 10px 14px;
-  border-radius: 12px;
+  border-radius: 999px;
   cursor: pointer;
   transition: background-color 0.15s;
   margin-bottom: 4px;

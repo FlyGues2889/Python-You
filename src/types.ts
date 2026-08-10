@@ -23,7 +23,7 @@ export interface EditorTab {
 
 export interface ConsoleOutput {
   id: string;
-  type: 'stdout' | 'stderr' | 'system' | 'info' | 'error' | 'input';
+  type: 'stdout' | 'stderr' | 'system' | 'info' | 'error' | 'input' | 'warning';
   text: string;
   timestamp: string;
 }
@@ -39,11 +39,4 @@ export interface AppConfig {
   enableWheelZoom?: boolean;
   autoPairQuotes?: boolean;
   demoMode?: boolean;
-}
-
-export interface PythonPackage {
-  name: string;
-  version: string;
-  installed: boolean;
-  description: string;
 }

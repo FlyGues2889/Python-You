@@ -21,7 +21,7 @@ const MODULE_TO_PACKAGE_MAP: Record<string, string> = {
   'requests_mock': 'requests-mock'
 };
 
-export function extractImportsFromCode(code: string): string[] {
+function extractImportsFromCode(code: string): string[] {
   if (!code) return [];
   const found = new Set<string>();
   const lines = code.split('\n');
@@ -58,7 +58,7 @@ export function extractImportsFromCode(code: string): string[] {
   return Array.from(found);
 }
 
-export function extractAllImportsFromWorkspace(items: FSItem[]): string[] {
+function extractAllImportsFromWorkspace(items: FSItem[]): string[] {
   const pkgs = new Set<string>();
   function walk(list: FSItem[]) {
     for (const item of list) {
@@ -74,7 +74,7 @@ export function extractAllImportsFromWorkspace(items: FSItem[]): string[] {
   return Array.from(pkgs);
 }
 
-export function getStoredInstalledPackages(): string[] {
+function getStoredInstalledPackages(): string[] {
   try {
     const stored = safeStorage.getItem(STORAGE_KEY);
     if (stored) {

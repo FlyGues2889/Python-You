@@ -3,14 +3,10 @@ import { ref, computed } from 'vue';
 import { FSItem } from '../types';
 import FileTreeNode from './FileTreeNode.vue';
 import { useI18n } from '../utils/i18n';
-import MD3Input from './MD3Components/MD3Input.vue';
-import MD3IconButton from './MD3Components/MD3IconButton.vue';
-import MD3Badge from './MD3Components/MD3Badge.vue';
 
 const props = defineProps<{
   workspaceItems: FSItem[];
   activeFileId: string | null;
-  collapsed?: boolean;
   workspaceRoot?: string | null;
 }>();
 
@@ -23,7 +19,6 @@ const emit = defineEmits<{
   (e: 'delete-item', item: FSItem): void;
   (e: 'run-file', item: FSItem): void;
   (e: 'download-file', item: FSItem): void;
-  (e: 'toggle-collapse'): void;
   (e: 'contextmenu-filetree', event: MouseEvent, item: FSItem | null): void;
 }>();
 
@@ -127,6 +122,9 @@ const cancelInline = () => {
   rootNewName.value = '';
 };
 
+// 供父组件（App 的右键菜单“重命名”）触发内联重命名输入
+defineExpose({ startRename, startCreateFile, startCreateFolder });
+
 // Filtered tree logic
 const filteredItems = computed(() => {
   if (!searchQuery.value.trim()) return props.workspaceItems;
@@ -151,166 +149,71 @@ const filteredItems = computed(() => {
 </script>
 
 <template>
-  <div class="attached-file-tree" :class="{ 'is-collapsed': collapsed }">
-    <!-- Collapse/Expand handle button on right edge -->
-    <button
-      class="tree-collapse-toggle"
-      :title="collapsed ? t('expandFileTree') : t('collapseFileTree')"
-      @click="emit('toggle-collapse')"
-    >
-      <span class="material-symbols-rounded">
-        {{ collapsed ? 'arrow_menu_open' : 'arrow_menu_close' }}
-      </span>
-    </button>
-
-    <div v-if="!collapsed" class="tree-content">
+  <div class="attached-file-tree">
+    <div class="tree-content">
       <!-- Tree Header Bar -->
-      <div class="tree-header">
-        <div class="tree-title-group">
-          <span class="material-symbols-rounded header-icon">folder</span>
-          <span class="tree-title">{{ rootName || t('workspace') }}</span>
-          <MD3Badge v-if="rootName" tone="secondary" title="本地磁盘工作区">本地</MD3Badge>
+      <m3e-list-item>
+        <span slot="overline">资源管理器</span>
+        {{ rootName || t('workspace') }}
+        <div class="tree-header-actions" slot="trailing">
         </div>
-
-        <div class="tree-header-actions">
-          <!-- New File -->
-          <MD3IconButton
-            variant="standard"
-            size="SM"
-            icon="note_add"
-            :title="t('newFileTooltip')"
-            @click="startCreateFile(null)"
-          />
-
-          <!-- New Folder -->
-          <MD3IconButton
-            variant="standard"
-            size="SM"
-            icon="create_new_folder"
-            :title="t('newFolderTooltip')"
-            @click="startCreateFolder(null)"
-          />
-        </div>
-      </div>
+      </m3e-list-item>
 
       <!-- Quick Filter Search Input -->
       <div class="search-box">
-        <MD3Input
-          v-model="searchQuery"
-          icon="search"
-          :placeholder="t('searchFiles')"
-        />
-        <button
-          v-if="searchQuery"
-          class="clear-search-btn"
-          @click="searchQuery = ''"
-        >
-          <span class="material-symbols-rounded">close</span>
-        </button>
+        <m3e-search-bar class="tree-search-bar" clearable @clear="searchQuery = ''">
+          <span slot="leading" class="material-symbols-rounded">search</span>
+          <input slot="input" v-model="searchQuery"/>
+        </m3e-search-bar>
       </div>
 
       <!-- File Tree Node List -->
-      <div class="tree-node-list custom-scrollbar" @contextmenu.prevent="e => emit('contextmenu-filetree', e, null)">
+      <m3e-content-pane class="tree-node-list" @contextmenu.prevent="(e: MouseEvent) => emit('contextmenu-filetree', e, null)">
         <!-- Inline Create Row at Root Level -->
-        <div
-          v-if="creatingState && creatingState.parentId === null"
-          class="tree-node-item inline-edit-row"
-          style="padding-left: 12px;"
-        >
+        <div v-if="creatingState && creatingState.parentId === null" class="tree-node-item"
+          style="padding-left: 12px;">
           <span class="node-spacer"></span>
-          <span
-            class="material-symbols-rounded node-icon"
-            :style="{ color: creatingState.isFolder ? 'var(--accent-amber-text)' : 'var(--text-secondary)' }"
-          >
+          <span class="material-symbols-rounded node-icon"
+            :style="{ color: creatingState.isFolder ? 'var(--accent-amber-text)' : 'var(--text-secondary)' }">
             {{ creatingState.isFolder ? 'folder' : 'code_blocks' }}
           </span>
-          <input
-            v-autofocus
-            v-model="rootNewName"
-            type="text"
-            class="node-inline-input"
+          <input v-autofocus v-model="rootNewName" type="text" class="node-inline-input"
             :placeholder="creatingState.isFolder ? t('folderNamePlaceholder') : t('fileNamePlaceholder')"
-            @keyup.enter="handleConfirmCreateRoot"
-            @keyup.esc="cancelInline"
-            @blur="handleConfirmCreateRoot"
-            @click.stop
-          />
+            @keyup.enter="handleConfirmCreateRoot" @keyup.esc="cancelInline" @blur="handleConfirmCreateRoot"
+            @click.stop />
         </div>
 
-        <div v-if="filteredItems.length === 0 && (!creatingState || creatingState.parentId !== null)" class="empty-tree-state">
+        <div v-if="filteredItems.length === 0 && (!creatingState || creatingState.parentId !== null)"
+          class="empty-tree-state">
           <span class="material-symbols-rounded empty-icon">folder_off</span>
           <p>{{ t('noMatchingFiles') }}</p>
         </div>
 
-        <FileTreeNode
-          v-for="item in filteredItems"
-          :key="item.id"
-          :item="item"
-          :active-file-id="activeFileId"
-          :depth="0"
-          :editing-item-id="editingItemId"
+        <FileTreeNode v-for="item in filteredItems" :key="item.id" :item="item" :active-file-id="activeFileId"
+          :depth="0" :editing-item-id="editingItemId"
           :creating-parent-id="creatingState ? creatingState.parentId : null"
           :creating-is-folder="creatingState ? creatingState.isFolder : false"
-          @select-file="f => emit('select-file', f)"
-          @toggle-folder="f => emit('toggle-folder', f)"
-          @start-create-file="p => startCreateFile(p)"
-          @start-create-folder="p => startCreateFolder(p)"
-          @start-rename="f => startRename(f)"
-          @confirm-create="(p, n, isF) => handleConfirmCreate(p, n, isF)"
-          @confirm-rename="(f, n) => handleConfirmRename(f, n)"
-          @cancel-inline="cancelInline"
-          @delete-item="f => emit('delete-item', f)"
-          @run-file="f => emit('run-file', f)"
+          @select-file="f => emit('select-file', f)" @toggle-folder="f => emit('toggle-folder', f)"
+          @start-create-file="p => startCreateFile(p)" @start-create-folder="p => startCreateFolder(p)"
+          @start-rename="f => startRename(f)" @confirm-create="(p, n, isF) => handleConfirmCreate(p, n, isF)"
+          @confirm-rename="(f, n) => handleConfirmRename(f, n)" @cancel-inline="cancelInline"
+          @delete-item="f => emit('delete-item', f)" @run-file="f => emit('run-file', f)"
           @download-file="f => emit('download-file', f)"
-          @contextmenu-item="(e, f) => emit('contextmenu-filetree', e, f)"
-        />
-      </div>
+          @contextmenu-item="(e, f) => emit('contextmenu-filetree', e, f)" />
+      </m3e-content-pane>
     </div>
   </div>
 </template>
 
 <style scoped>
 .attached-file-tree {
-  width: 256px;
+  width: 100%;
   height: 100%;
-  background-color: var(--bg-color);
-  border-right: 1px solid var(--border-color-muted);
+  min-width: 0;
+  background-color: var(--surface-color);
   display: flex;
   flex-direction: column;
-  position: relative;
-  transition: width 0.2s ease;
   user-select: none;
-}
-
-.attached-file-tree.is-collapsed {
-  width: 0;
-  border-right: none;
-}
-
-.tree-collapse-toggle {
-  position: absolute;
-  right: -32px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 32px;
-  height: 36px;
-  background-color: var(--surface-color);
-  border: 1px solid var(--border-color-muted);
-  border-left: none;
-  border-radius: 0 1rem 1rem 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--text-tertiary);
-  z-index: 20;
-  box-shadow: none;
-  transition: background-color 0.15s, color 0.15s;
-}
-
-.tree-collapse-toggle:hover {
-  background-color: var(--secondary-container);
-  color: var(--primary);
 }
 
 .tree-content {
@@ -319,33 +222,6 @@ const filteredItems = computed(() => {
   height: 100%;
   overflow: hidden;
 }
-
-.tree-header {
-  height: 48px;
-  padding: 0 12px 0 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: none;
-}
-
-.tree-title-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--primary);
-}
-
-.header-icon {
-  font-size: 1.25rem;
-}
-
-.tree-title {
-  font-size: 0.9375rem;
-  font-weight: 700;
-  color: var(--text-color);
-}
-
 
 .tree-header-actions {
   display: flex;
@@ -360,26 +236,21 @@ const filteredItems = computed(() => {
   align-items: center;
 }
 
-.clear-search-btn {
-  position: absolute;
-  right: 20px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-tertiary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.clear-search-btn span {
-  font-size: 1rem;
+.tree-search-bar {
+  flex: 1;
+  min-width: 200px;
 }
 
 .tree-node-list {
   flex: 1;
-  overflow-y: auto;
-  padding: 4px;
+  min-height: 0;
+  /* host 自身 overflow 为 visible 时 flex item 的 min-height:auto 会取内容高度，
+     把 host 撑高导致 shadow 内滚动容器失去滚动空间 → 必须显式归零 */
+  /* 背景/内边距由 m3e-content-pane 的 shadow 内元素绘制，经变量控制
+     （与父级同色 surface；树列表无圆角） */
+  --m3e-content-pane-container-padding: 4px;
+  --m3e-content-pane-container-shape: 0;
+  --m3e-content-pane-container-color: var(--surface-color);
 }
 
 .empty-tree-state {
@@ -443,5 +314,9 @@ const filteredItems = computed(() => {
   border-radius: 8px;
   padding: 0 7px;
   background-color: var(--surface-color);
+}
+m3e-list-item {
+  margin-top: -0.5rem;
+  --md-sys-density-scale: -3;
 }
 </style>

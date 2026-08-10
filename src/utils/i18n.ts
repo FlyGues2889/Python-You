@@ -27,14 +27,15 @@ const translations = {
     save: '保存',
     downloadFile: '导出文件到本地',
     copy: '复制',
+    copyTerminalInfo: '复制终端信息',
     cut: '剪切',
     paste: '粘贴',
     find: '查找',
     replace: '替换',
 
     // Settings View
-    settingsTitle: 'IDE 系统偏好设置',
-    settingsSubtitle: '自定义 Python You 的外观主题、语言与代码编辑器配置',
+    settingsTitle: '偏好设置',
+    settingsSubtitle: '自定义外观主题、语言与代码编辑器配置',
     generalSettings: '通用设置',
     language: '界面语言',
     languageSubtitle: '选择 IDE 的系统显示语言',
@@ -57,8 +58,8 @@ const translations = {
     autoPairQuotes: '自动配对引号',
     autoPairQuotesSubtitle: '输入引号时自动补全另一半；选中文本时自动用引号包裹',
 
-    aboutTitle: '关于 Python You IDE',
-    aboutApp: 'Python You IDE',
+    aboutTitle: '关于 Python You',
+    aboutApp: 'Python You',
     aboutAppDesc: '基于浏览器 WASM 与 Pyodide 的本地 Python 集成开发环境',
     demoMode: '演示模式',
     demoModeSubtitle: '开启后使用轻量演示引擎，关闭则使用离线完整 Python WASM 引擎',
@@ -66,12 +67,12 @@ const translations = {
     aiEngineDesc: '本项目使用人工智能技术协助构建',
 
     // Code Editor & Tabs
-    welcomeTitle: '欢迎使用 Python You Python IDE',
-    welcomeSubtitle: '请从左侧文件树选择一个 Python 文件或点击上方“新建文件”开始编码。',
+    welcomeTitle: '工作区为空',
+    welcomeSubtitle: '请 选择一个 Python 文件 或 点击“新建文件” 开始编码',
     shortcutSave: '保存文件',
     shortcutRun: '运行脚本',
-    runCode: '运行代码',
-    stopCode: '停止运行',
+    runCode: '执行',
+    stopCode: '停止',
     noOpenTabs: '暂无打开的文件',
     terminalOutput: '运行终端输出',
     clearTerminal: '清空终端记录',
@@ -92,7 +93,6 @@ const translations = {
     importFilesTooltip: '打开文件',
     collapseTreeTooltip: '折叠文件树',
     expandTreeTooltip: '展开文件树',
-    searchFiles: '搜索工作区文件...',
     folderNamePlaceholder: '文件夹名称...',
     fileNamePlaceholder: '文件名.py',
     noMatchingFiles: '暂无匹配文件',
@@ -104,9 +104,9 @@ const translations = {
     downloadExport: '导出文件到本地',
 
     // REPL Console
-    replTitle: 'Python 3.11 交互式 REPL 终端',
+    replTitle: '交互式 REPL 终端',
     clearTerminalTooltip: '清空控制台记录',
-    replPlaceholder: '输入 Python 语句 (例如: print(2 ** 10) 或 import math)...',
+    replPlaceholder: '输入 Python 语句',
     execute: '执行',
 
     // Package Manager
@@ -141,9 +141,197 @@ const translations = {
     toastRenamed: '成功重命名',
     toastExported: '文件 "{name}" 已导出下载',
     toastImported: '已成功打开文件',
-    returnToTutorial: '返回对应教程',
+    returnToTutorial: '返回教程',
     expandFileTree: '展开文件树',
-    collapseFileTree: '收起文件树'
+    collapseFileTree: '收起文件树',
+
+    // Loading / Startup Status
+    loadingStart: '正在启动 Python You…',
+    loadingScanningWorkspace: '正在扫描工作区文件…',
+    loadingCreatingWorkspace: '正在创建本地工作区文件夹…',
+    loadingRestoringSession: '正在恢复上次会话…',
+
+    // App Toasts & Messages
+    toastSelectTerminalText: '请先在终端中选中要复制的文本',
+    toastSelectTutorialText: '请先在教程正文中选中要复制的文本',
+    toastCopiedSelection: '已复制选中文本',
+    toastCopiedToClipboard: '已复制到剪贴板',
+    toastNoTerminalOutput: '终端暂无输出',
+    toastCopiedTerminalInfo: '已复制终端信息',
+    toastCopyFailed: '复制失败，请重试',
+    toastSelectEditorText: '请先在编辑器中选中要复制的文本',
+    toastOpenWorkspaceFirst: '请先打开本地工作区',
+    toastRevealFailed: '无法打开资源管理器: ',
+    toastImportFailed: '导入失败: ',
+    toastWorkspaceOpened: '已打开本地工作区: ',
+    toastWorkspaceOpenFailed: '打开工作区失败: ',
+    toastTutorialCodeLoaded: '已加载教程代码至编辑器',
+    toastNotQuizCode: '当前不是测验代码，无法提交',
+    toastOpenQuizCode: '请先打开测验代码',
+    toastRunError: '运行出错，请查看终端中的错误信息',
+    toastQuizPassed: '测验通过，输出完全正确！',
+    toastOutputMismatch: '输出与预期不符：预期「{expected}」，实际「{actual}」',
+    correspondingTutorial: '对应教程',
+    quizSuffix: '（测验）',
+    viewTutorialTitle: 'Python 教程',
+    viewConsoleTitle: '交互式终端',
+    viewPackagesTitle: '包管理器',
+    viewSettingsTitle: 'IDE 设置',
+
+    // Code Editor
+    kindKeyword: '关键字',
+    kindBuiltin: '内置',
+    kindModule: '模块',
+    kindSnippet: '片段',
+    kindIdentifier: '标识符',
+    completionDetailIfMain: '程序入口',
+    completionDetailDef: '定义函数',
+    completionDetailClass: '定义类',
+    completionDetailFor: 'for 循环',
+    completionDetailIf: 'if 分支',
+    completionDetailReadFile: '读取文件',
+    completionDetailTry: '异常处理',
+    completionDetailCallable: '函数/类',
+    completionDetailVariable: '变量',
+    completionDetailKeyword: '关键字',
+    completionDetailBuiltin: '内置函数',
+    completionDetailModule: '标准库模块',
+    toastCopiedAll: '已复制全部内容',
+    toastSelectToCut: '请先在编辑器中选中要剪切的内容',
+    toastClipboardUnavailable: '无法读取剪贴板，请使用 Ctrl+V 粘贴',
+    tabUnsavedTitle: '未保存修改',
+    tabCloseTitle: '关闭标签页',
+    tabScrollLeft: '向左滚动标签列表',
+    tabScrollRight: '向右滚动标签列表',
+    undoTitle: '撤销 (Ctrl+Z)',
+    redoTitle: '重做 (Ctrl+Y)',
+    cursorPositionText: '第 {line} 行，第 {col} 列',
+    engineLabelDefault: 'Python 3.11 Pyodide',
+    findPrevTitle: '上一个 (Shift+Enter)',
+    findNextTitle: '下一个 (Enter)',
+    closeTitle: '关闭',
+    completionConfirm: '补全',
+    completionInvoke: '唤起',
+    quizAnswerCorrectDesc: '已通过，返回测验',
+    checkAnswer: '答案',
+    outputTerminalTitle: '输出',
+    fontSizeIncrease: '增大编辑器字体',
+    fontSizeDecrease: '减小编辑器字体',
+
+    // 使用帮助弹窗
+    helpTitle: '使用帮助',
+    helpGotIt: '知道了',
+    helpBasicsTitle: '基础操作',
+    helpBasicsText: '通过左侧文件树或工具栏「新建文件 / 新建文件夹」创建项目文件；右键文件可重命名、删除、运行或导出。\n打开文件后在编辑区编写代码，点击工具栏「执行」按钮运行当前脚本，输出显示在下方终端面板。',
+    helpShortcutsTitle: '常用快捷键',
+    helpShortcutsText: 'Ctrl+S 保存当前文件\nCtrl+Z / Ctrl+Y 撤销与重做\n工具栏查找 / 替换按钮可搜索与批量替换文本\nCtrl+滚轮 调节编辑器字号（需在设置中开启）',
+    helpConsoleTitle: '交互式终端',
+    helpConsoleText: '侧边栏「交互终端」进入 REPL：直接在显示区输入 Python 语句并按回车执行；↑ / ↓ 翻阅历史命令；输出可选中复制，右上角按钮清空记录。',
+    helpPackagesTitle: '扩展包管理',
+    helpPackagesText: '「扩展包」页面搜索 PyPI / Pyodide 包名，一键安装纯 Python 扩展包，安装后即可在代码中 import 使用。',
+    helpTutorialTitle: '教程与测验',
+    helpTutorialText: '「教程」页面内置 Python 入门课程与课后测验；测验代码通过「检查答案」按钮自动校验输出。',
+    helpSettingsTitle: '偏好设置',
+    helpSettingsText: '「设置」页面可调整外观主题、代码配色、字号、Tab 宽度等，所有修改即时生效并自动保存。',
+
+    // Package Manager
+    pkgCount: '{count} 个',
+    pkgNoneInstalled: '暂无已安装的扩展包',
+    pkgNoneAvailable: '暂无可载入的拓展包',
+    pkgCustomDesc: '已安装扩展包 \'{name}\'',
+    pipUninstalled: '[Pip] 已卸载包: {name}',
+
+    // Quiz / Tutorial UI
+    backToTutorial: '返回教程',
+    quizAfterClass: '课后测验',
+    quizScoreText: '答对 {correct} / {total}',
+    quizEmpty: '该章节暂无测验题目。',
+    questionIndexText: '第 {n} 题',
+    questionTypeChoice: '选择题',
+    questionTypeCode: '代码题',
+    answerCorrect: '回答正确',
+    answerWrong: '回答错误',
+    codePassed: '已通过',
+    codeFailed: '未通过',
+    notAnswered: '未作答',
+    putInEditor: '放入编辑器作答',
+    codeActionHint: '在编辑器窗口中修改代码，点击右下角「检查答案」校验输出',
+    choiceSubmitted: '选择题已提交',
+    submitQuizText: '提交测验（已选 {answered}/{total}）',
+    retakeQuiz: '重新测验',
+    quizDirectoryTitle: '测验目录',
+    quizDirectorySubtitle: '每节课后完成测验，巩固所学知识',
+    scoreNone: '暂无',
+    quizDoneTitle: '测验已完成',
+    quizNotDoneTitle: '测验未完成',
+    toggleQuizCatalog: '切换测验目录',
+    quizShort: '测验',
+    noTutorialMatch: '未找到匹配的教程内容',
+    locateCurrentTopic: '定位当前课程在目录中的位置',
+
+    // Tutorial Article Content UI
+    tocTitle: '目录',
+    expandToc: '展开目录',
+    collapseToc: '收起目录',
+    readingTimeText: '{time} min read',
+    keyTakeaways: '核心要点',
+    markComplete: '标记为完成',
+    markedComplete: '已完成',
+    completeQuizTitle: '完成本节测验',
+    quizBtn: '测验',
+    backToTop: '回到顶部',
+
+    // Tutorial Catalog (原 tutorialUI)
+    tutorialSearchPlaceholder: '搜索课程或知识点...',
+    tutorialNoResults: '未找到与搜索内容匹配的教程章节',
+    tutorialClickToRun: '点击在编辑器中直接运行',
+    tutorialRunInEditor: '载入编辑器并运行',
+    tutorialCopyCode: '复制源码',
+    tutorialCopied: '已复制到剪贴板',
+    tutorialTipsTitle: '学习小贴士',
+    tutorialReturnToTutorial: '返回教程',
+    tutorialStageTag: '阶段',
+    tutorialSectionCodeTitle: '示例代码与校验',
+    tutorialNotesTitle: '说明：',
+    tutorialCatalog: '教程目录',
+    tutorialExpandCatalog: '展开教程大纲',
+    tutorialCollapseCatalog: '收起教程大纲',
+    tutorialInteractiveExample: '交互式示例代码',
+    tutorialCodeSnippet: '代码片段',
+    tutorialImportAndRun: '导入运行',
+    tutorialRunInIDE: '在 IDE 中运行代码',
+    tutorialPrevious: '上一页',
+    tutorialNext: '下一页',
+
+    // MD3 Component Defaults
+    badgeNoResult: '无结果',
+    selectPlaceholder: '请选择',
+    openingFolder: '正在打开...',
+
+    // Python Engine Status & Messages（面向用户的提示）
+    engineLocal: 'Python {version} (本地进程)',
+    enginePyodideFallback: 'Pyodide (未检测到本机 Python)',
+    runLocalPython: '▶ 使用本机 Python {version} 执行...',
+    processExited: '[INFO] 进程已结束，退出码 {code}，耗时 {duration}ms',
+    replSessionEnded: '[INFO] REPL 会话已结束',
+    replStartFailed: '无法启动本地 REPL: {err}',
+    pipInstalledOk: '[Pip] 已通过 pip 安装 {name}',
+    pipInstallFailed: '[Pip] 安装 {name} 失败（退出码 {code}）',
+    pipError: '[Pip] {err}',
+    pyodideLoading: '[INFO] 未检测到本机 Python，尝试加载本地 Pyodide WASM 引擎（失败将回退到演示模式）...',
+    pyodideActive: '[INFO] Pyodide Python 3.11 WASM Engine Active!',
+    pyodideUnavailable: '[INFO] Pyodide WASM 引擎不可用（{err}），已切换到演示模式。',
+    pyodideTimeout: 'Pyodide WASM 引擎加载超时（可能没有网络）',
+    pyodideCdnUnavailable: 'Pyodide 引擎加载失败（本地资源缺失）',
+    pyodideInitTimeout: 'Pyodide WASM 引擎初始化超时（可能没有网络）',
+    demoModeRunning: '[INFO] Running in Python You Presentation Demo Mode...',
+    demoExecuted: '[INFO] Code executed successfully in presentation mode.',
+    replErrorMsg: '[REPL Error] {err}',
+    pyodideInstallingPkg: '[INFO] Installing package \'{name}\' via Pyodide micropip...',
+    pyodideInstalledPkg: '[INFO] Package \'{name}\' installed successfully!',
+    pyodideInstallFail: '[ERROR] Failed to install \'{name}\': {err}',
+    demoPkgRegistered: '[INFO] Package \'{name}\' registered in presentation mode.',
+    processFinishedCode: '[INFO] Process finished with code 0 in {duration}ms'
   },
 };
 
@@ -151,6 +339,15 @@ export function t(key: keyof typeof translations['zh']): string {
   return translations['zh'][key] || key;
 }
 
+// 带 {placeholder} 参数插值的翻译：tf('toastFileSaved', { name: 'main.py' })
+export function tf(key: keyof typeof translations['zh'], vars: Record<string, string | number>): string {
+  let s = translations['zh'][key] || key;
+  for (const [k, v] of Object.entries(vars)) {
+    s = s.split(`{${k}}`).join(String(v));
+  }
+  return s;
+}
+
 export function useI18n() {
-  return { t };
+  return { t, tf };
 }

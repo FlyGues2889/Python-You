@@ -15,8 +15,9 @@ import {
 } from './quizData';
 import { getAllTutorialTopics, type TutorialTopic } from './tutorialData';
 import TutorialFormattedText from './TutorialFormattedText.vue';
-import MD3Button from '../MD3Components/MD3Button.vue';
-import MD3IconButton from '../MD3Components/MD3IconButton.vue';
+import { useI18n } from '../../utils/i18n';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   topicId: string;
@@ -119,18 +120,15 @@ const isChoicePass = (q: QuizQuestion) =>
 </script>
 
 <template>
-  <div class="quiz-view custom-scrollbar">
+  <m3e-content-pane class="quiz-view">
     <div class="quiz-wrapper">
       <div class="quiz-header">
-        <MD3IconButton
-          icon="arrow_back"
-          size="S"
-          title="返回教程"
-          @click="emit('back-to-tutorial')"
-        />
+        <m3e-icon-button size="extra-small" :title="t('backToTutorial')" @click="emit('back-to-tutorial')">
+          <span class="material-symbols-rounded">arrow_back</span>
+        </m3e-icon-button>
         <div class="quiz-title-group">
           <div>
-            <div class="quiz-title">课后测验</div>
+            <div class="quiz-title">{{ t('quizAfterClass') }}</div>
             <div class="quiz-topic-title">
               <TutorialFormattedText :text="topic?.title || topicId" />
             </div>
@@ -138,42 +136,35 @@ const isChoicePass = (q: QuizQuestion) =>
         </div>
         <div class="quiz-score-badge" :class="{ 'is-done': score.correct > 0 && score.correct === score.total }">
           <span class="material-symbols-rounded">scoreboard</span>
-          <span>答对 {{ score.correct }} / {{ score.total }}</span>
+          <span>{{ t('quizScoreText').replace('{correct}', String(score.correct)).replace('{total}',
+            String(score.total)) }}</span>
         </div>
       </div>
 
       <div v-if="!quiz || quiz.questions.length === 0" class="quiz-empty">
-        该章节暂无测验题目。
+        {{ t('quizEmpty') }}
       </div>
 
       <template v-else>
         <!-- 选择题 -->
-        <div
-          v-for="(q, qi) in choiceQuestions"
-          :key="q.id"
-          class="quiz-question-card"
-        >
+        <div v-for="(q, qi) in choiceQuestions" :key="q.id" class="quiz-question-card">
           <div class="question-label">
-            <span class="q-index">第 {{ qi + 1 }} 题</span>
-            <span class="q-type-chip">选择题</span>
+            <span class="q-index">{{ t('questionIndexText').replace('{n}', String(qi + 1)) }}</span>
+            <span class="q-type-chip">{{ t('questionTypeChoice') }}</span>
             <span v-if="submitted" class="q-result-chip" :class="isChoicePass(q) ? 'chip-pass' : 'chip-fail'">
-              {{ isChoicePass(q) ? '回答正确' : '回答错误' }}
+              {{ isChoicePass(q) ? t('answerCorrect') : t('answerWrong') }}
             </span>
           </div>
-          <p class="question-text"><TutorialFormattedText :text="q.question" /></p>
+          <p class="question-text">
+            <TutorialFormattedText :text="q.question" />
+          </p>
           <div class="option-list">
-            <button
-              v-for="(opt, oi) in q.options"
-              :key="oi"
-              class="option-item"
-              :class="{
-                'is-selected': answers[q.id] === oi,
-                'is-correct': submitted && oi === q.answerIndex,
-                'is-wrong': submitted && answers[q.id] === oi && oi !== q.answerIndex,
-                'is-locked': submitted
-              }"
-              @click="selectAnswer(q.id, oi)"
-            >
+            <button v-for="(opt, oi) in q.options" :key="oi" class="option-item" :class="{
+              'is-selected': answers[q.id] === oi,
+              'is-correct': submitted && oi === q.answerIndex,
+              'is-wrong': submitted && answers[q.id] === oi && oi !== q.answerIndex,
+              'is-locked': submitted
+            }" @click="selectAnswer(q.id, oi)">
               <span class="option-mark material-symbols-rounded">
                 {{
                   submitted && oi === q.answerIndex
@@ -185,77 +176,77 @@ const isChoicePass = (q: QuizQuestion) =>
                         : 'radio_button_unchecked'
                 }}
               </span>
-              <span class="option-text"><TutorialFormattedText :text="opt" /></span>
+              <span class="option-text">
+                <TutorialFormattedText :text="opt" />
+              </span>
             </button>
           </div>
           <div v-if="submitted && q.explanation" class="explanation-box">
             <span class="material-symbols-rounded">lightbulb</span>
-            <span><TutorialFormattedText :text="q.explanation" /></span>
+            <span>
+              <TutorialFormattedText :text="q.explanation" />
+            </span>
           </div>
         </div>
 
         <!-- 代码题 -->
-        <div
-          v-for="(q, qi) in codeQuestions"
-          :key="q.id"
-          class="quiz-question-card"
-        >
+        <div v-for="(q, qi) in codeQuestions" :key="q.id" class="quiz-question-card">
           <div class="question-label">
-            <span class="q-index">第 {{ choiceQuestions.length + qi + 1 }} 题</span>
-            <span class="q-type-chip chip-code">代码题</span>
-            <span v-if="getCodeStatus(q)" class="q-result-chip" :class="getCodeStatus(q) === 'pass' ? 'chip-pass' : 'chip-fail'">
-              {{ getCodeStatus(q) === 'pass' ? '已通过' : '未通过' }}
+            <span class="q-index">{{ t('questionIndexText').replace('{n}', String(choiceQuestions.length + qi + 1))
+              }}</span>
+            <span class="q-type-chip chip-code">{{ t('questionTypeCode') }}</span>
+            <span v-if="getCodeStatus(q)" class="q-result-chip"
+              :class="getCodeStatus(q) === 'pass' ? 'chip-pass' : 'chip-fail'">
+              {{ getCodeStatus(q) === 'pass' ? t('codePassed') : t('codeFailed') }}
             </span>
-            <span v-else class="q-result-chip chip-pending">未作答</span>
+            <span v-else class="q-result-chip chip-pending">{{ t('notAnswered') }}</span>
           </div>
-          <p class="question-text"><TutorialFormattedText :text="q.question" /></p>
+          <p class="question-text">
+            <TutorialFormattedText :text="q.question" />
+          </p>
           <div class="code-question-block">
             <pre class="code-preview"><code>{{ q.starterCode }}</code></pre>
             <div class="code-question-actions">
-              <MD3Button
-                variant="filled"
-                size="S"
-                icon="open_in_new"
-                @click="loadToEditor(q)"
-              >
-                放入编辑器作答
-              </MD3Button>
-              <span class="code-action-hint">在编辑器窗口中修改代码，点击右下角「检查答案」校验输出</span>
+              <m3e-button variant="filled" size="extra-small" @click="loadToEditor(q)">
+                <span slot="icon" class="material-symbols-rounded">open_in_new</span>
+                {{ t('putInEditor') }}
+              </m3e-button>
+              <span class="code-action-hint">{{ t('codeActionHint') }}</span>
             </div>
           </div>
         </div>
 
         <!-- 底部操作 -->
         <div class="quiz-actions">
-          <MD3Button
-            variant="filled"
-            icon="task_alt"
-            :disabled="submitted"
-            @click="submitChoice"
-          >
-            {{ submitted ? '选择题已提交' : `提交测验（已选 ${answeredCount}/${choiceQuestions.length}）` }}
-          </MD3Button>
-          <MD3Button
-            variant="tonal"
-            icon="restart_alt"
-            @click="resetQuiz"
-          >
-            重新测验
-          </MD3Button>
+          <m3e-button variant="filled" size="medium" :disabled="submitted" @click="submitChoice">
+            <span slot="icon" class="material-symbols-rounded">task_alt</span>
+            {{ submitted ? t('choiceSubmitted') : t('submitQuizText').replace('{answered}',
+              String(answeredCount)).replace('{total}', String(choiceQuestions.length)) }}
+          </m3e-button>
+          <m3e-button variant="tonal" size="medium" @click="resetQuiz">
+            <span slot="icon" class="material-symbols-rounded">restart_alt</span>
+            {{ t('retakeQuiz') }}
+          </m3e-button>
         </div>
       </template>
     </div>
-  </div>
+  </m3e-content-pane>
 </template>
 
 <style scoped>
 .quiz-view {
   flex: 1;
+  min-height: 0;
   height: 100%;
-  overflow-y: auto;
-  background-color: var(--bg-color);
-  padding: 32px 48px;
-  box-sizing: border-box;
+  /* host 自身 overflow 为 visible 时 flex item 的 min-height:auto 会取内容高度，
+     把 host 撑高导致 shadow 内滚动容器失去滚动空间 → 必须显式归零 */
+  /* 外边距留在 host 上（露出的空隙由父级 --bg-color 填充 → 边距可见）；
+     背景/圆角/内边距由 m3e-content-pane 的 shadow 内元素绘制，经变量控制
+     （与 REPL 终端主体一致:surface 色 + 10px 圆角 + 32px 内边距） */
+  margin: 0 12px 12px;
+  --m3e-content-pane-container-shape: 10px;
+  --m3e-content-pane-container-color: var(--surface-color);
+  --m3e-content-pane-container-padding: 32px;
   user-select: text;
 }
 
@@ -272,7 +263,8 @@ const isChoicePass = (q: QuizQuestion) =>
   align-items: center;
   gap: 12px;
   padding: 16px 0 16px;
-  background-color: var(--bg-color);
+  /* 吸顶时与 surface 卡片底色无缝衔接 */
+  background-color: var(--surface-color);
 }
 
 .quiz-title-group {
@@ -281,11 +273,6 @@ const isChoicePass = (q: QuizQuestion) =>
   gap: 10px;
   flex: 1;
   min-width: 0;
-}
-
-.quiz-header-icon {
-  font-size: 1.75rem;
-  color: var(--primary);
 }
 
 .quiz-title {

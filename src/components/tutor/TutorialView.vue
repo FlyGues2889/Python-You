@@ -193,11 +193,12 @@ const handleLoadCode = (payload: { code: string; topicId: string; topicTitle: st
 
 <style scoped>
 .tutorial-main-view {
+  padding-bottom: 0.4rem;
   display: flex;
   width: 100%;
   height: 100%;
   overflow: hidden;
   position: relative;
-  background-color: var(--bg-color);
+  background-color: var(--surface-color);
 }
 </style>

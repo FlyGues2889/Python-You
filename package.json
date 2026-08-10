@@ -1,7 +1,7 @@
 {
   "name": "python-you",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,6 +10,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@m3e/web": "^2.7.4",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-opener": "^2",
@@ -24,6 +25,7 @@
     "@vitejs/plugin-vue": "^5.2.1",
     "typescript": "^7.0.2",
     "vite": "^6.0.3",
+    "vite-plugin-static-copy": "^4.1.1",
     "vue-tsc": "^3.3.8"
   }
 }

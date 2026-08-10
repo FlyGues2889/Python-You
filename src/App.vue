@@ -4,46 +4,193 @@ import { FSItem, EditorTab, ConsoleOutput, AppConfig } from './types';
 import { DEFAULT_WORKSPACE_ITEMS } from './utils/defaultWorkspace';
 import { pythonRunner } from './utils/pythonRunner';
 import { useI18n } from './utils/i18n';
-import MD3Sidebar from './components/MD3Components/MD3Sidebar.vue';
-import SidebarNavItem from './components/SidebarNavItem.vue';
 import FileTree from './components/FileTree.vue';
 import CodeEditor from './components/CodeEditor.vue';
+import TerminalPanel from './components/TerminalPanel.vue';
 import REPLConsole from './components/REPLConsole.vue';
 import PackageManager from './components/PackageManager.vue';
 import TutorialView from './components/tutor/TutorialView.vue';
-import PageHeader from './components/PageHeader.vue';
-import MD3Card from './components/MD3Components/MD3Card.vue';
-import MD3List from './components/MD3Components/MD3List.vue';
-import MD3ListItem from './components/MD3Components/MD3ListItem.vue';
-import MD3Tabs from './components/MD3Components/MD3Tabs.vue';
-import MD3Slider from './components/MD3Components/MD3Slider.vue';
-import MD3Switch from './components/MD3Components/MD3Switch.vue';
-import MD3Snackbar from './components/MD3Components/MD3Snackbar.vue';
+import SettingsView from './components/SettingsView.vue';
 import MD3LoadingModal from './components/MD3Components/MD3LoadingModal.vue';
-import MD3Select from './components/MD3Components/MD3Select.vue';
-import MD3IconButton from './components/MD3Components/MD3IconButton.vue';
-import MD3Badge from './components/MD3Components/MD3Badge.vue';
 import { minimizeWindow, maximizeWindow, closeWindow } from './utils/tauriWindow';
-import EditorPreview from './components/EditorPreview.vue';
-import MD3Dialog from './components/MD3Components/MD3Dialog.vue';
 import ContextMenu from './components/ContextMenu.vue';
 import { safeStorage } from './utils/storage';
 import { nativeApi, fsEntriesToFSItems, absPath } from './utils/native';
 import { nativePython } from './utils/nativePython';
+import { copyToClipboard } from './utils/clipboard';
 import { revealItemInDir, openPath } from '@tauri-apps/plugin-opener';
 
 import { syncWorkspacePackages } from './utils/packageUtils';
+import { uid } from './utils/id';
 import { setQuizQuestionResult, syncQuizCompletion, getQuizQuestionResult } from './components/tutor/quizData';
 
-const { t } = useI18n();
+const { t, tf } = useI18n();
 
 // Component refs
 const codeEditorRef = ref<any>(null);
+const fileTreeRef = ref<any>(null);
 const openFileInputRef = ref<HTMLInputElement | null>(null);
 const openFolderInputRef = ref<HTMLInputElement | null>(null);
 
-// Menu dropdown state
-const activeMenu = ref<'file' | 'edit' | null>(null);
+// 工作区栏(外层 split 的 start 面板)折叠——临界阻尼模型:
+// 0–220px 为死区,面板不允许停留其中。临界处复刻 m3e-split-pane 内建的 overshoot 阻尼
+// (与终端手柄一致的手感,overshootLimit=4):拖过临界时面板被压缩在锚点附近,拖得越远
+// 阻力越重;越过临界后继续拖过一段距离(180px)且至少按住 250ms 即切换状态,无需松手:
+// - 展开态拖过 220px 临界继续左拉 → 阻尼 → 再拖 180px → 折叠到 0
+// - 折叠态(0px)继续右拉 → 阻尼 → 再拖 180px → 展开到 220px
+// 时间门控保证快速拖动时面板也在临界处被按住可感知的时间,而非瞬间跳变切换
+// 切换后拖动继续生效(折叠后右拉可再次展开,展开后左拉可再次折叠),当前状态由
+// workspaceCollapsed 记录——不能用 value 判断,阻尼期间的压缩值会污染状态判定。
+// 不用组件 min/max(其松手 snap 有 250ms 回弹动画会延迟切换):直接覆写 el.value 模拟压缩,
+// input 事件在每个 mousemove 内同步触发,覆写在 paint 前完成 → 无中间态、无过渡动画。
+// 文件树最小展开宽度(px):面板低于该宽度进入死区(阻尼区)
+const WORKSPACE_MIN_EXPAND_PX = 220;
+// 手柄容器实际宽度 8px(m3eStyle.css 全局覆盖,m3e 默认 24px),flex-basis 减半 4px
+const WORKSPACE_HANDLE_HALF = 4;
+// 阻尼压缩上限(px),与组件 overshootLimit 默认 4(%)的手感一致
+const WORKSPACE_OVERSHOOT_LIMIT_PX = 4;
+// 越过临界后继续拖动超过此距离(px)立即切换折叠/展开状态。
+// 阈值即阻尼区间的长度:180px 几乎覆盖整个 220px 死区,面板在临界处被钉住,
+// 手指需持续拖过 180px(慢速拖约 0.6s)才会触发切换——阻尼感持续最久
+const WORKSPACE_DRAG_SWITCH_PX = 180;
+// 进入死区后至少保持该时长(ms)的阻尼才允许切换:快速拖动时帧间距离大,
+// 距离阈值 1~2 帧即达标,面板只"卡住"几十毫秒感知不到;时间门控保证
+// 面板在临界处被按住的时间可感知(慢速拖动距离先达标时时间早已满足,不受影响)
+const WORKSPACE_DRAG_MIN_HOLD_MS = 250;
+// 受控值:拖拽/折叠/展开后的真实 value(替换原写死的 :value="20",避免 Vue 重渲染重置面板)
+const workspaceSplitValue = ref(20);
+// 当前折叠状态(阻尼压缩值 >0 会污染 value 判定,须单独记录)
+let workspaceCollapsed = false;
+// 本次拖拽进入死区时的面板宽度起点(px):阻尼距离从该点起算,负值表示未进入死区
+let workspaceCollapsedEntryPx = -1;
+let workspaceExpandedEntryPx = -1;
+// 本次进入死区的时间戳(ms):距离达标后还需经过最小保持时长才能切换
+let workspaceDeadzoneEnteredAt = 0;
+
+const onWorkspaceSplitPointerDown = (e: Event) => {
+  const el = e.currentTarget as HTMLElement & { value: number };
+  workspaceCollapsed = (Number(el.value) || 0) <= 0;
+  workspaceCollapsedEntryPx = -1;
+  workspaceExpandedEntryPx = -1;
+};
+
+const handleWorkspaceSplitInput = (e: Event) => {
+  const el = e.currentTarget as HTMLElement & { value: number };
+  const hostWidth = el.clientWidth;
+  if (hostWidth <= 0) return;
+  const raw = Number(el.value) || 0;
+  const panePx = (raw / 100) * hostWidth - WORKSPACE_HANDLE_HALF;
+  let value = raw;
+  if (workspaceCollapsed) {
+    // 折叠态:右拉进入死区 → 阻尼锚 0;越过临界继续拉过阈值 → 立即展开
+    if (panePx > 0) {
+      if (workspaceCollapsedEntryPx < 0) {
+        workspaceCollapsedEntryPx = panePx;
+        workspaceDeadzoneEnteredAt = Date.now();
+      }
+      if (
+        panePx - workspaceCollapsedEntryPx >= WORKSPACE_DRAG_SWITCH_PX &&
+        Date.now() - workspaceDeadzoneEnteredAt >= WORKSPACE_DRAG_MIN_HOLD_MS
+      ) {
+        // 切换时两个距离起点全部重置:否则旧起点会让切换后下一帧立即再次触发(抽搐)
+        workspaceCollapsed = false;
+        workspaceCollapsedEntryPx = -1;
+        workspaceExpandedEntryPx = -1;
+        value = ((WORKSPACE_MIN_EXPAND_PX + WORKSPACE_HANDLE_HALF) / hostWidth) * 100;
+      } else {
+        const compressed =
+          (WORKSPACE_OVERSHOOT_LIMIT_PX * panePx) / (panePx + WORKSPACE_OVERSHOOT_LIMIT_PX);
+        value = ((compressed + WORKSPACE_HANDLE_HALF) / hostWidth) * 100;
+      }
+    } else {
+      // 拖回 0 或以下:贴 0,重置右拉距离起点
+      workspaceCollapsedEntryPx = -1;
+      value = 0;
+    }
+  } else if (panePx < WORKSPACE_MIN_EXPAND_PX) {
+    // 展开态:左拉过 220px 临界 → 阻尼锚 220;越过临界继续拉过阈值 → 立即折叠
+    if (workspaceExpandedEntryPx < 0) {
+      workspaceExpandedEntryPx = panePx;
+      workspaceDeadzoneEnteredAt = Date.now();
+    }
+    if (
+      workspaceExpandedEntryPx - panePx >= WORKSPACE_DRAG_SWITCH_PX &&
+      Date.now() - workspaceDeadzoneEnteredAt >= WORKSPACE_DRAG_MIN_HOLD_MS
+    ) {
+      // 切换时两个距离起点全部重置:否则旧起点会让切换后下一帧立即再次触发(抽搐)
+      workspaceCollapsed = true;
+      workspaceCollapsedEntryPx = -1;
+      workspaceExpandedEntryPx = -1;
+      value = 0;
+    } else {
+      const overshoot = WORKSPACE_MIN_EXPAND_PX - panePx;
+      const compressed =
+        (WORKSPACE_OVERSHOOT_LIMIT_PX * overshoot) / (overshoot + WORKSPACE_OVERSHOOT_LIMIT_PX);
+      value = ((WORKSPACE_MIN_EXPAND_PX - compressed + WORKSPACE_HANDLE_HALF) / hostWidth) * 100;
+    }
+  } else {
+    // 拖回 220px 以上:自由区,重置左拉距离起点
+    workspaceExpandedEntryPx = -1;
+  }
+  if (value !== raw) {
+    // 覆写组件值 → 面板被阻尼压缩在锚点附近(与组件内建 overshoot 视觉一致)
+    el.value = value;
+  }
+  workspaceSplitValue.value = value;
+};
+
+// 终端面板采用"固定像素高度"模型：窗口高度改变时终端保持像素高度不变
+// （窗口最矮时终端多高，调高窗口后仍保持该高度），而不是按 25% 比例放大
+// 露出更多内容。仅用户拖拽手柄会改变终端像素高度（下限 28px 最小高度）。
+// split-pane 拖拽时内部 value 变化并派发 input 事件——必须受控绑定（@input 同步到
+// innerSplitValue），否则窗口高度改变导致 Vue 重渲染时，组件 value 会被强制重置回 75。
+const innerSplitPaneRef = ref<HTMLElement | null>(null);
+const innerSplitMax = ref(100);
+const innerSplitValue = ref(75);
+let innerSplitResizeObserver: ResizeObserver | null = null;
+// 终端面板的固定像素高度：null 表示尚未初始化（首次用当前 25% 比例记录）
+let terminalHeightPx: number | null = null;
+
+// 拖拽/键盘调整时同步内部值，并记录新的终端像素高度作为后续保持的基准
+const onInnerSplitInput = (e: Event) => {
+  const v = Number((e.target as HTMLInputElement).value);
+  if (Number.isNaN(v)) return;
+  innerSplitValue.value = v;
+  const el = innerSplitPaneRef.value;
+  const h = el?.clientHeight || 0;
+  if (h > 0) {
+    // end 面板像素高度 = (100 - v)% × h - 4（手柄半宽），下限 28px
+    terminalHeightPx = Math.max(28, ((100 - v) / 100) * (h - 4));
+  }
+};
+
+const updateInnerSplitMax = () => {
+  const el = innerSplitPaneRef.value;
+  if (!el) return;
+  const h = el.clientHeight;
+  if (h <= 0) return;
+  // end 面板可用高度 = h - 4（手柄半宽）；拖拽上限保证终端 ≥ 28px 最小高度
+  const available = Math.max(0, h - 4);
+  innerSplitMax.value = Math.max(0, Math.min(100, ((available - 28) / h) * 100));
+  // 首次运行：以当前面板比例（初始 25%）记录终端像素高度
+  if (terminalHeightPx === null) {
+    terminalHeightPx = Math.max(28, ((100 - innerSplitValue.value) / 100) * available);
+  }
+  // 窗口高度改变：终端保持固定像素高度（最小 28px；窗口过矮放不下时占满可用高度）
+  const px = Math.min(terminalHeightPx, available);
+  innerSplitValue.value = Math.max(0, Math.min(100, ((available - px) / h) * 100));
+};
+
+const attachInnerSplitResizeObserver = () => {
+  const el = innerSplitPaneRef.value;
+  if (!el || innerSplitResizeObserver) return;
+  innerSplitResizeObserver = new ResizeObserver(updateInnerSplitMax);
+  innerSplitResizeObserver.observe(el);
+  updateInnerSplitMax();
+};
+
+// 初始挂载后确保观察器就位（activeNavTab 的切换监听放在其声明之后）
+onMounted(attachInnerSplitResizeObserver);
 
 // Context menu state
 const contextMenuState = ref<{
@@ -52,18 +199,21 @@ const contextMenuState = ref<{
   y: number;
   type: 'editor' | 'terminal' | 'filetree' | 'tutorial' | 'general';
   targetItem: FSItem | null;
+  source: 'repl' | 'run' | null;
 }>({
   visible: false,
   x: 0,
   y: 0,
   type: 'editor',
-  targetItem: null
+  targetItem: null,
+  source: null
 });
 
 const openContextMenu = (
   e: MouseEvent,
   type: 'editor' | 'terminal' | 'filetree' | 'tutorial' | 'general',
-  item: FSItem | null = null
+  item: FSItem | null = null,
+  source: 'repl' | 'run' | null = null
 ) => {
   e.preventDefault();
   e.stopPropagation();
@@ -73,16 +223,44 @@ const openContextMenu = (
     x: e.clientX,
     y: e.clientY,
     type,
-    targetItem: item
+    targetItem: item,
+    source
   };
 };
 
-const handleContextMenuCopy = () => {
-  const selectedText = window.getSelection()?.toString();
-  if (selectedText) {
-    navigator.clipboard.writeText(selectedText);
+const handleContextMenuCopy = async () => {
+  const type = contextMenuState.value.type;
+  // 终端：复制该终端输出区的全部内容（REPL 或脚本运行终端）
+  if (type === 'terminal') {
+    const logs =
+      contextMenuState.value.source === 'repl' ? replLogs.value : consoleOutputs.value;
+    const text = logs.map((l) => l.text).join('\n').trim();
+    if (!text) {
+      showToast(t('toastNoTerminalOutput'));
+      return;
+    }
+    const ok = await copyToClipboard(text);
+    showToast(ok ? t('toastCopiedTerminalInfo') : t('toastCopyFailed'));
+    return;
+  }
+  // 教程正文：复制 DOM 选区中的文本
+  if (type === 'tutorial') {
+    const selected = (window.getSelection()?.toString() || '').trim();
+    if (!selected) {
+      showToast(t('toastSelectTutorialText'));
+      return;
+    }
+    const ok = await copyToClipboard(selected);
+    showToast(ok ? t('toastCopiedSelection') : t('toastCopyFailed'));
+    return;
+  }
+  // 编辑器：复制 textarea 选区
+  // copySelection 是 async 函数，必须 await —— 否则拿到 Promise（恒真），无选区时也会误报成功
+  const ok = (await codeEditorRef.value?.copySelection?.()) ?? false;
+  if (ok) {
+    showToast(t('toastCopiedToClipboard'));
   } else {
-    codeEditorRef.value?.triggerCopy();
+    showToast(t('toastSelectEditorText'));
   }
 };
 
@@ -93,7 +271,7 @@ const closeContextMenu = () => {
 // 在系统文件资源管理器中打开/定位文件（文件选中、文件夹打开）
 const handleRevealInExplorer = async (item: FSItem) => {
   if (!workspaceRootPath.value) {
-    showToast('请先打开本地工作区');
+    showToast(t('toastOpenWorkspaceFirst'));
     return;
   }
   const fullPath = absPath(workspaceRootPath.value, item.path);
@@ -104,7 +282,7 @@ const handleRevealInExplorer = async (item: FSItem) => {
       await revealItemInDir(fullPath);
     }
   } catch (err: any) {
-    showToast('无法打开资源管理器: ' + (err?.message || err));
+    showToast(t('toastRevealFailed') + (err?.message || err));
   }
 };
 
@@ -117,16 +295,16 @@ const requestDeleteItem = (item: FSItem) => {
   isDeleteDialogOpen.value = true;
 };
 
-const toggleMenu = (menuName: 'file' | 'edit') => {
-  if (activeMenu.value === menuName) {
-    activeMenu.value = null;
-  } else {
-    activeMenu.value = menuName;
-  }
+// 关闭所有已打开的 m3e 菜单弹层（popover 菜单）
+const closeOpenMenus = () => {
+  document.querySelectorAll('m3e-menu').forEach((menu) => {
+    const el = menu as HTMLElement & { hide?: () => void };
+    if (el.matches(':popover-open')) el.hide?.();
+  });
 };
 
 const closeMenus = () => {
-  activeMenu.value = null;
+  closeOpenMenus();
   // Delay restoring editor focus to avoid stealing focus from find/replace inputs
   setTimeout(() => {
     const active = document.activeElement;
@@ -134,6 +312,16 @@ const closeMenus = () => {
       codeEditorRef.value?.focusEditor?.();
     }
   }, 60);
+};
+
+// 标题栏是 Tauri 拖拽区域：mousedown 会被窗口管理器截获，click 事件不会派发到 DOM，
+// m3e 菜单自身的 document click 监听因此失效 → 必须在 mousedown 捕获阶段就关闭菜单。
+// 菜单内部（选项、子菜单）和触发器交给 m3e 组件自己处理（切换/选择）。
+const handleDocumentMousedown = (e: MouseEvent) => {
+  const target = e.target as Element | null;
+  if (!target) return;
+  if (target.closest('m3e-menu, m3e-menu-trigger')) return;
+  closeOpenMenus();
 };
 
 const handleMenuOpenFile = async () => {
@@ -156,7 +344,7 @@ const handleMenuOpenFile = async () => {
         showToast(t('toastImported'));
         openFileInTab(newFile);
       } catch (err: any) {
-        showToast('导入失败: ' + (err?.message || err));
+        showToast(t('toastImportFailed') + (err?.message || err));
       }
     }
     return;
@@ -180,11 +368,12 @@ const handleMenuOpenFolder = async () => {
 const loadWorkspaceFromDisk = async (root: string) => {
   try {
     const entries = await nativeApi.readDirectory(root);
+    // 先设置 root 再赋值树，避免深监听把整棵树写回 localStorage
+    workspaceRootPath.value = root;
+    pythonRunner.workspaceRoot = root;
     workspaceItems.value = fsEntriesToFSItems(entries);
     openTabs.value = [];
     activeEditorTabId.value = null;
-    workspaceRootPath.value = root;
-    pythonRunner.workspaceRoot = root;
     safeStorage.setItem('python_you_workspace_root', root);
 
     const mainFile = findFileByPath(workspaceItems.value, '/main.py');
@@ -192,9 +381,9 @@ const loadWorkspaceFromDisk = async (root: string) => {
       await ensureFileContent(mainFile);
       openFileInTab(mainFile);
     }
-    showToast('已打开本地工作区: ' + root);
+    showToast(t('toastWorkspaceOpened') + root);
   } catch (err: any) {
-    showToast('打开工作区失败: ' + (err?.message || err));
+    showToast(t('toastWorkspaceOpenFailed') + (err?.message || err));
   }
 };
 
@@ -206,12 +395,19 @@ const handleFileInputChange = (e: Event) => {
 
 // App Initialization State
 const isInitializing = ref(true);
-const loadingStatus = ref('正在启动 Python You…');
+const loadingStatus = ref(t('loadingStart'));
 
 // Navigation State
 const activeNavTab = ref<'explorer' | 'tutorial' | 'console' | 'packages' | 'settings'>('explorer');
+
+// 内层 Split Pane 仅在 explorer 视图下渲染，切换到 explorer 时确保终端最小高度的观察器已就位
+watch(
+  () => activeNavTab.value,
+  (v) => {
+    if (v === 'explorer') attachInnerSplitResizeObserver();
+  }
+);
 const sidebarExpanded = ref(false);
-const fileTreeCollapsed = ref(false);
 
 // App Config State
 const config = ref<AppConfig>({
@@ -231,16 +427,39 @@ const config = ref<AppConfig>({
 const toastMessage = ref<string | null>(null);
 const showToast = (msg: string) => {
   toastMessage.value = msg;
-  setTimeout(() => {
-    toastMessage.value = null;
-  }, 3000);
+  // 自动关闭由 m3e-snackbar 的 duration 计时控制
 };
+
+// 配置文件导出成功的提示：延长显示时长，并提供“打开文件夹”操作
+const isExportToast = computed(() =>
+  !!toastMessage.value && (
+    toastMessage.value.includes('配置文件已成功导出') ||
+    toastMessage.value.includes('successfully exported to path')
+  )
+);
+const snackbarDuration = computed(() => (isExportToast.value ? 7000 : 5000));
+const handleSnackbarToggle = (e: Event) => {
+  if ((e as any).newState === 'closed') {
+    toastMessage.value = null;
+  }
+};
+const isOpeningFolder = ref(false);
+const handleOpenExportFolder = () => {
+  isOpeningFolder.value = true;
+  setTimeout(() => {
+    isOpeningFolder.value = false;
+    toastMessage.value = null;
+  }, 1000);
+};
+
 
 // Workspace File System & Editor Tabs State
 const workspaceItems = ref<FSItem[]>([]);
 const openTabs = ref<EditorTab[]>([]);
 const activeEditorTabId = ref<string | null>(null);
 const consoleOutputs = ref<ConsoleOutput[]>([]);
+// REPL 交互终端会话记录：提升到 App 级，切换页面时保留；内存态，应用重启自动清空
+const replLogs = ref<ConsoleOutput[]>([]);
 
 // 本地工作区根目录（Tauri 原生文件系统模式），null 表示纯虚拟工作区
 const workspaceRootPath = ref<string | null>(null);
@@ -260,13 +479,33 @@ const saveSession = () => {
         cursors: sessionCursors.value
       })
     );
-  } catch (e) {}
+  } catch (e) { }
 };
 
 const handleCursorChange = (payload: { path: string; line: number; col: number }) => {
   if (!payload?.path) return;
   sessionCursors.value[payload.path] = { line: payload.line, col: payload.col };
   saveSession();
+};
+
+// 在（可能懒加载的）文件树中按路径查找文件；沿途未加载的文件夹从磁盘补载
+const findOrLoadFileByPath = async (items: FSItem[], path: string, root: string): Promise<FSItem | null> => {
+  for (const item of items) {
+    if (item.path === path && !item.isFolder) return item;
+    if (item.isFolder && (path.startsWith(item.path + '/') || path.startsWith(item.path + '\\'))) {
+      if (item.children === undefined) {
+        try {
+          const entries = await nativeApi.readDirectory(absPath(root, item.path));
+          item.children = fsEntriesToFSItems(entries, item.id, item.path);
+        } catch (e) {
+          item.children = [];
+        }
+      }
+      const found = await findOrLoadFileByPath(item.children || [], path, root);
+      if (found) return found;
+    }
+  }
+  return null;
 };
 
 // 重新打开上次会话的标签页，并恢复活动标签与光标
@@ -279,12 +518,16 @@ const restoreSession = async () => {
       sessionCursors.value = session.cursors;
     }
     if (Array.isArray(session.tabs) && session.tabs.length > 0) {
-      const files = session.tabs
-        .map((p: string) => findFileByPath(workspaceItems.value, p))
-        .filter((f): f is FSItem => !!f);
+      const root = workspaceRootPath.value;
+      const files: FSItem[] = [];
+      for (const p of session.tabs as string[]) {
+        const f = root ? await findOrLoadFileByPath(workspaceItems.value, p, root) : findFileByPath(workspaceItems.value, p);
+        if (f) files.push(f);
+      }
       openTabs.value = [];
+      // 并行读取文件内容，避免串行 IPC 拖慢启动
+      await Promise.all(files.map((f) => ensureFileContent(f)));
       for (const f of files) {
-        await ensureFileContent(f);
         openFileInTab(f);
       }
       if (session.active) {
@@ -292,7 +535,7 @@ const restoreSession = async () => {
         if (activeTab) activeEditorTabId.value = activeTab.id;
       }
     }
-  } catch (e) {}
+  } catch (e) { }
 };
 
 // Initialize Workspace from LocalStorage / 本地工作区
@@ -312,7 +555,7 @@ onMounted(async () => {
       try {
         workspaceItems.value = JSON.parse(savedWorkspace);
         return;
-      } catch (e) {}
+      } catch (e) { }
     }
     workspaceItems.value = DEFAULT_WORKSPACE_ITEMS;
   };
@@ -323,11 +566,11 @@ onMounted(async () => {
     let loadedFromDisk = false;
     if (savedRoot) {
       try {
-        loadingStatus.value = '正在扫描工作区文件…';
+        loadingStatus.value = t('loadingScanningWorkspace');
         const entries = await nativeApi.readDirectory(savedRoot);
-        workspaceItems.value = fsEntriesToFSItems(entries);
         workspaceRootPath.value = savedRoot;
         pythonRunner.workspaceRoot = savedRoot;
+        workspaceItems.value = fsEntriesToFSItems(entries);
         safeStorage.setItem('python_you_workspace_root', savedRoot);
         loadedFromDisk = true;
       } catch (e) {
@@ -337,13 +580,13 @@ onMounted(async () => {
     if (!loadedFromDisk) {
       try {
         // 仅当文件夹不存在（或上次根目录失效）时才创建
-        loadingStatus.value = '正在创建本地工作区文件夹…';
+        loadingStatus.value = t('loadingCreatingWorkspace');
         const defaultRoot = await nativeApi.ensureDefaultWorkspace();
-        loadingStatus.value = '正在扫描工作区文件…';
+        loadingStatus.value = t('loadingScanningWorkspace');
         const entries = await nativeApi.readDirectory(defaultRoot);
-        workspaceItems.value = fsEntriesToFSItems(entries);
         workspaceRootPath.value = defaultRoot;
         pythonRunner.workspaceRoot = defaultRoot;
+        workspaceItems.value = fsEntriesToFSItems(entries);
         safeStorage.setItem('python_you_workspace_root', defaultRoot);
       } catch (e) {
         // 磁盘工作区不可用，退回虚拟工作区
@@ -358,7 +601,7 @@ onMounted(async () => {
   if (savedConfig) {
     try {
       config.value = { ...config.value, ...JSON.parse(savedConfig) };
-    } catch (e) {}
+    } catch (e) { }
   }
 
   // Open default main.py tab
@@ -369,7 +612,7 @@ onMounted(async () => {
   }
 
   // 恢复上次会话打开的标签页与光标位置
-  loadingStatus.value = '正在恢复上次会话…';
+  loadingStatus.value = t('loadingRestoringSession');
   await restoreSession();
 
   // Update theme mode
@@ -381,7 +624,7 @@ onMounted(async () => {
 
   // Initialize in Presentation / Demo Mode instantly
   consoleOutputs.value.push({
-    id: Math.random().toString(36).substring(2),
+    id: uid(),
     type: 'system',
     text: '[INFO] Python You Presentation Engine Ready (Demo Mode Active)',
     timestamp: new Date().toLocaleTimeString()
@@ -391,13 +634,26 @@ onMounted(async () => {
 
 // Sync Workspace to LocalStorage
 watch(workspaceItems, (newVal) => {
-  safeStorage.setItem('python_you_workspace', JSON.stringify(newVal));
+  // 原生模式磁盘即真相，无需把整棵树写回 localStorage——
+  // 否则每次懒加载/读取文件内容都会触发深监听，同步序列化大工作区会阻塞主线程拖慢启动。
+  if (!workspaceRootPath.value) {
+    safeStorage.setItem('python_you_workspace', JSON.stringify(newVal));
+  }
 }, { deep: true });
 
 watch(config, (newVal) => {
   safeStorage.setItem('python_you_config', JSON.stringify(newVal));
   updateTheme();
 }, { deep: true });
+
+// 工具栏字号加减：更新 config.fontSize，由上方 deep watch 自动持久化；范围 10-24px
+const changeFontSize = (delta: number) => {
+  const cur = config.value.fontSize || 15;
+  config.value.fontSize = Math.min(24, Math.max(10, cur + delta));
+};
+
+// 使用帮助弹窗
+const isHelpOpen = ref(false);
 
 // 会话：标签页与活动标签变化时保存
 watch(openTabs, saveSession, { deep: true });
@@ -443,7 +699,7 @@ const ensureFileContent = async (file: FSItem): Promise<void> => {
       tab.savedContent = content;
       tab.isDirty = false;
     }
-  } catch (e) {}
+  } catch (e) { }
 };
 
 function openFileInTab(file: FSItem) {
@@ -468,11 +724,23 @@ function openFileInTab(file: FSItem) {
 }
 
 const handleSelectFile = async (file: FSItem) => {
+  // 手动从文件树打开文件 = 离开教程流程：清除教程来源，
+  // 否则「检查答案/返回教程」按钮会一直出现在之后打开的 tutorial_demo.py 上
+  activeTutorialSource.value = null;
   await ensureFileContent(file);
   openFileInTab(file);
 };
 
-const handleToggleFolder = (item: FSItem) => {
+const handleToggleFolder = async (item: FSItem) => {
+  // 原生工作区：展开文件夹时按需从磁盘读取子目录（懒加载，避免启动时全量递归扫描）
+  if (item.isFolder && !item.isOpen && workspaceRootPath.value && item.children === undefined) {
+    try {
+      const entries = await nativeApi.readDirectory(absPath(workspaceRootPath.value, item.path));
+      item.children = fsEntriesToFSItems(entries, item.id, item.path);
+    } catch (e) {
+      item.children = [];
+    }
+  }
   item.isOpen = !item.isOpen;
 };
 
@@ -503,7 +771,7 @@ const handleCreateFile = (parentId: string | null, name: string) => {
     const parentAbs = parentId
       ? absPath(workspaceRootPath.value, getParentPath(parentId))
       : workspaceRootPath.value;
-    nativeApi.writeFile(absPath(parentAbs, `/${name}`), newFile.content).catch(() => {});
+    nativeApi.writeFile(absPath(parentAbs, `/${name}`), newFile.content).catch(() => { });
   }
 
   showToast(t('toastFileCreated').replace('{name}', name));
@@ -538,7 +806,7 @@ const handleCreateFolder = (parentId: string | null, name: string) => {
     const parentAbs = parentId
       ? absPath(workspaceRootPath.value, getParentPath(parentId))
       : workspaceRootPath.value;
-    nativeApi.createDir(parentAbs, name).catch(() => {});
+    nativeApi.createDir(parentAbs, name).catch(() => { });
   }
 
   showToast(t('toastFolderCreated').replace('{name}', name));
@@ -564,7 +832,7 @@ const handleRenameItem = (item: FSItem, newName: string) => {
 
   // 原生工作区：重命名磁盘上的真实文件/文件夹
   if (workspaceRootPath.value) {
-    nativeApi.renamePath(absPath(workspaceRootPath.value, oldPath), newName).catch(() => {});
+    nativeApi.renamePath(absPath(workspaceRootPath.value, oldPath), newName).catch(() => { });
   }
   showToast(t('toastRenamed'));
 };
@@ -579,7 +847,7 @@ const confirmDelete = () => {
     const item = deleteTargetItem.value;
     // 原生工作区：先删除磁盘上的真实文件/文件夹
     if (workspaceRootPath.value) {
-      nativeApi.deletePath(absPath(workspaceRootPath.value, item.path)).catch(() => {});
+      nativeApi.deletePath(absPath(workspaceRootPath.value, item.path)).catch(() => { });
     }
     removeItemFromTree(workspaceItems.value, item.id);
     // Close tab if open
@@ -601,7 +869,7 @@ const handleRunFile = async (item: FSItem) => {
   activeNavTab.value = 'explorer';
 
   consoleOutputs.value.push({
-    id: Math.random().toString(36).substring(2),
+    id: uid(),
     type: 'system',
     text: `▶ Executing ${item.name} from File Tree...`,
     timestamp: new Date().toLocaleTimeString()
@@ -722,7 +990,7 @@ const handleSaveTab = (tabId: string) => {
   if (tab) {
     tab.savedContent = tab.content;
     tab.isDirty = false;
-    
+
     // Only update workspace file item content on explicit save
     const file = findItemById(workspaceItems.value, tab.fileId);
     if (file) {
@@ -730,7 +998,7 @@ const handleSaveTab = (tabId: string) => {
     }
     // 原生工作区：同时写回磁盘
     if (workspaceRootPath.value) {
-      nativeApi.writeFile(absPath(workspaceRootPath.value, tab.path), tab.content).catch(() => {});
+      nativeApi.writeFile(absPath(workspaceRootPath.value, tab.path), tab.content).catch(() => { });
     }
     syncWorkspacePackages(workspaceItems.value);
     showToast(t('toastFileSaved').replace('{name}', tab.name));
@@ -804,7 +1072,7 @@ const handleLoadTutorialCodeToEditor = (payload: { code: string; topicId: string
   if (topicId) {
     activeTutorialSource.value = {
       id: topicId,
-      title: (topicTitle || '对应教程') + (isQuiz ? '（测验）' : ''),
+      title: (topicTitle || t('correspondingTutorial')) + (isQuiz ? t('quizSuffix') : ''),
       isQuiz: isQuiz || undefined,
       questionId: questionId || undefined,
       expectedOutput: expectedOutput || undefined
@@ -835,7 +1103,7 @@ const handleLoadTutorialCodeToEditor = (payload: { code: string; topicId: string
   }
   // 本地工作区：首次（及每次）加载时把 tutorial_demo.py 落盘，保证重启后仍在工作区里
   if (workspaceRootPath.value) {
-    nativeApi.writeFile(absPath(workspaceRootPath.value, '/tutorial_demo.py'), code).catch(() => {});
+    nativeApi.writeFile(absPath(workspaceRootPath.value, '/tutorial_demo.py'), code).catch(() => { });
   }
   // Sync content to already-open tab so editor shows latest code immediately
   const existingTab = openTabs.value.find((t) => t.fileId === demoFile.id);
@@ -845,7 +1113,7 @@ const handleLoadTutorialCodeToEditor = (payload: { code: string; topicId: string
     existingTab.isDirty = false;
   }
   openFileInTab(demoFile);
-  showToast('已加载教程代码至编辑器');
+  showToast(t('toastTutorialCodeLoaded'));
 };
 
 const tutorialViewRef = ref<InstanceType<typeof TutorialView> | null>(null);
@@ -874,12 +1142,12 @@ const handleReturnToQuiz = (topicId: string) => {
 const handleQuizSubmit = async () => {
   const src = activeTutorialSource.value;
   if (!src?.isQuiz) {
-    showToast('当前不是测验代码，无法提交');
+    showToast(t('toastNotQuizCode'));
     return;
   }
   const activeTab = openTabs.value.find((t) => t.id === activeEditorTabId.value);
   if (!activeTab) {
-    showToast('请先打开测验代码');
+    showToast(t('toastOpenQuizCode'));
     return;
   }
   const code = activeTab.content;
@@ -889,7 +1157,7 @@ const handleQuizSubmit = async () => {
     if (out.type === 'stdout') stdoutParts.push(out.text);
   }, config.value.demoMode);
   if (!runResult.success) {
-    showToast('运行出错，请查看终端中的错误信息');
+    showToast(t('toastRunError'));
     return;
   }
   // 按“行序列”规范化比较：两种运行引擎（Pyodide / 演示模式）输出格式不同，
@@ -914,10 +1182,10 @@ const handleQuizSubmit = async () => {
   setQuizQuestionResult(src.id, src.questionId || '', passed ? 'pass' : 'fail');
   if (passed) {
     syncQuizCompletion(src.id);
-    showToast('测验通过，输出完全正确！');
+    showToast(t('toastQuizPassed'));
   } else {
     const truncate = (v: string) => (v.length > 40 ? v.slice(0, 40) + '...' : v);
-    showToast('输出与预期不符：预期「' + truncate(expectedLines.join('\n')) + '」，实际「' + truncate(actualLines.join('\n')) + '」');
+    showToast(tf('toastOutputMismatch', { expected: truncate(expectedLines.join('\n')), actual: truncate(actualLines.join('\n')) }));
   }
 };
 
@@ -925,507 +1193,409 @@ const activeTabObject = computed(() => {
   return openTabs.value.find((t) => t.id === activeEditorTabId.value) || null;
 });
 
-const currentFileName = computed(() => {
-  if (activeNavTab.value === 'tutorial') return 'Python 教程';
-  if (activeNavTab.value === 'console') return '交互式终端';
-  if (activeNavTab.value === 'packages') return '包管理器';
-  if (activeNavTab.value === 'settings') return 'IDE 设置';
-  return activeTabObject.value ? activeTabObject.value.name : 'Python You';
+// 工具栏「检查答案 / 返回教程」可用状态：已加载 tutorial_demo.py 且处于教程/测验上下文
+// （原为 v-if 隐藏，现改为始终渲染、无上下文时禁用）
+const isTutorialQuizMode = computed(() => {
+  return !!(activeTutorialSource.value && activeTabObject.value?.name === 'tutorial_demo.py');
 });
+
+const handleCheckAnswerClick = () => {
+  const src = activeTutorialSource.value;
+  if (!src || !isTutorialQuizMode.value) return;
+  if (activeQuizPassed.value) {
+    handleReturnToQuiz(src.id);
+  } else {
+    handleQuizSubmit();
+  }
+};
+
+const handleTutorialBtnClick = () => {
+  const src = activeTutorialSource.value;
+  if (!src || !isTutorialQuizMode.value) return;
+  handleReturnToTutorial(src.id);
+};
 
 onMounted(() => {
   document.addEventListener('contextmenu', (e) => {
     e.preventDefault();
   });
+  document.addEventListener('mousedown', handleDocumentMousedown, true);
 });
 </script>
 
 <template>
   <div class="app-container" :style="{ '--sidebar-width': sidebarExpanded ? '256px' : '80px' }">
-    <!-- 1. Left Navigation Sidebar (Extends 100% to top of app) -->
-    <MD3Sidebar :expanded="sidebarExpanded">
-      <!-- Top Section: Logo & Expand Toggle -->
-      <template #top>
-        <div class="brand-row">
-          <div class="brand-identity">
-            <MD3IconButton
-              variant="standard"
-              size="L"
-              :icon="sidebarExpanded ? 'menu_open' : 'menu'"
-              :title="sidebarExpanded ? t('collapseSidebar') : t('expandSidebar')"
-              @click="sidebarExpanded = !sidebarExpanded"
-            />
-            <div v-if="sidebarExpanded" class="brand-info">
-              <h1 class="brand-title" style="color: var(--primary);">Python You</h1>
-            </div>
-          </div>
-        </div>
-      </template>
+    <m3e-nav-rail id="nav-rail">
 
-      <!-- Middle Section: Nav Menu Items -->
-      <template #middle>
-        <nav class="sidebar-nav" :class="{ 'align-center-width': !sidebarExpanded }">
-          <SidebarNavItem
-            tab="explorer"
-            :active-tab="activeNavTab"
-            :label="t('navEditor')"
-            icon="code"
-            :expanded="sidebarExpanded"
-            @select="tab => activeNavTab = tab"
-          />
-          <SidebarNavItem
-            tab="tutorial"
-            :active-tab="activeNavTab"
-            :label="t('navTutorial')"
-            icon="school"
-            :expanded="sidebarExpanded"
-            @select="tab => activeNavTab = tab"
-          />
-          <SidebarNavItem
-            tab="console"
-            :active-tab="activeNavTab"
-            :label="t('navConsole')"
-            icon="terminal"
-            :expanded="sidebarExpanded"
-            @select="tab => activeNavTab = tab"
-          />
-          <SidebarNavItem
-            tab="packages"
-            :active-tab="activeNavTab"
-            :label="t('navPackages')"
-            icon="extension"
-            :expanded="sidebarExpanded"
-            @select="tab => activeNavTab = tab"
-          />
-        </nav>
-      </template>
+      <!-- Primary destinations -->
+      <m3e-nav-item data-tab="explorer" :selected="activeNavTab === 'explorer'" @click="activeNavTab = 'explorer'">
+        <span slot="icon" class="material-symbols-rounded">code</span>
+        <span slot="selected-icon" class="material-symbols-rounded-fill">code</span>
+        {{ t('explorer') }}
+      </m3e-nav-item>
+      <m3e-nav-item data-tab="tutorial" :selected="activeNavTab === 'tutorial'" @click="activeNavTab = 'tutorial'">
+        <span slot="icon" class="material-symbols-rounded">school</span>
+        <span slot="selected-icon" class="material-symbols-rounded-fill">school</span>
+        {{ t('navTutorial') }}
+      </m3e-nav-item>
+      <m3e-nav-item data-tab="console" :selected="activeNavTab === 'console'" @click="activeNavTab = 'console'">
+        <span slot="icon" class="material-symbols-rounded">terminal</span>
+        <span slot="selected-icon" class="material-symbols-rounded-fill">terminal</span>
+        {{ t('navConsole') }}
+      </m3e-nav-item>
+      <m3e-nav-item data-tab="packages" :selected="activeNavTab === 'packages'" @click="activeNavTab = 'packages'">
+        <span slot="icon" class="material-symbols-rounded">extension</span>
+        <span slot="selected-icon" class="material-symbols-rounded-fill">extension</span>
+        {{ t('navPackages') }}
+      </m3e-nav-item>
 
-      <!-- Bottom Section: Settings Tab -->
-      <template #bottom>
-        <SidebarNavItem
-          tab="settings"
-          :active-tab="activeNavTab"
-          :label="t('navSettings')"
-          icon="settings"
-          :expanded="sidebarExpanded"
-          @select="tab => activeNavTab = tab"
-        />
-      </template>
-    </MD3Sidebar>
+      <m3e-nav-item class="nav-rail-settings" data-tab="settings" :selected="activeNavTab === 'settings'"
+        @click="activeNavTab = 'settings'">
+        <span slot="icon" class="material-symbols-rounded">settings</span>
+        <span slot="selected-icon" class="material-symbols-rounded-fill">settings</span>
+        {{ t('navSettings') }}
+      </m3e-nav-item>
+    </m3e-nav-rail>
 
     <!-- 2. Right Main Column (Title Bar + Workspace Content) -->
     <div class="app-main-column" @click="closeMenus">
       <!-- Title Bar: Title on left, 3 window controls on right -->
       <div class="windows-title-bar" data-tauri-drag-region>
         <div v-if="activeNavTab === 'explorer'" class="app-top-menu-bar" @click.stop>
-          <!-- File Menu -->
-          <div class="menu-dropdown-wrapper">
-            <button
-              class="app-menu-btn"
-              :class="{ 'is-active': activeMenu === 'file' }"
-              @click="toggleMenu('file')"
-            >
-              {{ t('fileMenu') }}
-            </button>
-            <div v-if="activeMenu === 'file'" class="app-dropdown-menu" @click="closeMenus">
-              <button class="menu-item-btn" @click="handleCreateFile(null, 'untitled.py')">
-                <span class="material-symbols-rounded">note_add</span>
-                <span>{{ t('newFile') }}</span>
-                <span class="shortcut">Ctrl+N</span>
-              </button>
-              <button class="menu-item-btn" @click="handleCreateFolder(null, 'new_folder')">
-                <span class="material-symbols-rounded">create_new_folder</span>
-                <span>{{ t('newFolder') }}</span>
-                <span class="shortcut">Ctrl+Shift+N</span>
-              </button>
-              <div class="menu-divider"></div>
-              <button class="menu-item-btn" @click="handleMenuOpenFile">
-                <span class="material-symbols-rounded">file_open</span>
-                <span>{{ t('openFile') }}</span>
-                <span class="shortcut">Ctrl+O</span>
-              </button>
-              <button class="menu-item-btn" @click="handleMenuOpenFolder">
-                <span class="material-symbols-rounded">folder_open</span>
-                <span>{{ t('openFolder') }}</span>
-                <span class="shortcut">Ctrl+Shift+O</span>
-              </button>
-              <div class="menu-divider"></div>
-              <button class="menu-item-btn" @click="activeEditorTabId && handleSaveTab(activeEditorTabId)">
-                <span class="material-symbols-rounded">save</span>
-                <span>{{ t('save') }}</span>
-                <span class="shortcut">Ctrl+S</span>
-              </button>
-              <button class="menu-item-btn" @click="activeTabObject && handleDownloadFile(activeTabObject)">
-                <span class="material-symbols-rounded">download</span>
-                <span>{{ t('downloadFile') }}</span>
-                <span class="shortcut">Ctrl+D</span>
-              </button>
-            </div>
-          </div>
+          <m3e-menu id="fileMenu">
+            <m3e-menu-item @click="handleCreateFile(null, 'untitled.py')">
+              <span slot="icon" class="material-symbols-rounded">note_add</span>
+              {{ t('newFile') }}
+            </m3e-menu-item>
+            <m3e-menu-item @click="handleCreateFolder(null, 'new_folder')">
+              <span slot="icon" class="material-symbols-rounded">create_new_folder</span>
+              {{ t('newFolder') }}
+            </m3e-menu-item>
 
-          <!-- Edit Menu -->
-          <div class="menu-dropdown-wrapper">
-            <button
-              class="app-menu-btn"
-              :class="{ 'is-active': activeMenu === 'edit' }"
-              @click="toggleMenu('edit')"
-            >
-              {{ t('editMenu') }}
-            </button>
-            <div v-if="activeMenu === 'edit'" class="app-dropdown-menu" @click="closeMenus">
-              <button class="menu-item-btn" @click="codeEditorRef?.triggerCopy()">
-                <span class="material-symbols-rounded">content_copy</span>
-                <span>{{ t('copy') }}</span>
-                <span class="shortcut">Ctrl+C</span>
-              </button>
-              <button class="menu-item-btn" @click="codeEditorRef?.triggerCut()">
-                <span class="material-symbols-rounded">content_cut</span>
-                <span>{{ t('cut') }}</span>
-                <span class="shortcut">Ctrl+X</span>
-              </button>
-              <button class="menu-item-btn" @click="codeEditorRef?.triggerPaste()">
-                <span class="material-symbols-rounded">content_paste</span>
-                <span>{{ t('paste') }}</span>
-                <span class="shortcut">Ctrl+V</span>
-              </button>
-              <div class="menu-divider"></div>
-              <button class="menu-item-btn" @click="codeEditorRef?.openFindBar()">
-                <span class="material-symbols-rounded">search</span>
-                <span>{{ t('find') }}</span>
-                <span class="shortcut">Ctrl+F</span>
-              </button>
-              <button class="menu-item-btn" @click="codeEditorRef?.openReplaceBar()">
-                <span class="material-symbols-rounded">find_replace</span>
-                <span>{{ t('replace') }}</span>
-                <span class="shortcut">Ctrl+H</span>
-              </button>
-            </div>
-          </div>
+            <m3e-divider></m3e-divider>
+
+            <m3e-menu-item @click="handleMenuOpenFile">
+              <span slot="icon" class="material-symbols-rounded">file_open</span>
+              {{ t('openFile') }}
+            </m3e-menu-item>
+            <m3e-menu-item @click="handleMenuOpenFolder">
+              <span slot="icon" class="material-symbols-rounded">folder_open</span>
+              {{ t('openFolder') }}
+            </m3e-menu-item>
+            <m3e-divider></m3e-divider>
+            <m3e-menu-item @click="activeEditorTabId && handleSaveTab(activeEditorTabId)">
+              <span slot="icon" class="material-symbols-rounded">save</span>
+              {{ t('save') }}
+            </m3e-menu-item>
+            <m3e-menu-item @click="activeTabObject && handleDownloadFile(activeTabObject)">
+              <span slot="icon" class="material-symbols-rounded">download</span>
+              {{ t('downloadFile') }}
+            </m3e-menu-item>
+          </m3e-menu>
+
+          <m3e-menu id="editMenu">
+            <m3e-menu-item @click="codeEditorRef?.triggerCopy()">
+              <span slot="icon" class="material-symbols-rounded">content_copy</span>
+              {{ t('copy') }}
+            </m3e-menu-item>
+            <m3e-menu-item @click="codeEditorRef?.triggerCut()">
+              <span slot="icon" class="material-symbols-rounded">content_cut</span>
+              {{ t('cut') }}
+            </m3e-menu-item>
+            <m3e-menu-item @click="codeEditorRef?.triggerPaste()">
+              <span slot="icon" class="material-symbols-rounded">content_paste</span>
+              {{ t('paste') }}
+            </m3e-menu-item>
+            <m3e-divider></m3e-divider>
+            <m3e-menu-item @click="codeEditorRef?.openFindBar()">
+              <span slot="icon" class="material-symbols-rounded">search</span>
+              {{ t('find') }}
+            </m3e-menu-item>
+            <m3e-menu-item @click="codeEditorRef?.openReplaceBar()">
+              <span slot="icon" class="material-symbols-rounded">find_replace</span>
+              {{ t('replace') }}
+            </m3e-menu-item>
+          </m3e-menu>
+          <m3e-button size="extra-small">
+            <m3e-menu-trigger for="fileMenu">{{ t('fileMenu') }}</m3e-menu-trigger>
+          </m3e-button>
+
+          <m3e-button size="extra-small">
+            <m3e-menu-trigger for="editMenu">{{ t('editMenu') }}</m3e-menu-trigger>
+          </m3e-button>
+
         </div>
+
         <div v-else class="title-bar-brand">
-          <span class="title-text">Python You</span>
+          <span>Python You</span>
         </div>
         <div class="windows-controls">
-          <MD3IconButton
-            id="titlebar-minimize"
-            variant="standard"
-            size="S"
-            icon="minimize"
-            :title="t('minimize')"
-            @click="minimizeWindow"
-          />
-          <MD3IconButton
-            id="titlebar-maximize"
-            variant="standard"
-            size="S"
-            icon="crop_7_5"
-            :title="t('maximize')"
-            @click="maximizeWindow"
-          />
-          <MD3IconButton
-            id="titlebar-close"
-            variant="standard"
-            size="S"
-            icon="close"
-            :title="t('close')"
-            @click="closeWindow"
-          />
+          <m3e-icon-button id="titlebar-minimize" size="extra-small" :title="t('minimize')" @click="minimizeWindow">
+            <span class="material-symbols-rounded">minimize</span>
+          </m3e-icon-button>
+          <m3e-icon-button id="titlebar-maximize" size="extra-small" :title="t('maximize')" @click="maximizeWindow">
+            <span class="material-symbols-rounded">crop_7_5</span>
+          </m3e-icon-button>
+          <m3e-icon-button id="titlebar-close" size="extra-small" :title="t('close')" @click="closeWindow">
+            <span class="material-symbols-rounded">close</span>
+          </m3e-icon-button>
         </div>
       </div>
 
       <!-- Main Layout Workspace -->
       <div class="app-layout-wrapper">
+        <!-- Editor Action Toolbar：编辑器视图下始终可见；未打开文件时各按钮禁用 -->
+        <div v-if="activeNavTab === 'explorer'" class="editor-toolbar">
+          <div class="left-toolbar-group">
+            <!-- 新建文件 / 新建文件夹（触发文件树顶部内联输入行；不依赖是否打开文件）/ 保存 / 撤销 / 重做 -->
+            <m3e-icon-button variant="standard" size="extra-small" :title="t('newFileTooltip')"
+              @click="fileTreeRef?.startCreateFile(null)">
+              <span class="material-symbols-rounded">note_add</span>
+            </m3e-icon-button>
+            <m3e-icon-button variant="standard" size="extra-small" :title="t('newFolderTooltip')"
+              @click="fileTreeRef?.startCreateFolder(null)">
+              <span class="material-symbols-rounded">create_new_folder</span>
+            </m3e-icon-button>
+            <m3e-icon-button size="extra-small" :disabled="!activeTabObject?.isDirty" :title="`${t('save')} (Ctrl+S)`"
+              @click="activeTabObject && handleSaveTab(activeTabObject.id)">
+              <span class="material-symbols-rounded">save</span>
+            </m3e-icon-button>
 
-      <!-- 2. Attached File Management Tree (在侧边栏右侧粘连添加文件管理树) -->
-      <FileTree
-        v-if="activeNavTab === 'explorer'"
-        :workspace-items="workspaceItems"
-        :active-file-id="activeTabObject?.fileId || null"
-        :collapsed="fileTreeCollapsed"
-        :workspace-root="workspaceRootPath"
-        @select-file="handleSelectFile"
-        @toggle-folder="handleToggleFolder"
-        @create-file="handleCreateFile"
-        @create-folder="handleCreateFolder"
-        @rename-item="handleRenameItem"
-        @delete-item="requestDeleteItem"
-        @run-file="handleRunFile"
-        @download-file="handleDownloadFile"
-        @toggle-collapse="fileTreeCollapsed = !fileTreeCollapsed"
-        @contextmenu-filetree="(e, item) => openContextMenu(e, 'filetree', item)"
-      />
+            <m3e-icon-button size="extra-small" class="marginBtn" :disabled="!codeEditorRef?.canUndo"
+              :title="t('undoTitle')" @click="codeEditorRef?.undo()">
+              <span class="material-symbols-rounded">undo</span>
+            </m3e-icon-button>
+            <m3e-icon-button size="extra-small" :disabled="!codeEditorRef?.canRedo" :title="t('redoTitle')"
+              @click="codeEditorRef?.redo()">
+              <span class="material-symbols-rounded">redo</span>
+            </m3e-icon-button>
 
-      <!-- 3. Workspace Main View -->
-      <main class="main-workspace">
-        <!-- Explorer View / Multi-Tab Code Editor -->
-        <CodeEditor
-          v-if="activeNavTab === 'explorer'"
-          ref="codeEditorRef"
-          :tabs="openTabs"
-          :active-tab-id="activeEditorTabId"
-          :config="config"
-          :workspace-files="workspaceItems"
-          :console-outputs="consoleOutputs"
-          :active-tutorial-source="activeTutorialSource"
-          :quiz-question-passed="activeQuizPassed"
-          :engine-label="engineLabel"
-          :initial-cursors="sessionCursors"
-          @cursor-change="handleCursorChange"
-          @select-tab="handleSelectTab"
-          @close-tab="handleCloseTab"
-          @content-change="handleContentChange"
-          @save-tab="handleSaveTab"
-          @clear-console="consoleOutputs = []"
-          @add-console-output="out => consoleOutputs.push(out)"
-          @return-to-tutorial="handleReturnToTutorial"
-          @return-to-quiz="handleReturnToQuiz"
-          @quiz-submit="handleQuizSubmit"
-          @contextmenu-editor="e => openContextMenu(e, 'editor')"
-          @contextmenu-terminal="e => openContextMenu(e, 'terminal')"
-        />
+            <!-- 运行 / 停止 -->
+            <template v-if="codeEditorRef?.isExecuting">
+              <m3e-button variant="text" size="extra-small" class="marginBtn stopBtn" width="wide"
+                :title="t('stopCode')" @click="codeEditorRef?.stopCode()">
+                <span slot="icon" class="material-symbols-rounded">stop</span>
+                {{ t('stopCode') }}
+              </m3e-button>
+            </template>
+            <template v-else>
+              <m3e-button variant="text" size="extra-small" class="marginBtn runBtn" width="wide"
+                :disabled="!activeTabObject" :title="t('runCode')" @click="codeEditorRef?.runCode()">
+                <span slot="icon" class="material-symbols-rounded">play_arrow</span>
+                {{ t('runCode') }}
+              </m3e-button>
+            </template>
 
-        <!-- Python Tutorial View -->
-        <TutorialView
-          ref="tutorialViewRef"
-          v-else-if="activeNavTab === 'tutorial'"
-          :active-topic-id-prop="activeTutorialTopicId"
-          @update-active-topic="id => { activeTutorialTopicId = id; safeStorage.setItem('python_you_last_tutorial_topic', id); }"
-          @load-code-to-editor="handleLoadTutorialCodeToEditor"
-          @contextmenu-tutorial="e => openContextMenu(e, 'tutorial')"
-        />
+          </div>
 
-        <!-- Interactive Python REPL Console View -->
-        <REPLConsole
-          v-else-if="activeNavTab === 'console'"
-          :config="config"
-          @add-console-output="out => consoleOutputs.push(out)"
-          @contextmenu-terminal="e => openContextMenu(e, 'terminal')"
-        />
+          <div class="left-toolbar-group">
+            <!-- 编辑器字号加减：直接更新 config.fontSize（deep watch 自动持久化），范围 10-24px -->
+            <m3e-icon-button size="extra-small" :disabled="!activeTabObject" :title="t('fontSizeIncrease')"
+              @click="changeFontSize(1)">
+              <span class="material-symbols-rounded">text_increase</span>
+            </m3e-icon-button>
+            <m3e-icon-button size="extra-small" :disabled="!activeTabObject" :title="t('fontSizeDecrease')"
+              @click="changeFontSize(-1)">
+              <span class="material-symbols-rounded">text_decrease</span>
+            </m3e-icon-button>
+            <!-- 查找 / 替换 -->
+            <m3e-icon-button class="marginBtn" size="extra-small" :disabled="!activeTabObject" :title="t('find')"
+              @click="codeEditorRef?.openFindBar()">
+              <span class="material-symbols-rounded">search</span>
+            </m3e-icon-button>
+            <m3e-icon-button size="extra-small" :disabled="!activeTabObject" :title="t('replace')"
+              @click="codeEditorRef?.openReplaceBar()">
+              <span class="material-symbols-rounded">find_replace</span>
+            </m3e-icon-button>
+          </div>
 
-        <!-- Package Manager View -->
-        <PackageManager
-          v-else-if="activeNavTab === 'packages'"
-          :workspace-files="workspaceItems"
-          @add-console-output="out => consoleOutputs.push(out)"
-        />
+          <!-- 检查答案 / 返回教程：始终显示，无教程上下文时禁用（原为 v-if 隐藏） -->
+          <div class="left-toolbar-group">
+            <m3e-button size="extra-small" variant="text" class="answerBtn" :disabled="!isTutorialQuizMode"
+              @click="handleCheckAnswerClick">
+              <span slot="icon" class="material-symbols-rounded">{{ activeQuizPassed ? 'check_circle' : 'task_alt'
+                }}</span>
+              {{ activeQuizPassed ? t('quizAnswerCorrectDesc') : t('checkAnswer') }}
+            </m3e-button>
+            <m3e-button size="extra-small" variant="text" class="tutorBtn" :disabled="!isTutorialQuizMode"
+              @click="handleTutorialBtnClick">
+              <span slot="icon" class="material-symbols-rounded">school</span>
+              {{ t('returnToTutorial') }}
+            </m3e-button>
+            <m3e-icon-button size="extra-small" :title="t('helpTitle')" @click="isHelpOpen = true">
+              <span class="material-symbols-rounded">help</span>
+            </m3e-icon-button>
+          </div>
 
-        <!-- Settings View -->
-        <div v-else-if="activeNavTab === 'settings'" class="settings-workspace-view">
-          <PageHeader :title="t('settingsTitle')" :subtitle="t('settingsSubtitle')" />
-
-          <div class="settings-grid">
-            <!-- General Settings -->
-            <MD3Card variant="outlined" class="settings-card full-width">
-              <div class="settings-card-header">
-                <h4 class="settings-card-title">{{ t('generalSettings') }}</h4>
-              </div>
-              <MD3List>
-                <MD3ListItem>
-                  <template #leading>
-                    <span class="material-symbols-rounded">palette</span>
-                  </template>
-                  <template #headline>{{ t('themeMode') }}</template>
-                  <template #supporting>{{ t('themeModeSubtitle') }}</template>
-                  <template #trailing>
-                    <MD3Tabs
-                      v-model="config.themeMode"
-                      :options="[
-                        { value: 'system', label: t('themeSystem') },
-                        { value: 'light', label: t('themeLight') },
-                        { value: 'dark', label: t('themeDark') }
-                      ]"
-                    />
-                  </template>
-                </MD3ListItem>
-
-              </MD3List>
-            </MD3Card>
-
-            <!-- Editor Settings -->
-            <MD3Card variant="outlined" class="settings-card full-width">
-              <div class="settings-card-header">
-                <h4 class="settings-card-title">{{ t('editorSettings') }}</h4>
-              </div>
-
-              <!-- Live Editor Preview -->
-              <EditorPreview :config="config" />
-
-              <MD3List>
-                <MD3ListItem>
-                  <template #leading>
-                    <span class="material-symbols-rounded">palette</span>
-                  </template>
-                  <template #headline>{{ t('codeTheme') }}</template>
-                  <template #supporting>{{ t('codeThemeSubtitle') }}</template>
-                  <template #trailing>
-                    <MD3Select
-                      v-model="config.codeTheme"
-                      :options="[
-                        { value: 'github-dark', label: 'GitHub Dark' },
-                        { value: 'monokai', label: 'Monokai' },
-                        { value: 'one-dark', label: 'One Dark' },
-                        { value: 'vs-code', label: 'VS Code' },
-                        { value: 'github-light', label: 'GitHub Light' }
-                      ]"
-                    />
-                  </template>
-                </MD3ListItem>
-
-                <MD3ListItem>
-                  <template #leading>
-                    <span class="material-symbols-rounded">format_size</span>
-                  </template>
-                  <template #headline>{{ t('fontSize') }}: {{ config.fontSize }}px</template>
-                  <template #supporting>{{ t('fontSizeSubtitle') }}</template>
-                  <template #trailing>
-                    <div style="width: 140px;">
-                      <MD3Slider v-model="config.fontSize" :min="12" :max="24" :step="1" variant="s"/>
-                    </div>
-                  </template>
-                </MD3ListItem>
-
-                <MD3ListItem>
-                  <template #leading>
-                    <span class="material-symbols-rounded">pinch</span>
-                  </template>
-                  <template #headline>{{ t('enableWheelZoom') }}</template>
-                  <template #supporting>{{ t('enableWheelZoomSubtitle') }}</template>
-                  <template #trailing>
-                    <MD3Switch v-model="config.enableWheelZoom" />
-                  </template>
-                </MD3ListItem>
-
-                <MD3ListItem>
-                  <template #leading>
-                    <span class="material-symbols-rounded">keyboard_tab</span>
-                  </template>
-                  <template #headline>{{ t('tabSize') }}</template>
-                  <template #supporting>{{ t('tabSizeSubtitle') }}</template>
-                  <template #trailing>
-                    <MD3Tabs
-                      v-model="config.tabSize"
-                      :options="[
-                        { value: 2, label: '2 Spaces' },
-                        { value: 4, label: '4 Spaces' }
-                      ]"
-                    />
-                  </template>
-                </MD3ListItem>
-
-                <MD3ListItem>
-                  <template #leading>
-                    <span class="material-symbols-rounded">format_quote</span>
-                  </template>
-                  <template #headline>{{ t('autoPairQuotes') }}</template>
-                  <template #supporting>{{ t('autoPairQuotesSubtitle') }}</template>
-                  <template #trailing>
-                    <MD3Switch v-model="config.autoPairQuotes" />
-                  </template>
-                </MD3ListItem>
-              </MD3List>
-            </MD3Card>
-                        <!-- About Python You -->
-            <MD3Card variant="outlined" class="settings-card full-width">
-              <div class="settings-card-header">
-                <h4 class="settings-card-title">{{ t('aboutTitle') }}</h4>
-              </div>
-              <MD3List>
-                <MD3ListItem>
-                  <template #leading>
-                    <span class="material-symbols-rounded">terminal</span>
-                  </template>
-                  <template #headline>{{ t('aboutApp') }}</template>
-                  <template #supporting>{{ t('aboutAppDesc') }}</template>
-                  <template #trailing>
-                    <MD3Badge>v0.3.1</MD3Badge>
-                  </template>
-                </MD3ListItem>
-
-                <MD3ListItem>
-                  <template #leading>
-                    <span class="material-symbols-rounded">slideshow</span>
-                  </template>
-                  <template #headline>{{ t('demoMode') }}</template>
-                  <template #supporting>{{ t('demoModeSubtitle') }}</template>
-                  <template #trailing>
-                    <MD3Switch v-model="config.demoMode" />
-                  </template>
-                </MD3ListItem>
-
-                <MD3ListItem>
-                  <template #leading>
-                    <span class="material-symbols-rounded" style="color: var(--primary);">auto_awesome</span>
-                  </template>
-                  <template #headline>{{ t('aiEngine') }}</template>
-                  <template #supporting>{{ t('aiEngineDesc') }}</template>
-                </MD3ListItem>
-              </MD3List>
-            </MD3Card>
+          <div class="right-toolbar-group">
+            <span class="cursor-position-tag">
+              {{ t('cursorPositionText').replace('{line}', String(codeEditorRef?.cursorLine ?? 1)).replace('{col}',
+                String(codeEditorRef?.cursorCol ?? 1)) }}
+            </span>
+            <span class="engine-badge">
+              {{ engineLabel || t('engineLabelDefault') }}
+            </span>
           </div>
         </div>
-      </main>
-    </div>
+
+
+        <!-- Explorer View：Split Pane（文件树 | 编辑器 / 终端） -->
+        <template v-if="activeNavTab === 'explorer'">
+
+          <m3e-split-pane :value="workspaceSplitValue" class="complex split-pane" @input="handleWorkspaceSplitInput"
+            @pointerdown="onWorkspaceSplitPointerDown">
+            <!-- 工作区文件夹栏 -->
+            <m3e-card slot="start">
+              <FileTree ref="fileTreeRef" :workspace-items="workspaceItems"
+                :active-file-id="activeTabObject?.fileId || null" :workspace-root="workspaceRootPath"
+                @select-file="handleSelectFile" @toggle-folder="handleToggleFolder" @create-file="handleCreateFile"
+                @create-folder="handleCreateFolder" @rename-item="handleRenameItem" @delete-item="requestDeleteItem"
+                @run-file="handleRunFile" @download-file="handleDownloadFile"
+                @contextmenu-filetree="(e, item) => openContextMenu(e, 'filetree', item)" />
+            </m3e-card>
+
+            <!-- 代码编辑区域 / 终端区域（编辑区 75% / 终端 25%，受控绑定：拖拽比例随窗口变化保持） -->
+            <m3e-split-pane ref="innerSplitPaneRef" slot="end" :value="innerSplitValue" :max="innerSplitMax"
+              orientation="vertical" @input="onInnerSplitInput">
+              <m3e-card slot="start">
+                <CodeEditor ref="codeEditorRef" :tabs="openTabs" :active-tab-id="activeEditorTabId" :config="config"
+                  :workspace-files="workspaceItems" :initial-cursors="sessionCursors"
+                  @cursor-change="handleCursorChange" @select-tab="handleSelectTab" @close-tab="handleCloseTab"
+                  @content-change="handleContentChange" @save-tab="handleSaveTab"
+                  @add-console-output="out => consoleOutputs.push(out)"
+                  @contextmenu-editor="e => openContextMenu(e, 'editor')" @show-toast="showToast" />
+              </m3e-card>
+
+              <m3e-card slot="end" class="terminal-card">
+                <TerminalPanel :outputs="consoleOutputs" :code-theme="config.codeTheme" @clear="consoleOutputs = []"
+                  @contextmenu-terminal="e => openContextMenu(e, 'terminal', null, 'run')" />
+              </m3e-card>
+            </m3e-split-pane>
+          </m3e-split-pane>
+        </template>
+
+        <!-- 3. Workspace Main View（非编辑器标签页） -->
+        <main v-else class="main-workspace">
+          <!-- Python Tutorial View -->
+          <TutorialView ref="tutorialViewRef" v-if="activeNavTab === 'tutorial'"
+            :active-topic-id-prop="activeTutorialTopicId"
+            @update-active-topic="id => { activeTutorialTopicId = id; safeStorage.setItem('python_you_last_tutorial_topic', id); }"
+            @load-code-to-editor="handleLoadTutorialCodeToEditor"
+            @contextmenu-tutorial="e => openContextMenu(e, 'tutorial')" />
+
+          <!-- Interactive Python REPL Console View -->
+          <REPLConsole v-else-if="activeNavTab === 'console'" :config="config" :logs="replLogs"
+            @add-log="out => replLogs.push(out)" @clear-logs="replLogs = []"
+            @add-console-output="out => consoleOutputs.push(out)"
+            @contextmenu-terminal="e => openContextMenu(e, 'terminal', null, 'repl')" />
+
+          <!-- Package Manager View -->
+          <PackageManager v-else-if="activeNavTab === 'packages'" :workspace-files="workspaceItems"
+            @add-console-output="out => consoleOutputs.push(out)" />
+
+          <!-- Settings View -->
+          <SettingsView v-else-if="activeNavTab === 'settings'" :config="config" />
+        </main>
+      </div>
     </div>
 
     <!-- App Initialization Loading Modal -->
     <MD3LoadingModal :show="isInitializing" :status="loadingStatus" />
 
     <!-- Snackbar Notification Toast -->
-    <MD3Snackbar :message="toastMessage || ''" @close="toastMessage = null" />
+    <m3e-snackbar :open="!!toastMessage" :duration="snackbarDuration" @toggle="handleSnackbarToggle">
+      <template v-if="isExportToast">
+        <span class="snack-message">{{ toastMessage }}</span>
+        <m3e-button class="snack-action-btn" variant="text" size="extra-small" :disabled="isOpeningFolder"
+          @click="handleOpenExportFolder">
+          {{ isOpeningFolder ? t('openingFolder') : t('openFolder') }}
+        </m3e-button>
+      </template>
+      <template v-else>{{ toastMessage }}</template>
+    </m3e-snackbar>
 
     <!-- Delete Confirmation Dialog -->
-    <MD3Dialog
-      :visible="isDeleteDialogOpen"
-      :title="t('confirmDeleteTitle')"
-      :content="t('confirmDeleteMsg').replace('{name}', deleteTargetItem?.name || '')"
-      :confirm-text="t('delete')"
-      :cancel-text="t('cancel')"
-      danger
-      @confirm="confirmDelete"
-      @cancel="isDeleteDialogOpen = false"
-      @close="isDeleteDialogOpen = false"
-    />
+    <m3e-dialog :open="isDeleteDialogOpen" @cancel="isDeleteDialogOpen = false" @closed="isDeleteDialogOpen = false">
+      <span slot="header" class="m3e-dialog-title-row">
+        <span class="material-symbols-rounded m3e-dialog-icon is-danger">warning</span>
+        <span class="m3e-dialog-title">{{ t('confirmDeleteTitle') }}</span>
+      </span>
+      <p class="m3e-dialog-desc">{{ t('confirmDeleteMsg').replace('{name}', deleteTargetItem?.name || '') }}</p>
+      <div slot="actions" class="m3e-dialog-actions">
+        <m3e-button variant="text" size="small" @click="isDeleteDialogOpen = false">{{ t('cancel') }}</m3e-button>
+        <m3e-button class="dialog-danger-btn" variant="filled" size="small" @click="confirmDelete">{{ t('delete')
+        }}</m3e-button>
+      </div>
+    </m3e-dialog>
 
     <!-- Unsaved Changes Confirmation Dialog -->
-    <MD3Dialog
-      :visible="unsavedDialogState.isOpen"
-      :title="t('unsavedChangesTitle')"
-      :content="t('unsavedChangesMsg').replace('{name}', unsavedDialogState.tabName)"
-      :confirm-text="t('save')"
-      :secondary-text="t('dontSave')"
-      :cancel-text="t('cancel')"
-      icon="save"
-      @confirm="handleUnsavedSave"
-      @secondary="handleUnsavedDontSave"
-      @cancel="handleUnsavedCancel"
-      @close="handleUnsavedCancel"
-    />
+    <m3e-dialog :open="unsavedDialogState.isOpen" @cancel="handleUnsavedCancel" @closed="handleUnsavedCancel">
+      <span slot="header" class="m3e-dialog-title-row">
+        <span class="material-symbols-rounded m3e-dialog-icon">save</span>
+        <span class="m3e-dialog-title">{{ t('unsavedChangesTitle') }}</span>
+      </span>
+      <p class="m3e-dialog-desc">{{ t('unsavedChangesMsg').replace('{name}', unsavedDialogState.tabName) }}</p>
+      <div slot="actions" class="m3e-dialog-actions">
+        <m3e-button variant="text" size="small" @click="handleUnsavedCancel">{{ t('cancel') }}</m3e-button>
+        <m3e-button variant="outlined" size="small" @click="handleUnsavedDontSave">{{ t('dontSave') }}</m3e-button>
+        <m3e-button variant="filled" size="small" @click="handleUnsavedSave">{{ t('save') }}</m3e-button>
+      </div>
+    </m3e-dialog>
+
+    <!-- 使用帮助 Dialog -->
+    <m3e-dialog :open="isHelpOpen" @cancel="isHelpOpen = false" @closed="isHelpOpen = false">
+      <span slot="header" class="m3e-dialog-title-row">
+        <span class="material-symbols-rounded m3e-dialog-icon">help</span>
+        <span class="m3e-dialog-title">{{ t('helpTitle') }}</span>
+      </span>
+      <m3e-content-pane class="help-dialog-body">
+        <div class="help-dialog-inner">
+          <section>
+            <h4 class="help-section-title">{{ t('helpBasicsTitle') }}</h4>
+            <p class="help-section-text">{{ t('helpBasicsText') }}</p>
+          </section>
+          <section>
+            <h4 class="help-section-title">{{ t('helpShortcutsTitle') }}</h4>
+            <p class="help-section-text">{{ t('helpShortcutsText') }}</p>
+          </section>
+          <section>
+            <h4 class="help-section-title">{{ t('helpConsoleTitle') }}</h4>
+            <p class="help-section-text">{{ t('helpConsoleText') }}</p>
+          </section>
+          <section>
+            <h4 class="help-section-title">{{ t('helpPackagesTitle') }}</h4>
+            <p class="help-section-text">{{ t('helpPackagesText') }}</p>
+          </section>
+          <section>
+            <h4 class="help-section-title">{{ t('helpTutorialTitle') }}</h4>
+            <p class="help-section-text">{{ t('helpTutorialText') }}</p>
+          </section>
+          <section>
+            <h4 class="help-section-title">{{ t('helpSettingsTitle') }}</h4>
+            <p class="help-section-text">{{ t('helpSettingsText') }}</p>
+          </section>
+        </div>
+      </m3e-content-pane>
+      <div slot="actions" class="m3e-dialog-actions">
+        <m3e-button variant="filled" size="small" @click="isHelpOpen = false">{{ t('helpGotIt') }}</m3e-button>
+      </div>
+    </m3e-dialog>
 
     <!-- Custom Right-Click Context Menu -->
-    <ContextMenu
-      :visible="contextMenuState.visible"
-      :x="contextMenuState.x"
-      :y="contextMenuState.y"
-      :type="contextMenuState.type"
-      :target-item="contextMenuState.targetItem"
-      @close="closeContextMenu"
-      @copy="handleContextMenuCopy"
-      @cut="codeEditorRef?.triggerCut()"
-      @paste="codeEditorRef?.triggerPaste()"
-      @find="codeEditorRef?.openFindBar()"
-      @replace="codeEditorRef?.openReplaceBar()"
-      @save="activeEditorTabId && handleSaveTab(activeEditorTabId)"
+    <ContextMenu :visible="contextMenuState.visible" :x="contextMenuState.x" :y="contextMenuState.y"
+      :type="contextMenuState.type" :target-item="contextMenuState.targetItem" @close="closeContextMenu"
+      @copy="handleContextMenuCopy" @cut="codeEditorRef?.triggerCut()" @paste="codeEditorRef?.triggerPaste()"
+      @find="codeEditorRef?.openFindBar()" @replace="codeEditorRef?.openReplaceBar()"
       @new-file="handleCreateFile(contextMenuState.targetItem?.isFolder ? contextMenuState.targetItem.id : null, 'untitled.py')"
       @new-folder="handleCreateFolder(contextMenuState.targetItem?.isFolder ? contextMenuState.targetItem.id : null, 'new_folder')"
-      @rename="item => handleRenameItem(item, item.name)"
-      @delete="item => requestDeleteItem(item)"
-      @run="item => handleRunFile(item)"
-      @reveal-in-explorer="handleRevealInExplorer"
-    />
+      @rename="item => fileTreeRef.value?.startRename(item)" @delete="item => requestDeleteItem(item)"
+      @run="item => handleRunFile(item)" @reveal-in-explorer="handleRevealInExplorer" />
 
     <!-- Hidden file inputs for menu open file/folder -->
-    <input ref="openFileInputRef" type="file" accept=".py,.txt,.json,.md" style="display:none" @change="handleFileInputChange" />
-    <input ref="openFolderInputRef" type="file" style="display:none" webkitdirectory directory @change="handleFileInputChange" />
+    <input ref="openFileInputRef" type="file" accept=".py,.txt,.json,.md" style="display:none"
+      @change="handleFileInputChange" />
+    <input ref="openFolderInputRef" type="file" style="display:none" webkitdirectory directory
+      @change="handleFileInputChange" />
   </div>
 </template>
 
@@ -1442,6 +1612,16 @@ onMounted(() => {
   overflow: hidden;
 }
 
+/* --- m3e Navigation Rail (replaces MD3Sidebar) --- */
+m3e-nav-rail {
+  height: 100vh;
+  background-color: var(--surface-container-high);
+}
+
+.nav-rail-settings {
+  margin-top: auto;
+}
+
 .app-main-column {
   flex: 1;
   display: flex;
@@ -1454,7 +1634,6 @@ onMounted(() => {
 .windows-title-bar {
   height: 36px;
   background-color: var(--surface-color);
-  border-bottom: 1px solid var(--border-color-muted);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1467,17 +1646,14 @@ onMounted(() => {
 }
 
 .title-bar-brand {
+  padding-left: 1rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.8125rem;
+  font-size: var(--text-size-xs);
   font-weight: 700;
   color: var(--text-secondary);
-}
-
-.title-icon {
-  font-size: 18px;
-  color: var(--primary);
+  font-family: Nunito;
 }
 
 .windows-controls {
@@ -1489,35 +1665,36 @@ onMounted(() => {
   z-index: 35000;
 }
 
-.win-btn {
-  width: 46px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  color: var(--text-color);
-  cursor: pointer;
-  transition: background-color 0.1s;
-}
-
-.win-btn:hover {
-  background-color: var(--border-color-muted);
-}
-
-.win-close:hover {
-  background-color: #e81123 !important;
-  color: #ffffff !important;
-}
 
 .app-layout-wrapper {
-  display: flex;
-  flex-direction: row;
-  flex: 1;
   width: 100%;
   height: calc(100vh - 36px);
   overflow: hidden;
+  background-color: var(--surface-color);
+  display: flex;
+  flex-direction: column;
+}
+
+/* 外层 Split Pane：工作区布局的 flex 子项，占满工具栏下方的剩余高度 */
+.app-layout-wrapper>m3e-split-pane {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  margin: 0 0.4rem 0.4rem 0
+}
+
+.app-layout-wrapper m3e-split-pane m3e-split-pane {
+  height: 100%;
+}
+
+.app-layout-wrapper m3e-split-pane>m3e-card {
+  height: 100%;
+  contain: size;
+}
+
+.app-layout-wrapper m3e-split-pane m3e-card.terminal-card {
+  --m3e-card-padding: 0;
+  --m3e-card-container-color: var(--surface-color);
 }
 
 .main-workspace {
@@ -1525,132 +1702,173 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
-.settings-workspace-view {
-  padding: 2rem;
-  overflow-y: auto;
-  max-width: 900px;
-  margin: 0 auto;
-  width: 100%;
-  height: 100%;
-}
-
-.settings-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  margin-top: 1.5rem;
-}
-
-.settings-card {
-  padding: 1.25rem;
-  gap: 1.25rem;
-}
-
-.settings-card-title {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--secondary);
-}
-
-
-/* Top Menu Bar (File & Edit) */
-.app-top-menu-bar {
+/* ---- 编辑器操作工具栏：位于三面栏 Split Pane 上方，横贯整个工作区宽度 ---- */
+.editor-toolbar {
+  height: 2.4rem;
+  padding: 0 12px 0 0;
+  margin: 0 0.2rem 0.5rem 0.2rem;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding-left: 8px;
-}
-
-.menu-dropdown-wrapper {
+  background-color: var(--surface-color);
   position: relative;
-}
-
-.app-menu-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background-color: var(--surface-color);
-  border: none;
-  color: var(--text-color);
-  padding: 4px 14px;
-  border-radius: 9999px;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.15s;
-  height: 28px;
-  user-select: none;
-  white-space: nowrap;
   flex-shrink: 0;
-
-  opacity: 0.5;
 }
 
-.app-menu-btn:hover, .app-menu-btn.is-active {
-  background-color: var(--border-color-muted);
-}
-
-.app-dropdown-menu {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  margin-top: 6px;
-  background-color: var(--surface-color);
-  border: 1px solid var(--border-color-muted);
-  border-radius: 16px;
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.3);
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  z-index: 1000;
-  min-width: 240px;
-  width: max-content;
-}
-
-.menu-item-btn {
+.left-toolbar-group {
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: transparent;
-  border: none;
-  color: var(--text-color);
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 0.8125rem;
-  cursor: pointer;
-  text-align: left;
-  transition: background-color 0.1s;
-  width: 100%;
-  white-space: nowrap;
+  gap: 2px;
+  padding: 0.1rem 0.8rem;
+  margin-left: 0.8rem;
+  background-color: var(--bg-color);
+  border: 1.4px solid var(--border-color-muted);
+  border-radius: 16px;
 }
 
-.menu-item-btn:hover {
-  background-color: var(--surface-variant);
+.right-toolbar-group {
+  position: absolute;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.cursor-position-tag {
+  font-family: var(--font-mono);
+}
+
+.engine-badge {
+  color: var(--on-primary-container);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.marginBtn {
+  margin-left: 0.75rem;
+}
+
+.stopBtn {
+  --m3e-button-icon-color: var(--error);
+  --m3e-button-label-text-color: var(--error);
+  --m3e-button-focus-icon-color: var(--error);
+  --m3e-button-focus-label-text-color: var(--error);
+}
+
+.runBtn {
+  --m3e-button-icon-color: var(--success);
+  --m3e-button-label-text-color: var(--success);
+  --m3e-button-focus-icon-color: var(--success);
+  --m3e-button-focus-label-text-color: var(--success);
+}
+
+.answerBtn {
+  --m3e-button-icon-color: var(--text-color);
+  --m3e-button-label-text-color: var(--text-color);
+  --m3e-button-focus-icon-color: var(--text-color);
+  --m3e-button-focus-label-text-color: var(--text-color);
+}
+
+.tutorBtn {
+  --m3e-button-icon-color: var(--text-color);
+  --m3e-button-label-text-color: var(--text-color);
+  --m3e-button-focus-icon-color: var(--text-color);
+  --m3e-button-focus-label-text-color: var(--text-color);
+}
+
+/* m3e-snackbar（含导出成功时的”打开文件夹”操作按钮） */
+.snack-message {
+  margin-right: 8px;
+}
+
+.snack-action-btn {
+  vertical-align: middle;
+}
+
+/* m3e-dialog 内容样式 */
+.m3e-dialog-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.m3e-dialog-icon {
+  font-size: 1.25rem;
   color: var(--primary);
 }
 
-.menu-item-btn span.material-symbols-rounded {
-  font-size: 18px;
+.m3e-dialog-icon.is-danger {
+  color: var(--error);
 }
 
-.menu-item-btn .shortcut {
-  margin-left: auto;
-  font-size: 0.75rem;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  padding-left: 20px;
-  opacity: 0.8;
-  flex-shrink: 0;
+.m3e-dialog-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-color);
 }
 
-.menu-divider {
-  height: 1px;
-  background-color: var(--border-color-muted);
-  margin: 4px 0;
+.m3e-dialog-desc {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.m3e-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* 使用帮助弹窗内容（m3e-content-pane：背景/内边距由 shadow 内元素绘制，经变量控制；
+   flex 排列放进 slot 内的包装层） */
+.help-dialog-body {
+  max-height: 50vh;
+  --m3e-content-pane-container-padding: 4px;
+  --m3e-content-pane-container-shape: 0;
+  /* 必须与 m3e-dialog 容器同色：dialog 默认背景是 surface-container-high（surface 的上级），
+     用 var(--surface-color) 会浅一档，与弹窗背景形成色差 */
+  --m3e-content-pane-container-color: var(--surface-container-high);
+}
+
+.help-dialog-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.help-section-title {
+  margin: 0 0 4px;
+  font-size: 0.875rem;
+  color: var(--primary);
+}
+
+.help-section-text {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  white-space: pre-line;
+}
+
+.dialog-danger-btn {
+  --m3e-button-container-color: var(--error);
+  --m3e-button-label-text-color: var(--on-error);
+  --m3e-button-icon-color: var(--on-error);
+  --m3e-button-pressed-state-layer-color: var(--on-error);
+  --m3e-button-focus-state-layer-color: var(--on-error);
+}
+
+m3e-card {
+  padding: 0;
 }
 </style>

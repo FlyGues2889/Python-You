@@ -29,29 +29,34 @@ const SKIP_DIRS: &[&str] = &[
     ".idea", ".vscode", ".pnpm-store", "dist", "target", "build",
 ];
 
-fn read_dir_recursive(dir: &Path) -> std::io::Result<Vec<FsEntry>> {
+// 只读取当前目录的“一层”（懒加载）：文件夹的 children 返回 None，
+// 由前端在展开文件夹时再按需调用本命令读取子目录，避免启动时全量递归拖慢初始化。
+// 同时用 DirEntry::file_type 判断类型，省掉对每个条目再做一次 stat 系统调用。
+fn read_dir_once(dir: &Path) -> std::io::Result<Vec<FsEntry>> {
     let mut entries = Vec::new();
     let rd = fs::read_dir(dir)?;
     for entry in rd.flatten() {
-        let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
         if SKIP_DIRS.contains(&name.as_str()) {
             continue;
         }
-        if path.is_dir() {
-            let children = read_dir_recursive(&path)?;
+        let file_type = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        if file_type.is_dir() {
             entries.push(FsEntry {
                 name,
-                path: path.to_string_lossy().to_string(),
+                path: entry.path().to_string_lossy().to_string(),
                 is_folder: true,
-                children: Some(children),
+                children: None,
                 content: None,
             });
-        } else if path.is_file() {
-            // 内容改为按需加载（打开文件时再读取），避免启动时全量读取拖慢初始化
+        } else if file_type.is_file() {
+            // 内容按需加载（打开文件时再读取），启动时不做任何文件内容 IO
             entries.push(FsEntry {
                 name,
-                path: path.to_string_lossy().to_string(),
+                path: entry.path().to_string_lossy().to_string(),
                 is_folder: false,
                 children: None,
                 content: None,
@@ -70,7 +75,7 @@ fn read_dir_recursive(dir: &Path) -> std::io::Result<Vec<FsEntry>> {
 
 #[tauri::command]
 pub fn fs_read_directory(path: String) -> Result<Vec<FsEntry>, String> {
-    read_dir_recursive(&PathBuf::from(&path)).map_err(|e| e.to_string())
+    read_dir_once(&PathBuf::from(&path)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

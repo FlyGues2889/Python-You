@@ -96,7 +96,6 @@ withDefaults(defineProps<Props>(), {
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 12rem;
-  color: var(--text-color);
   display: flex;
   align-items: center;
   justify-content: center;

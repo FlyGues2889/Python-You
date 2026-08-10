@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, useSlots } from 'vue';
+import { t } from '../../utils/i18n';
 
 const props = withDefaults(
   defineProps<{
@@ -18,7 +19,7 @@ const props = withDefaults(
     current: 0,
     total: 0,
     hasQuery: false,
-    noMatchText: '无结果'
+    noMatchText: t('badgeNoResult')
   }
 );
 

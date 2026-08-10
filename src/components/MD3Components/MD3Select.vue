@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue';
+import { t } from '../../utils/i18n';
 
 export interface SelectOption {
   value: string | number;
@@ -18,7 +19,7 @@ const props = withDefaults(
     leadingIcon?: string;
   }>(),
   {
-    placeholder: '请选择',
+    placeholder: t('selectPlaceholder'),
     disabled: false,
     leadingIcon: ''
   }
@@ -216,7 +217,7 @@ onUnmounted(() => {
   width: 100%;
   height: 44px;
   padding: 0 16px;
-  background-color: var(--surface-variant);
+  background-color: unset;
   border: 1px solid var(--border-color-muted);
   border-radius: 12px;
   color: var(--text-color);

@@ -1,6 +1,8 @@
 mod fs;
 mod python;
 
+use tauri::Manager;
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -32,6 +34,14 @@ pub fn run() {
             python::python_repl_stop,
             python::python_pip_install,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // 应用退出时杀掉仍存活的 Python 子进程（REPL / 脚本 / pip），避免留下孤儿进程
+            if let tauri::RunEvent::Exit = event {
+                if let Some(state) = app.try_state::<python::PythonState>() {
+                    python::shutdown(state.inner());
+                }
+            }
+        });
 }

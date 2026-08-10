@@ -48,17 +48,64 @@ struct PyEvent {
     session: String,
 }
 
+// Windows 下给子进程设置 CREATE_NO_WINDOW，避免 GUI 应用每次 spawn 都闪现控制台窗口
+#[cfg(windows)]
+fn no_console(cmd: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+}
+
+#[cfg(not(windows))]
+fn no_console(_cmd: &mut Command) {}
+
 fn detect_version(cmd: &str) -> Option<String> {
-    if let Ok(out) = Command::new(cmd).arg("--version").output() {
-        if out.status.success() {
-            let text = String::from_utf8_lossy(if out.stdout.is_empty() { &out.stderr } else { &out.stdout })
-                .trim()
-                .to_string();
-            // 过滤 Windows 商店的 "Python was not found" 占位桩
-            if text.contains("Python") && !text.to_lowercase().contains("not found") {
-                return Some(text);
-            }
+    use std::io::Read;
+
+    let mut c = Command::new(cmd);
+    c.arg("--version");
+    no_console(&mut c);
+    c.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = match c.spawn() {
+        Ok(ch) => ch,
+        Err(_) => return None,
+    };
+
+    // 限定等待时间（3s），防止异常 python 启动器（商店占位/杀软拦截）让引擎检测永久挂起
+    let deadline = SystemTime::now() + Duration::from_millis(3000);
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(st)) => break Some(st),
+            Ok(None) => {}
+            Err(_) => break None,
         }
+        if SystemTime::now() >= deadline {
+            break None;
+        }
+        std::thread::sleep(Duration::from_millis(30));
+    };
+
+    let mut text = String::new();
+    if let Some(status) = status {
+        if status.success() {
+            let mut buf = String::new();
+            if let Some(mut so) = child.stdout.take() {
+                let _ = so.read_to_string(&mut buf);
+            }
+            if buf.trim().is_empty() {
+                if let Some(mut se) = child.stderr.take() {
+                    let _ = se.read_to_string(&mut buf);
+                }
+            }
+            text = buf.trim().to_string();
+        }
+    }
+    // 无论如何确保子进程被回收，避免残留
+    let _ = child.kill();
+    let _ = child.wait();
+
+    // 过滤 Windows 商店的 "Python was not found" 占位桩
+    if text.contains("Python") && !text.to_lowercase().contains("not found") {
+        return Some(text);
     }
     None
 }
@@ -122,6 +169,7 @@ fn spawn_streaming(
     *state.current_session.lock().unwrap() = Some(session.to_string());
 
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).stdin(Stdio::null());
+    no_console(&mut cmd);
     let mut child = cmd.spawn().map_err(|e| format!("启动 Python 失败: {e}"))?;
 
     let stdout = child.stdout.take().expect("child stdout");
@@ -281,6 +329,7 @@ pub fn python_repl_start(app: AppHandle, state: State<PythonState>, cwd: Option<
         cmd.current_dir(dir);
     }
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).stdin(Stdio::piped());
+    no_console(&mut cmd);
 
     let mut child = cmd.spawn().map_err(|e| format!("启动 REPL 失败: {e}"))?;
     let stdin = child.stdin.take().expect("child stdin");
@@ -359,6 +408,22 @@ pub fn python_repl_input(state: State<PythonState>, line: String) -> Result<(), 
 #[tauri::command]
 pub fn python_repl_stop(app: AppHandle, state: State<PythonState>) -> Result<(), String> {
     python_stop(app, state)
+}
+
+// 应用退出时调用：杀掉仍存活的子进程（REPL / 运行中的脚本 / pip），避免留下孤儿进程
+pub fn shutdown(state: &PythonState) {
+    if let Ok(mut guard) = state.proc.lock() {
+        if let Some(mut child) = guard.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+    if let Ok(mut guard) = state.repl_stdin.lock() {
+        guard.take();
+    }
+    if let Ok(mut g) = state.current_session.lock() {
+        g.take();
+    }
 }
 
 #[tauri::command]

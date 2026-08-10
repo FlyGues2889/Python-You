@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { FSItem } from '../types';
 
-export interface FsEntry {
+interface FsEntry {
   name: string;
   path: string;
   isFolder: boolean;
@@ -13,13 +13,13 @@ export interface FsEntry {
   content?: string | null;
 }
 
-export interface PythonInfo {
+interface PythonInfo {
   available: boolean;
   version?: string | null;
   command?: string | null;
 }
 
-export interface PyOutputEvent {
+interface PyOutputEvent {
   kind: string;
   text: string;
   session: string;
@@ -48,9 +48,6 @@ export const nativeApi = {
   },
   writeFile(path: string, content: string): Promise<void> {
     return invoke('fs_write_file', { path, content });
-  },
-  createFile(parentPath: string, name: string): Promise<string> {
-    return invoke('fs_create_file', { parentPath, name });
   },
   createDir(parentPath: string, name: string): Promise<string> {
     return invoke('fs_create_dir', { parentPath, name });
@@ -84,9 +81,6 @@ export const nativeApi = {
   replInput(line: string): Promise<void> {
     return invoke('python_repl_input', { line });
   },
-  replStop(): Promise<void> {
-    return invoke('python_repl_stop');
-  },
   pipInstall(pkg: string): Promise<void> {
     return invoke('python_pip_install', { pkg });
   },
@@ -113,7 +107,9 @@ export function fsEntriesToFSItems(
         isFolder: true,
         parentId,
         isOpen: false,
-        children: entry.children ? fsEntriesToFSItems(entry.children, id, relPath) : [],
+        // 懒加载：children 为 null（Rust 只返回一层）时保持 undefined，
+        // 前端在展开文件夹时再按需从磁盘读取子目录
+        children: entry.children ? fsEntriesToFSItems(entry.children, id, relPath) : undefined,
       };
     }
     return {

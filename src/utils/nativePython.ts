@@ -2,11 +2,12 @@
 // 通过 nativeApi 驱动本机 Python 子进程，输出统一转成 ConsoleOutput。
 import { ref } from 'vue';
 import { nativeApi } from './native';
+import { t, tf } from './i18n';
 import type { ConsoleOutput, FSItem } from '../types';
+import { uid } from './id';
 
 type Session = 'run' | 'repl' | 'pip';
 
-const uid = () => Math.random().toString(36).substring(2);
 const now = () => new Date().toLocaleTimeString();
 
 // 过滤 REPL 会话中 Python 打印的 >>> / ... 提示符
@@ -29,7 +30,7 @@ class NativePythonRunner {
   private replStarted = false;
   private tempWorkspacePath: string | null = null;
 
-  public statusLabel = ref('Python 3.11 Pyodide');
+  public statusLabel = ref(t('engineLabelDefault'));
 
   get supported(): boolean {
     return nativeApi.available();
@@ -48,8 +49,8 @@ class NativePythonRunner {
     }
     this.detected = true;
     this.statusLabel.value = this.pythonAvailable
-      ? `Python ${this.pythonVersion} (本地进程)`
-      : 'Pyodide (未检测到本机 Python)';
+      ? tf('engineLocal', { version: this.pythonVersion })
+      : t('enginePyodideFallback');
     return { available: this.pythonAvailable, version: this.pythonVersion };
   }
 
@@ -89,7 +90,7 @@ class NativePythonRunner {
     onOutput({
       id: uid(),
       type: 'system',
-      text: `▶ 使用本机 Python ${this.pythonVersion || ''} 执行...`,
+      text: tf('runLocalPython', { version: this.pythonVersion || '' }),
       timestamp: now(),
     });
 
@@ -105,7 +106,7 @@ class NativePythonRunner {
           onOutput({
             id: uid(),
             type: 'system',
-            text: `[INFO] 进程已结束，退出码 ${text}，耗时 ${duration}ms`,
+            text: tf('processExited', { code: text, duration }),
             timestamp: now(),
           });
           resolve({ success: text === '0', durationMs: duration });
@@ -140,7 +141,7 @@ class NativePythonRunner {
     } else if (kind === 'done') {
       this.replStarted = false;
       this.listeners['repl'] = null;
-      onOutput({ id: uid(), type: 'system', text: '[INFO] REPL 会话已结束', timestamp: now() });
+      onOutput({ id: uid(), type: 'system', text: t('replSessionEnded'), timestamp: now() });
     }
   }
 
@@ -166,7 +167,7 @@ class NativePythonRunner {
         onOutput({
           id: uid(),
           type: 'error',
-          text: `无法启动本地 REPL: ${err?.message || err}`,
+          text: tf('replStartFailed', { err: err?.message || err }),
           timestamp: now(),
         });
         return undefined;
@@ -199,7 +200,7 @@ class NativePythonRunner {
           onOutput({
             id: uid(),
             type: 'system',
-            text: ok ? `[Pip] 已通过 pip 安装 ${pkgName}` : `[Pip] 安装 ${pkgName} 失败（退出码 ${text}）`,
+            text: ok ? tf('pipInstalledOk', { name: pkgName }) : tf('pipInstallFailed', { name: pkgName, code: text }),
             timestamp: now(),
           });
           resolve(ok);
@@ -212,7 +213,7 @@ class NativePythonRunner {
         onOutput({
           id: uid(),
           type: 'error',
-          text: `[Pip] ${err?.message || err}`,
+          text: tf('pipError', { err: err?.message || err }),
           timestamp: now(),
         });
         resolve(false);

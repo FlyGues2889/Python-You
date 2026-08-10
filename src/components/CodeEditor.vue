@@ -1,28 +1,22 @@
 ﻿<script setup lang="ts">
-import { ref, watch, computed, onMounted, nextTick } from 'vue';
+import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { EditorTab, ConsoleOutput, AppConfig, FSItem } from '../types';
 import { pythonRunner } from '../utils/pythonRunner';
 import { useI18n } from '../utils/i18n';
+import { copyToClipboard, readClipboard } from '../utils/clipboard';
+import { uid } from '../utils/id';
 import { getCompletions, getWordAt, collectWorkspaceIdentifiers, isInsideString, type CompletionItem } from '../utils/pythonCompletions';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/github-dark.css';
-import MD3Input from './MD3Components/MD3Input.vue';
-import MD3Badge from './MD3Components/MD3Badge.vue';
-import MD3IconButton from './MD3Components/MD3IconButton.vue';
-import MD3Button from './MD3Components/MD3Button.vue';
-import MD3FAB from './MD3Components/MD3FAB.vue';
 
 const { t } = useI18n();
+
 
 const props = defineProps<{
   tabs: EditorTab[];
   activeTabId: string | null;
   config: AppConfig;
   workspaceFiles: FSItem[];
-  consoleOutputs: ConsoleOutput[];
-  activeTutorialSource?: { id: string; title: string; isQuiz?: boolean; questionId?: string; expectedOutput?: string } | null;
-  quizQuestionPassed?: boolean;
-  engineLabel?: string;
   initialCursors?: Record<string, { line: number; col: number }>;
 }>();
 
@@ -31,67 +25,19 @@ const emit = defineEmits<{
   (e: 'close-tab', tabId: string): void;
   (e: 'content-change', tabId: string, newContent: string): void;
   (e: 'save-tab', tabId: string): void;
-  (e: 'clear-console'): void;
   (e: 'add-console-output', output: ConsoleOutput): void;
   (e: 'contextmenu-editor', event: MouseEvent): void;
-  (e: 'contextmenu-terminal', event: MouseEvent): void;
-  (e: 'return-to-tutorial', topicId: string): void;
-  (e: 'return-to-quiz', topicId: string): void;
-  (e: 'quiz-submit'): void;
   (e: 'cursor-change', payload: { path: string; line: number; col: number }): void;
+  (e: 'show-toast', msg: string): void;
 }>();
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const lineNumbersRef = ref<HTMLDivElement | null>(null);
 const codeHighlightRef = ref<HTMLPreElement | null>(null);
-const terminalContainerRef = ref<HTMLDivElement | null>(null);
 
 const isExecuting = ref(false);
-const isTerminalOpen = ref(true);
 const cursorLine = ref(1);
 const cursorCol = ref(1);
-
-const terminalHeight = ref(120);
-const isResizingTerminal = ref(false);
-let startY = 0;
-let startHeight = 0;
-
-const startResizeTerminal = (e: MouseEvent) => {
-  e.preventDefault();
-  isResizingTerminal.value = true;
-  startY = e.clientY;
-  startHeight = terminalHeight.value;
-
-  window.addEventListener('mousemove', handleResizeTerminal);
-  window.addEventListener('mouseup', stopResizeTerminal);
-};
-
-const handleResizeTerminal = (e: MouseEvent) => {
-  if (!isResizingTerminal.value) return;
-  const deltaY = startY - e.clientY;
-  const newHeight = startHeight + deltaY;
-  terminalHeight.value = Math.max(100, Math.min(newHeight, window.innerHeight - 150));
-};
-
-const stopResizeTerminal = () => {
-  isResizingTerminal.value = false;
-  window.removeEventListener('mousemove', handleResizeTerminal);
-  window.removeEventListener('mouseup', stopResizeTerminal);
-};
-
-const getLogTypeClass = (out: ConsoleOutput) => {
-  const text = out.text || '';
-  if (out.type === 'error' || out.type === 'stderr' || text.includes('[ERROR]') || text.includes('Error:') || text.includes('Traceback')) {
-    return 'log-error';
-  }
-  if (out.type === 'warning' || text.includes('[WARN]') || text.includes('Warning:')) {
-    return 'log-warning';
-  }
-  if (out.type === 'system' || out.type === 'info' || text.includes('[INFO]') || text.startsWith('▶')) {
-    return 'log-system';
-  }
-  return 'log-stdout';
-};
 
 const activeTab = computed(() => {
   return props.tabs.find((t) => t.id === props.activeTabId) || null;
@@ -145,6 +91,15 @@ const highlightedCode = computed(() => {
 const linesCount = computed(() => {
   if (!activeTab.value) return 1;
   return activeTab.value.content.split('\n').length || 1;
+});
+
+// 行号列宽度随字号与最大行号位数自适应：
+// 等宽字体约 0.6em/字符，宽度向右扩张（行号文字保持右对齐贴列右缘），
+// 避免字体过大时行号被裁剪遮挡；最小保持 48px 与原有默认一致
+const lineNumberColumnWidth = computed(() => {
+  const digits = Math.max(2, String(linesCount.value).length);
+  const perDigit = (props.config.fontSize || 15) * 0.6;
+  return `${Math.max(48, Math.ceil(digits * perDigit) + 14)}px`;
 });
 
 // Line numbers that match find text
@@ -536,11 +491,11 @@ const handleAutoQuote = (quote: string) => {
 
 const kindLabel = (k: CompletionItem['kind']) => {
   switch (k) {
-    case 'keyword': return '关键字';
-    case 'builtin': return '内置';
-    case 'module': return '模块';
-    case 'snippet': return '片段';
-    default: return '标识符';
+    case 'keyword': return t('kindKeyword');
+    case 'builtin': return t('kindBuiltin');
+    case 'module': return t('kindModule');
+    case 'snippet': return t('kindSnippet');
+    default: return t('kindIdentifier');
   }
 };
 
@@ -552,10 +507,9 @@ const handleRunCode = async () => {
   if (!activeTab.value || isExecuting.value) return;
 
   isExecuting.value = true;
-  isTerminalOpen.value = true;
 
   emit('add-console-output', {
-    id: Math.random().toString(36).substring(2),
+    id: uid(),
     type: 'system',
     text: `▶ Executing ${activeTab.value.name}...`,
     timestamp: new Date().toLocaleTimeString()
@@ -762,41 +716,56 @@ const closeFindBar = () => {
   showReplaceBar.value = false;
 };
 
-const triggerCopy = () => {
+const triggerCopy = async () => {
   if (!textareaRef.value || !activeTab.value) return;
-  const start = textareaRef.value.selectionStart;
-  const end = textareaRef.value.selectionEnd;
-  const selected = textareaRef.value.value.substring(start, end);
-  if (selected) {
-    navigator.clipboard.writeText(selected);
-  } else {
-    navigator.clipboard.writeText(textareaRef.value.value);
-  }
+  const el = textareaRef.value;
+  const start = el.selectionStart;
+  const end = el.selectionEnd;
+  const selected = el.value.substring(start, end);
+  const ok = await copyToClipboard(selected || el.value);
+  emit('show-toast', ok ? (selected ? t('toastCopiedSelection') : t('toastCopiedAll')) : t('toastCopyFailed'));
 };
 
-const triggerCut = () => {
+// 返回是否真的复制了“选区”（供右键菜单判断并提示）
+const copySelection = async (): Promise<boolean> => {
+  if (!textareaRef.value) return false;
+  const el = textareaRef.value;
+  const start = el.selectionStart;
+  const end = el.selectionEnd;
+  if (start === end) return false;
+  return copyToClipboard(el.value.substring(start, end));
+};
+
+const triggerCut = async () => {
   if (!textareaRef.value || !activeTab.value) return;
   const el = textareaRef.value;
   const start = el.selectionStart;
   const end = el.selectionEnd;
   if (start !== end) {
     const val = el.value;
-    const cutText = val.substring(start, end);
-    navigator.clipboard.writeText(cutText);
+    const copied = await copyToClipboard(val.substring(start, end));
+    // 复制失败时不能删内容，否则会静默丢失用户代码
+    if (!copied) {
+      emit('show-toast', t('toastCopyFailed'));
+      return;
+    }
     const newContent = val.substring(0, start) + val.substring(end);
     emit('content-change', activeTab.value.id, newContent);
     nextTick(() => {
       el.selectionStart = el.selectionEnd = start;
     });
+  } else {
+    emit('show-toast', t('toastSelectToCut'));
   }
 };
 
 const triggerPaste = async () => {
   if (!textareaRef.value || !activeTab.value) return;
-  try {
-    const pasted = await navigator.clipboard.readText();
-    if (!pasted) return;
-    const el = textareaRef.value;
+  const el = textareaRef.value;
+  const pasted = await readClipboard();
+  if (pasted !== null) {
+    // 剪贴板为空（readText 返回 ''）→ 无事可做，静默返回，不走必然失败的 execCommand
+    if (pasted.length === 0) return;
     const start = el.selectionStart;
     const end = el.selectionEnd;
     const val = el.value;
@@ -805,7 +774,16 @@ const triggerPaste = async () => {
     nextTick(() => {
       el.selectionStart = el.selectionEnd = start + pasted.length;
     });
-  } catch (e) { }
+    return;
+  }
+  // Clipboard API 不可用时回退到原生粘贴（会触发 @input 自动同步内容）
+  try {
+    el.focus();
+    const ok = document.execCommand('paste');
+    if (!ok) emit('show-toast', t('toastClipboardUnavailable'));
+  } catch (e) {
+    emit('show-toast', t('toastClipboardUnavailable'));
+  }
 };
 
 const handleFindNext = () => {
@@ -849,124 +827,140 @@ defineExpose({
   triggerCopy,
   triggerCut,
   triggerPaste,
-  focusEditor: () => textareaRef.value?.focus()
+  copySelection,
+  focusEditor: () => textareaRef.value?.focus(),
+  // 以下为 App 级操作工具栏使用的编辑器能力/状态（expose 代理会自动解包 ref，父级模板可直接读取）
+  runCode: handleRunCode,
+  stopCode: handleStopCode,
+  undo: handleUndo,
+  redo: handleRedo,
+  isExecuting,
+  canUndo,
+  canRedo,
+  cursorLine,
+  cursorCol
 });
 
-// Auto scroll terminal to bottom
-watch(() => props.consoleOutputs.length, () => {
-  nextTick(() => {
-    if (terminalContainerRef.value) {
-      terminalContainerRef.value.scrollTop = terminalContainerRef.value.scrollHeight;
-    }
-  });
+// ---- 标签条横向滚动：两侧滚动按钮 + 溢出状态跟踪 ----
+const tabsBarRef = ref<HTMLDivElement | null>(null);
+const canTabsScrollLeft = ref(false);
+const canTabsScrollRight = ref(false);
+
+const updateTabsScrollState = () => {
+  const el = tabsBarRef.value;
+  if (!el) return;
+  canTabsScrollLeft.value = el.scrollLeft > 1;
+  canTabsScrollRight.value = el.scrollLeft < el.scrollWidth - el.clientWidth - 1;
+};
+
+const scrollTabs = (dir: number) => {
+  tabsBarRef.value?.scrollBy({ left: dir * 240, behavior: 'smooth' });
+};
+
+watch(() => [props.tabs.length, props.activeTabId], () => {
+  nextTick(updateTabsScrollState);
+}, { deep: true });
+
+let tabsResizeObserver: ResizeObserver | null = null;
+onMounted(() => {
+  updateTabsScrollState();
+  const el = tabsBarRef.value;
+  if (el) {
+    tabsResizeObserver = new ResizeObserver(updateTabsScrollState);
+    tabsResizeObserver.observe(el);
+  }
 });
+onBeforeUnmount(() => {
+  tabsResizeObserver?.disconnect();
+  tabsResizeObserver = null;
+});
+
 </script>
 
 <template>
   <div class="code-editor-container">
-    <!-- Editor Tabs Header -->
-    <div class="editor-tabs-bar">
-      <div class="tabs-scroll-area">
+    <!-- Editor Tabs Header（与代码区连体的圆角标签条：无标签页时不渲染；两侧滚动按钮在未溢出时禁用） -->
+    <div v-if="tabs.length > 0" class="editor-tabs-wrap">
+      <m3e-icon-button class="tabs-scroll-btn" variant="standard" width="narrow" size="extra-small"
+        :disabled="!canTabsScrollLeft" :title="t('tabScrollLeft')" @click="scrollTabs(-1)">
+        <span class="material-symbols-rounded">keyboard_double_arrow_left</span>
+      </m3e-icon-button>
+      <div ref="tabsBarRef" class="editor-tabs-bar" @scroll="updateTabsScrollState">
         <div v-for="tab in tabs" :key="tab.id" class="editor-tab-item" :class="{ 'is-active': tab.id === activeTabId }"
           @click="emit('select-tab', tab.id)">
           <span class="material-symbols-rounded tab-icon">
             {{ getTabIcon(tab.name) }}
           </span>
+          <span v-if="tab.isDirty" class="dirty-indicator" :title="t('tabUnsavedTitle')">•</span>
           <span class="tab-name">{{ tab.name }}</span>
-          <span v-if="tab.isDirty" class="dirty-indicator" title="未保存修改">•</span>
-          <MD3IconButton variant="standard" size="S" icon="close" title="关闭标签页"
-            @click.stop="emit('close-tab', tab.id)" />
+          <m3e-icon-button v-if="tab.id === activeTabId" variant="standard" size="extra-small" :title="t('tabCloseTitle')"
+            @click.stop="emit('close-tab', tab.id)">
+            <span class="material-symbols-rounded">close</span> </m3e-icon-button>
         </div>
       </div>
+      <m3e-icon-button class="tabs-scroll-btn" variant="standard" width="narrow" size="extra-small"
+        :disabled="!canTabsScrollRight" :title="t('tabScrollRight')" @click="scrollTabs(1)">
+        <span class="material-symbols-rounded">keyboard_double_arrow_right</span>
+      </m3e-icon-button>
     </div>
 
     <!-- Empty Editor State -->
     <div v-if="!activeTab" class="empty-editor-view" @contextmenu.prevent="e => emit('contextmenu-editor', e)">
       <div class="empty-editor-content">
-        <span class="material-symbols-rounded empty-editor-app-icon">code_xml</span>
         <h2>{{ t('welcomeTitle') }}</h2>
         <p>{{ t('welcomeSubtitle') }}</p>
-        <div class="quick-shortcuts">
-          <div class="shortcut-item"><kbd>Ctrl</kbd> + <kbd>S</kbd> <span>{{ t('shortcutSave') }}</span></div>
-          <div class="shortcut-item"><kbd>Ctrl</kbd> + <kbd>Enter</kbd> <span>{{ t('shortcutRun') }}</span></div>
-        </div>
       </div>
     </div>
 
     <!-- Active Code Editor View -->
     <div v-else class="active-editor-view">
-      <!-- Editor Action Toolbar -->
-      <div class="editor-toolbar">
-        <div class="left-toolbar-group">
-          <!-- Run Code Button / Stop Button -->
-          <template v-if="isExecuting">
-            <MD3Button variant="filled" color="error" size="S" icon="stop" title="停止运行" @click="handleStopCode">
-              {{ t('stopCode') }}
-            </MD3Button>
-          </template>
-          <template v-else>
-            <MD3Button variant="filled" size="S" icon="play_arrow" :title="`${t('runCode')} (Ctrl+Enter)`" @click="handleRunCode">
-              {{ t('runCode') }}
-            </MD3Button>
-          </template>
-
-          <!-- Save Button -->
-          <MD3Button variant="text" size="S" icon="save" :disabled="!activeTab.isDirty" :title="`${t('save')} (Ctrl+S)`"
-            @click="emit('save-tab', activeTab.id)">
-            {{ t('save') }}
-          </MD3Button>
-
-          <!-- Undo & Redo Buttons (S size) -->
-          <MD3IconButton variant="standard" size="S" icon="undo" :disabled="!canUndo" title="撤销 (Ctrl+Z)"
-            @click="handleUndo" />
-
-          <MD3IconButton variant="standard" size="S" icon="redo" :disabled="!canRedo" title="重做 (Ctrl+Y)"
-            @click="handleRedo" />
-        </div>
-
-        <div class="right-toolbar-group">
-          <span class="cursor-position-tag">
-            第 {{ cursorLine }} 行，第 {{ cursorCol }} 列
-          </span>
-          <span class="engine-badge">
-            {{ engineLabel || 'Python 3.11 Pyodide' }}
-          </span>
-        </div>
-      </div>
-
       <!-- Floating Find & Replace Widget Bar -->
       <div v-if="showFindBar" class="find-replace-widget">
         <div class="find-row">
-          <MD3Input ref="findInputRef" v-model="findText" icon="search" :placeholder="t('findPlaceholder')"
-            @enter="handleFindNext" @keydown.esc="closeFindBar" />
-          <MD3Badge :current="currentMatchNum" :total="matchIndices.length" :has-query="!!findText"
-            :no-match-text="t('noMatches')" />
-          <MD3IconButton variant="standard" size="S" icon="keyboard_arrow_up" title="上一个 (Shift+Enter)"
-            @click="handleFindPrev" />
-          <MD3IconButton variant="standard" size="S" icon="keyboard_arrow_down" title="下一个 (Enter)"
-            @click="handleFindNext" />
-          <MD3IconButton variant="standard" size="S" icon="close" title="关闭" @click="closeFindBar" />
+          <m3e-search-bar class="find-search-bar">
+            <span slot="leading" class="material-symbols-rounded">search</span>
+            <input slot="input" ref="findInputRef" v-model="findText" :placeholder="t('findPlaceholder')"
+              @keydown.enter.prevent="handleFindNext" @keydown.esc="closeFindBar" />
+          </m3e-search-bar>
+          <m3e-badge v-if="findText" size="medium" class="find-badge">
+            {{ matchIndices.length > 0 ? currentMatchNum + '/' + matchIndices.length : t('noMatches') }}
+          </m3e-badge>
+          <m3e-icon-button size="extra-small" :title="t('findPrevTitle')" @click="handleFindPrev">
+            <span class="material-symbols-rounded">keyboard_arrow_up</span>
+          </m3e-icon-button>
+          <m3e-icon-button size="extra-small" :title="t('findNextTitle')" @click="handleFindNext">
+            <span class="material-symbols-rounded">keyboard_arrow_down</span>
+          </m3e-icon-button>
+          <m3e-icon-button size="extra-small" :title="t('closeTitle')" @click="closeFindBar">
+            <span class="material-symbols-rounded">close</span>
+          </m3e-icon-button>
         </div>
         <div v-if="showReplaceBar" class="replace-row">
-          <MD3Input v-model="replaceText" icon="find_replace" :placeholder="t('replacePlaceholder')"
-            @enter="handleReplaceOne" @keydown.esc="closeFindBar" />
+          <m3e-search-bar class="find-search-bar">
+            <span slot="leading" class="material-symbols-rounded">find_replace</span>
+            <input slot="input" v-model="replaceText" :placeholder="t('replacePlaceholder')"
+              @keydown.enter.prevent="handleReplaceOne" @keydown.esc="closeFindBar" />
+          </m3e-search-bar>
 
-          <MD3Button variant="tonal" size="S" :icon="isExecuting ? 'sync' : 'check'" :disabled="isExecuting"
+          <m3e-button class="replace-btn" variant="tonal" size="extra-small" :disabled="isExecuting"
             :title="`${t('runCode')} (Ctrl+Enter)`" @click="handleReplaceOne">
+            <span slot="icon" class="material-symbols-rounded">{{ isExecuting ? 'sync' : 'check' }}</span>
             {{ t('replaceBtn') }}
-          </MD3Button>
-          <MD3Button variant="text" size="S" :icon="isExecuting ? 'sync' : 'done_all'" :disabled="isExecuting"
+          </m3e-button>
+          <m3e-button class="replace-btn" variant="text" size="extra-small" :disabled="isExecuting"
             :title="`${t('runCode')} (Ctrl+Enter)`" @click="handleReplaceAll">
+            <span slot="icon" class="material-symbols-rounded">{{ isExecuting ? 'sync' : 'done_all' }}</span>
             {{ t('replaceAllBtn') }}
-          </MD3Button>
+          </m3e-button>
         </div>
       </div>
 
       <!-- Code Textarea & Line Numbers Area -->
       <div class="editor-workspace-body" :class="`theme-${config.codeTheme || 'github-dark'}`"
         @contextmenu.prevent="e => emit('contextmenu-editor', e)">
-        <!-- Line Numbers Column -->
-        <div ref="lineNumbersRef" class="line-numbers-column" :style="{ fontSize: `${config.fontSize || 15}px` }">
+        <!-- Line Numbers Column（主题类同时挂在自身：背景/文字直接跟随代码主题，不依赖父级继承） -->
+        <div ref="lineNumbersRef" class="line-numbers-column" :class="`theme-${config.codeTheme || 'github-dark'}`"
+          :style="{ fontSize: `${config.fontSize || 15}px`, width: lineNumberColumnWidth }">
           <div v-for="n in linesCount" :key="n" class="line-num" :class="{
             'active-line-num': n === cursorLine,
             'matched-line-num': matchedLineNumbers.has(n) && n !== currentMatchedLineNumber,
@@ -979,101 +973,34 @@ watch(() => props.consoleOutputs.length, () => {
         <!-- Textarea Code Area -->
         <div class="code-area-wrapper">
           <pre ref="codeHighlightRef" class="code-highlight-overlay" aria-hidden="true"
-            :style="{ fontSize: `${config.fontSize || 15}px`, tabSize: config.tabSize || 4 }"><code class="hljs" v-html="highlightedCode"></code></pre>
+            :style="{ fontSize: `${config.fontSize || 15}px`, tabSize: config.tabSize || 4 }"><code class="hljs"
+          v-html="highlightedCode"></code></pre>
           <textarea ref="textareaRef" :value="activeTab.content" class="code-textarea"
             :style="{ fontSize: `${config.fontSize || 15}px`, tabSize: config.tabSize || 4 }" spellcheck="false"
             autocomplete="off" autocorrect="off" autocapitalize="off" @input="handleInput" @keydown="handleKeyDown"
-            @scroll="handleScroll" @wheel="handleWheelZoom" @click="updateCursorPosition"
-            @keyup="updateCursorPosition" @blur="closeCompletions"></textarea>
+            @scroll="handleScroll" @wheel="handleWheelZoom" @click="updateCursorPosition" @keyup="updateCursorPosition"
+            @blur="closeCompletions"></textarea>
 
           <!-- Code Completion Popup -->
-          <div
-            v-if="completionVisible && completionItems.length > 0"
-            class="completion-popup"
-            :style="{ left: `${completionPos.left}px`, top: `${completionPos.top}px` }"
-            @mousedown.prevent
-          >
+          <div v-if="completionVisible && completionItems.length > 0" class="completion-popup"
+            :style="{ left: `${completionPos.left}px`, top: `${completionPos.top}px` }" @mousedown.prevent>
             <div ref="completionListRef" class="completion-list">
-              <div
-                v-for="(item, idx) in completionItems"
-                :key="item.label + idx"
-                class="completion-item"
-                :class="{ 'is-active': idx === completionIndex }"
-                :ref="(el) => setActiveItemRef(el, idx)"
-                @mouseenter="completionIndex = idx"
-                @mousedown.prevent.stop="completionIndex = idx; acceptCompletion()"
-              >
+              <div v-for="(item, idx) in completionItems" :key="item.label + idx" class="completion-item"
+                :class="{ 'is-active': idx === completionIndex }" :ref="(el) => setActiveItemRef(el, idx)"
+                @mouseenter="completionIndex = idx" @mousedown.prevent.stop="completionIndex = idx; acceptCompletion()">
                 <span class="completion-kind">{{ kindLabel(item.kind) }}</span>
                 <span class="completion-label">{{ item.label }}</span>
                 <span class="completion-detail">{{ item.detail }}</span>
               </div>
             </div>
             <div class="completion-footer">
-              <kbd>Enter</kbd><span>补全</span>
+              <kbd>Enter</kbd><span>{{ t('completionConfirm') }}</span>
               <span class="footer-sep">·</span>
-              <kbd>Ctrl+Space</kbd><span>唤起</span>
+              <kbd>Ctrl+Space</kbd><span>{{ t('completionInvoke') }}</span>
             </div>
           </div>
         </div>
 
-        <!-- Floating FAB button to return to tutorial snippet (only in tutorial_demo.py tab) -->
-        <div v-if="activeTutorialSource && activeTab && activeTab.name === 'tutorial_demo.py'"
-          class="fab-return-tutorial-wrapper">
-          <MD3FAB
-            v-if="activeTutorialSource.isQuiz"
-            position="static"
-            size="M"
-            :variant="quizQuestionPassed ? 'success' : 'primary'"
-            :icon="quizQuestionPassed ? 'check_circle' : 'task_alt'"
-            :desc="quizQuestionPassed ? '答案正确，点击返回测验' : '检查答案'"
-            :title="quizQuestionPassed ? '本题已答对，点击返回测验' : '检查答案：运行代码并与预期输出比对'"
-            @click="quizQuestionPassed ? emit('return-to-quiz', activeTutorialSource.id) : emit('quiz-submit')"
-          />
-          <MD3FAB
-            position="static"
-            size="M"
-            variant="secondary"
-            icon="school"
-            :desc="t('returnToTutorial')"
-            :title="t('returnToTutorial') + '：' + activeTutorialSource.title"
-            @click="emit('return-to-tutorial', activeTutorialSource.id)"
-          />
-        </div>
-      </div>
-
-      <!-- Resizable Output Terminal Drawer -->
-      <div class="terminal-drawer" :class="{ 'is-collapsed': !isTerminalOpen }"
-        :style="{ height: isTerminalOpen ? `${terminalHeight}px` : '32px' }"
-        @contextmenu.prevent="e => emit('contextmenu-terminal', e)">
-        <div v-if="isTerminalOpen" class="terminal-resize-handle" @mousedown="startResizeTerminal"></div>
-
-        <div class="terminal-header" @click="isTerminalOpen = !isTerminalOpen">
-          <div class="terminal-title">
-            <span class="material-symbols-rounded">terminal</span>
-            <span>Output</span>
-            <span v-if="consoleOutputs.length > 0" class="logs-count">
-              {{ consoleOutputs.length }}
-            </span>
-          </div>
-
-          <div class="terminal-actions" @click.stop>
-            <button class="terminal-btn" title="清空终端记录" @click="emit('clear-console')">
-              <span class="material-symbols-rounded">block</span>
-            </button>
-            <button class="terminal-btn" title="展开/收起终端" @click="isTerminalOpen = !isTerminalOpen">
-              <span class="material-symbols-rounded">
-                {{ isTerminalOpen ? 'keyboard_arrow_down' : 'keyboard_arrow_up' }}
-              </span>
-            </button>
-          </div>
-        </div>
-
-        <div v-if="isTerminalOpen" ref="terminalContainerRef" class="terminal-logs-body">
-          <div v-if="consoleOutputs.length === 0" class="terminal-placeholder"></div>
-          <div v-for="out in consoleOutputs" :key="out.id" class="log-line" :class="getLogTypeClass(out)">
-            <pre class="log-text">{{ out.text }}</pre>
-          </div>
-        </div>
       </div>
     </div>
   </div>
@@ -1085,58 +1012,74 @@ watch(() => props.consoleOutputs.length, () => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background-color: var(--bg-color);
-  min-width: 0;
-  overflow: hidden;
-}
-
-/* Tabs Bar */
-.editor-tabs-bar {
-  height: 38px;
   background-color: var(--surface-color);
-  border-bottom: 1px solid var(--border-color-muted);
-  display: flex;
-  align-items: center;
-  overflow-x: auto;
-  user-select: none;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 10px;
 }
 
-.tabs-scroll-area {
+/* 标签条外框：承载两侧滚动按钮与内部可横向滚动的标签列表 */
+.editor-tabs-wrap {
   display: flex;
   align-items: center;
-  height: 100%;
+  margin: 0 0.2rem;
+  padding: 6px 4px 0 2px;
+  background-color: var(--surface-color);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.tabs-scroll-btn {
+  flex-shrink: 0;
+}
+
+.editor-tabs-bar {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  overflow-x: auto;
+  /* 滚动条隐藏：溢出状态由两侧按钮的禁用态表达 */
+  scrollbar-width: none;
+}
+
+.editor-tabs-bar::-webkit-scrollbar {
+  display: none;
 }
 
 .editor-tab-item {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 100%;
-  padding: 0 12px;
-  background-color: var(--surface-color);
+  height: 34px;
+  min-width: 96px;
+  max-width: 200px;
+  padding: 0 10px;
+  border-radius: 8px 8px 0 0;
+  background-color: transparent;
   border: none;
   color: var(--text-tertiary);
   font-size: 0.8125rem;
   cursor: pointer;
   transition: background-color 0.15s, color 0.15s;
-  max-width: 200px;
 }
 
 .editor-tab-item:hover {
-  background-color: var(--surface-color);
-  filter: brightness(0.95);
+  background-color: color-mix(in srgb, var(--text-color) 8%, transparent);
   color: var(--text-color);
 }
 
 .editor-tab-item.is-active {
-  background-color: var(--surface-color);
-  color: var(--primary);
+  color: var(--secondary);
+  background-color: var(--secondary-container);
   font-weight: 600;
-  border-bottom: 2px solid var(--primary);
 }
 
 .tab-icon {
   font-size: 16px;
+  letter-spacing: -2px;
 }
 
 .tab-name {
@@ -1147,31 +1090,9 @@ watch(() => props.consoleOutputs.length, () => {
 
 .dirty-indicator {
   color: var(--accent-amber-text);
-  font-size: 16px;
+  font-size: 1.6rem;
   line-height: 1;
-}
-
-.close-tab-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-tertiary);
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  margin-left: 4px;
-}
-
-.close-tab-btn:hover {
-  background-color: var(--border-color-muted);
-  color: var(--text-color);
-}
-
-.close-tab-btn span {
-  font-size: 12px;
+  letter-spacing: -12px;
 }
 
 /* Empty View */
@@ -1181,23 +1102,17 @@ watch(() => props.consoleOutputs.length, () => {
   align-items: center;
   justify-content: center;
   color: var(--text-tertiary);
+  min-height: 0;
+  overflow: hidden;
+  border: 1.4px solid var(--border-color-muted);
+  background-color: var(--surface-2);
+  border-radius: 1rem;
 }
 
 .empty-editor-content {
   text-align: center;
   max-width: 400px;
   padding: 2rem;
-}
-
-.empty-editor-icon,
-.empty-editor-app-icon {
-  font-size: 64px;
-  width: 64px;
-  height: 64px;
-  color: var(--secondary, var(--secondary, #625b71));
-  margin-bottom: 1rem;
-  display: inline-block;
-  line-height: 1;
 }
 
 .empty-editor-content h2 {
@@ -1209,17 +1124,6 @@ watch(() => props.consoleOutputs.length, () => {
 .empty-editor-content p {
   font-size: 0.875rem;
   margin-bottom: 1.5rem;
-}
-
-.quick-shortcuts {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.shortcut-item {
-  font-size: 0.8125rem;
 }
 
 kbd {
@@ -1237,138 +1141,7 @@ kbd {
   display: flex;
   flex-direction: column;
   min-height: 0;
-}
-
-.editor-toolbar {
-  height: 42px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--border-color-muted);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background-color: var(--bg-color);
-}
-
-.left-toolbar-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.run-code-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background-color: #2e7d32;
-  color: #ffffff;
-  border: none;
-  padding: 6px 14px;
-  border-radius: 9999px;
-  font-weight: 600;
-  font-size: 0.75rem;
-  cursor: pointer;
-  white-space: nowrap;
-  flex-shrink: 0;
-  transition: background-color 0.15s;
-}
-
-.run-code-btn:hover:not(:disabled) {
-  background-color: #1b5e20;
-}
-
-.run-code-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.run-code-btn span {
-  font-size: 15px;
-}
-
-.toolbar-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background-color: var(--surface-color);
-  border: none;
-  color: var(--text-color);
-  padding: 4px 12px;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  white-space: nowrap;
-  flex-shrink: 0;
-  cursor: pointer;
-  transition: background-color 0.15s;
-}
-
-.toolbar-btn:hover:not(:disabled) {
-  background-color: var(--border-color-muted);
-}
-
-.toolbar-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.toolbar-btn span {
-  font-size: 16px;
-}
-
-.toolbar-btn.history-btn-first {
-  margin-left: 10px;
-}
-
-.snippets-dropdown-wrapper {
-  position: relative;
-}
-
-.snippets-menu {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  margin-top: 4px;
-  background-color: var(--bg-color);
-  border: 1px solid var(--border-color-muted);
-  border-radius: 8px;
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-  display: flex;
-  flex-direction: column;
-  padding: 6px;
-  z-index: 100;
-  min-width: 220px;
-}
-
-.snippets-menu button {
-  background: transparent;
-  border: none;
-  padding: 6px 10px;
-  text-align: left;
-  border-radius: 4px;
-  cursor: pointer;
-  color: var(--text-color);
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  transition: background-color 0.1s;
-}
-
-.snippets-menu button:hover {
-  background-color: var(--surface-variant);
-  color: var(--primary);
-}
-
-.right-toolbar-group {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 0.75rem;
-  color: var(--text-tertiary);
-}
-
-.engine-badge {
-  color: var(--on-primary-container);
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-weight: 600;
+  border-radius: 1rem;
 }
 
 /* Editor Workspace Body */
@@ -1380,16 +1153,15 @@ kbd {
   background-color: var(--bg-color);
   position: relative;
   overflow: hidden;
+  contain: size;
+  border-radius: 1rem;
 }
 
 .line-numbers-column {
   width: 48px;
-  background-color: var(--on-inverse-surface);
-  border-right: 1px solid var(--border-color-muted);
-  color: var(--text-tertiary);
   font-family: var(--font-mono);
   text-align: right;
-  padding: 12px 8px 12px 0;
+  padding: 12px 0 12px 0;
   user-select: none;
   overflow: hidden;
   line-height: 1.5;
@@ -1397,16 +1169,26 @@ kbd {
   box-sizing: border-box;
 }
 
+/* 行号列主题兜底（类挂在行号列自身）：index.css 全局 .theme-* 规则为主（!important 优先），
+   此处 scoped 规则保证即使全局样式未注入/被缓存拦截，行号列背景与行号文字
+   也始终跟随代码主题，不会回退到应用底色（--bg-color）。两者同值，互不冲突。 */
+.line-numbers-column.theme-github-dark { background-color: #0d1117; color: #c9d1d9; }
+.line-numbers-column.theme-monokai { background-color: #272822; color: #f8f8f2; }
+.line-numbers-column.theme-one-dark { background-color: #282c34; color: #abb2bf; }
+.line-numbers-column.theme-vs-code { background-color: #1e1e1e; color: #d4d4d4; }
+.line-numbers-column.theme-github-light { background-color: #ffffff; color: #24292e; }
+
 .line-num {
   height: 1.5em;
   line-height: 1.5;
   padding-right: 4px;
   border-radius: 2px;
   transition: background-color 0.15s, color 0.15s;
+  opacity: 0.5;
 }
 
 .active-line-num {
-  color: var(--primary);
+  opacity: 1;
   font-weight: 700;
 }
 
@@ -1429,16 +1211,6 @@ kbd {
   height: 100%;
   overflow: hidden;
   background-color: var(--bg-color);
-}
-
-.empty-editor-app-icon {
-  width: 80px;
-  height: 80px;
-  margin-bottom: 1rem;
-  object-fit: contain;
-  font-size: 80px !important;
-  line-height: 1;
-  display: inline-block;
 }
 
 /* Floating Find & Replace Widget */
@@ -1464,70 +1236,17 @@ kbd {
   gap: 6px;
 }
 
-.find-input {
-  height: 28px;
-  padding: 0 10px;
-  background-color: var(--bg-color);
-  border: 1px solid var(--border-color-muted);
-  border-radius: 8px;
-  color: var(--text-color);
-  font-size: 0.8125rem;
-  outline: none;
-  width: 170px;
+.find-search-bar {
+  flex: 1;
+  min-width: 140px;
 }
 
-.match-count-badge {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--primary);
-  background-color: var(--surface-variant);
-  padding: 2px 8px;
-  border-radius: 9999px;
-  white-space: nowrap;
-}
-
-.match-count-badge.no-match {
-  color: #ef4444;
-  background-color: #fee2e2;
-}
-
-.find-action-btn {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  color: var(--text-color);
-  border-radius: 4px;
-  cursor: pointer;
+.find-badge {
   flex-shrink: 0;
 }
 
-.find-action-btn:hover {
-  background-color: var(--border-color-muted);
-}
-
-.find-action-btn span {
-  font-size: 18px;
-}
-
-.find-text-btn {
-  height: 28px;
-  padding: 0 10px;
-  background-color: var(--surface-variant);
-  border: 1px solid var(--border-color-muted);
-  border-radius: 4px;
-  color: var(--text-color);
-  font-size: 0.75rem;
-  cursor: pointer;
-  white-space: nowrap;
+.replace-btn {
   flex-shrink: 0;
-}
-
-.find-text-btn:hover {
-  background-color: var(--border-color-muted);
 }
 
 .code-highlight-overlay {
@@ -1687,173 +1406,5 @@ kbd {
 .completion-footer .footer-sep {
   opacity: 0.6;
   margin: 0 2px;
-}
-
-/* Terminal Drawer */
-.terminal-drawer {
-  background-color: var(--surface-color);
-  border-top: 1px solid var(--border-color-muted);
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  min-height: 240px;
-
-  transition: height 0.2s;
-}
-
-.terminal-drawer.is-collapsed {
-  height: 32px !important;
-  min-height: 32px !important;
-}
-
-.terminal-resize-handle {
-  height: 8px;
-  width: 100%;
-  position: absolute;
-  top: -4px;
-  left: 0;
-  cursor: ns-resize;
-  z-index: 10;
-  transition: background-color 0.15s;
-}
-
-.terminal-resize-handle:hover,
-.terminal-resize-handle:active {
-  background-color: var(--primary);
-  opacity: 0.6;
-}
-
-.terminal-header {
-  height: 32px;
-  padding: 0 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
-  background-color: var(--surface-color);
-  user-select: none;
-}
-
-.terminal-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--text-secondary);
-}
-
-.logs-count {
-  padding: 0 6px;
-
-  border-radius: 9999px;
-  background-color: var(--tertiary-container);
-  color: var(--tertiary);
-
-  font-size: 0.75rem;
-}
-
-.terminal-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.terminal-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-tertiary);
-  width: 24px;
-  height: 24px;
-  border-radius: 9999px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.terminal-btn:hover {
-  background-color: var(--border-color-muted);
-  color: var(--text-color);
-}
-
-.terminal-btn span {
-  font-size: 16px;
-}
-
-.terminal-logs-body {
-  flex: 1;
-  padding: 8px 12px;
-  overflow-y: auto;
-  font-family: var(--font-terminal);
-  font-size: 0.8125rem;
-  background-color: var(--bg-color);
-  -webkit-user-select: text !important;
-  user-select: text !important;
-}
-
-.terminal-placeholder {
-  color: var(--text-tertiary);
-  font-style: italic;
-  padding: 1rem 0;
-}
-
-.log-line {
-  display: flex;
-  gap: 8px;
-  line-height: 1.4;
-  margin-bottom: 2px;
-}
-
-.log-time {
-  color: var(--text-tertiary);
-  font-size: 0.75rem;
-  user-select: none;
-}
-
-.log-text {
-  margin: 0;
-  font-family: inherit;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: inherit;
-  -webkit-user-select: text !important;
-  user-select: text !important;
-}
-
-/* Program output text color remains default var(--text-color) */
-.log-stdout {
-  color: var(--text-color);
-}
-
-/* INFO / System messages */
-.log-system {
-  color: #3b82f6;
-  font-weight: 600;
-}
-
-/* WARN / Warning messages */
-.log-warning {
-  color: #f59e0b;
-  font-weight: 600;
-}
-
-/* ERROR / Exception / Traceback messages */
-.log-error,
-.log-stderr {
-  color: var(--error);
-  font-weight: 600;
-}
-
-/* Floating Return-to-Tutorial FAB 容器（按钮本体由 MD3FAB 组件渲染） */
-.fab-return-tutorial-wrapper {
-  position: absolute;
-  right: 24px;
-  bottom: 20px;
-  z-index: 40;
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
 }
 </style>

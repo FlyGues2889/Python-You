@@ -1,17 +1,18 @@
 <script setup lang="ts">
 import { watch, ref, onUnmounted, computed } from 'vue';
 import MD3Button from './MD3Button.vue';
+import { useI18n } from '../../utils/i18n';
+
+const { t } = useI18n();
 
 const props = withDefaults(
   defineProps<{
     message: string | null;
     duration?: number;
-    language?: string;
   }>(),
   {
     message: '',
     duration: 5000,
-    language: 'zh',
   }
 );
 
@@ -43,7 +44,6 @@ const isExportSuccess = computed(() => {
 const isOpening = ref(false);
 const handleOpenFolder = () => {
   isOpening.value = true;
-  console.log('Folder open command triggered for C:\\Users\\Administrator\\Downloads');
   setTimeout(() => {
     isOpening.value = false;
     emit('close');
@@ -77,7 +77,7 @@ onUnmounted(() => {
           :disabled="isOpening"
           @click="handleOpenFolder"
         >
-          {{ isOpening ? '正在打开...' : '打开文件夹' }}
+          {{ isOpening ? t('openingFolder') : t('openFolder') }}
         </MD3Button>
       </div>
     </div>

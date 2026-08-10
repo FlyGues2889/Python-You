@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue';
+import { ref, watch, nextTick } from 'vue';
 import { useI18n } from '../utils/i18n';
 import { FSItem } from '../types';
 
@@ -18,7 +18,6 @@ const emit = defineEmits<{
   (e: 'paste'): void;
   (e: 'find'): void;
   (e: 'replace'): void;
-  (e: 'save'): void;
   (e: 'new-file'): void;
   (e: 'new-folder'): void;
   (e: 'rename', item: FSItem): void;
@@ -28,44 +27,36 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const menuRef = ref<HTMLDivElement | null>(null);
 
+const menuRef = ref<HTMLElement | null>(null);
+const anchorRef = ref<HTMLDivElement | null>(null);
 const pos = ref({ left: 0, top: 0 });
 
-const adjustPosition = () => {
-  if (!menuRef.value) {
-    pos.value = { left: props.x, top: props.y };
-    return;
+// 显示时把零尺寸锚点放到光标位置，再调用原生 show(anchor) 定位菜单；
+// m3e-menu 内置 flip/shift，靠近视口边缘时自动翻转/平移，无需手动计算位置。
+const openMenu = async () => {
+  pos.value = { left: props.x, top: props.y };
+  await nextTick();
+  const menu = menuRef.value as HTMLElement & { show?: (trigger: HTMLElement) => Promise<void> };
+  if (menu?.show && anchorRef.value) {
+    await menu.show(anchorRef.value);
   }
-  const rect = menuRef.value.getBoundingClientRect();
-  const winW = window.innerWidth;
-  const winH = window.innerHeight;
-
-  let left = props.x;
-  let top = props.y;
-
-  if (left + rect.width > winW - 8) {
-    left = Math.max(8, winW - rect.width - 8);
-  }
-  if (top + rect.height > winH - 8) {
-    top = Math.max(8, winH - rect.height - 8);
-  }
-
-  pos.value = { left, top };
 };
 
 watch(
-  () => [props.visible, props.x, props.y],
-  () => {
-    if (props.visible) {
-      pos.value = { left: props.x, top: props.y };
-      nextTick(() => {
-        adjustPosition();
-      });
-    }
+  () => props.visible,
+  (v) => {
+    if (v) openMenu();
   },
   { immediate: true }
 );
+
+// 菜单自行关闭（Escape / 点击外部 / 滚动 / 点击项）后同步父组件状态
+const onMenuToggle = (e: Event) => {
+  if ((e as any).newState === 'closed') {
+    emit('close');
+  }
+};
 
 const handleAction = (action: string) => {
   if (action === 'copy') emit('copy');
@@ -73,7 +64,6 @@ const handleAction = (action: string) => {
   else if (action === 'paste') emit('paste');
   else if (action === 'find') emit('find');
   else if (action === 'replace') emit('replace');
-  else if (action === 'save') emit('save');
   else if (action === 'new-file') emit('new-file');
   else if (action === 'new-folder') emit('new-folder');
   else if (action === 'rename' && props.targetItem) emit('rename', props.targetItem);
@@ -83,234 +73,108 @@ const handleAction = (action: string) => {
 
   emit('close');
 };
-
-const handleClickOutside = (e: MouseEvent) => {
-  if (menuRef.value && !menuRef.value.contains(e.target as Node)) {
-    emit('close');
-  }
-};
-
-const handleKeyDown = (e: KeyboardEvent) => {
-  if (e.key === 'Escape') {
-    emit('close');
-  }
-};
-
-onMounted(() => {
-  document.addEventListener('click', handleClickOutside);
-  document.addEventListener('scroll', () => emit('close'), true);
-  document.addEventListener('keydown', handleKeyDown);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside);
-  document.removeEventListener('keydown', handleKeyDown);
-});
 </script>
 
 <template>
   <Teleport to="body">
-    <Transition name="m3-menu">
-      <div
-        v-if="visible"
-        ref="menuRef"
-        class="custom-context-menu"
-        :style="{ top: `${pos.top}px`, left: `${pos.left}px` }"
-        @click.stop
-        @contextmenu.prevent
-      >
-        <!-- Terminal / Console Context Menu (ONLY Copy) -->
-        <template v-if="type === 'terminal'">
-          <button class="context-item-btn" @click="handleAction('copy')">
-            <span class="material-symbols-rounded">content_copy</span>
-            <span>{{ t('copy') }}</span>
-            <span class="shortcut">Ctrl+C</span>
-          </button>
+    <!-- 光标位置的零尺寸锚点：m3e-menu 通过 show(anchor) 定位 -->
+    <div v-if="visible" ref="anchorRef" class="context-menu-anchor"
+      :style="{ left: pos.left + 'px', top: pos.top + 'px' }"></div>
+    <m3e-menu ref="menuRef" class="context-menu" position-x="after" position-y="below" @toggle="onMenuToggle">
+      <!-- Terminal / Console Context Menu (ONLY Copy) -->
+      <template v-if="type === 'terminal'">
+        <m3e-menu-item class="ctx-item" @click="handleAction('copy')">
+          <span slot="icon" class="material-symbols-rounded">content_copy</span>
+          <span>{{ t('copyTerminalInfo') }}</span>
+        </m3e-menu-item>
+      </template>
+
+      <!-- Tutorial Context Menu (ONLY Copy) -->
+      <template v-else-if="type === 'tutorial'">
+        <m3e-menu-item class="ctx-item" @click="handleAction('copy')">
+          <span slot="icon" class="material-symbols-rounded">content_copy</span>
+          <span>{{ t('copy') }}</span>
+        </m3e-menu-item>
+      </template>
+
+      <!-- Editor Context Menu (Edit options) -->
+      <template v-else-if="type === 'editor'">
+        <m3e-menu-item class="ctx-item" @click="handleAction('copy')">
+          <span slot="icon" class="material-symbols-rounded">content_copy</span>
+          <span>{{ t('copy') }}</span>
+        </m3e-menu-item>
+        <m3e-menu-item class="ctx-item" @click="handleAction('cut')">
+          <span slot="icon" class="material-symbols-rounded">content_cut</span>
+          <span>{{ t('cut') }}</span>
+        </m3e-menu-item>
+        <m3e-menu-item class="ctx-item" @click="handleAction('paste')">
+          <span slot="icon" class="material-symbols-rounded">content_paste</span>
+          <span>{{ t('paste') }}</span>
+        </m3e-menu-item>
+        <m3e-divider></m3e-divider>
+        <m3e-menu-item class="ctx-item" @click="handleAction('find')">
+          <span slot="icon" class="material-symbols-rounded">search</span>
+          <span>{{ t('find') }}</span>
+        </m3e-menu-item>
+        <m3e-menu-item class="ctx-item" @click="handleAction('replace')">
+          <span slot="icon" class="material-symbols-rounded">find_replace</span>
+          <span>{{ t('replace') }}</span>
+        </m3e-menu-item>
+      </template>
+
+      <!-- File Tree Context Menu -->
+      <template v-else-if="type === 'filetree'">
+        <template v-if="targetItem">
+          <m3e-menu-item v-if="!targetItem.isFolder && targetItem.name.endsWith('.py')" class="ctx-item run-item"
+            @click="handleAction('run')">
+            <span slot="icon" class="material-symbols-rounded">play_arrow</span>
+            <span>{{ t('run') }}</span>
+          </m3e-menu-item>
+          <m3e-menu-item class="ctx-item" @click="handleAction('rename')">
+            <span slot="icon" class="material-symbols-rounded">edit</span>
+            <span>{{ t('rename') }}</span>
+          </m3e-menu-item>
+          <m3e-menu-item class="ctx-item" @click="handleAction('reveal-in-explorer')">
+            <span slot="icon" class="material-symbols-rounded">folder_open</span>
+            <span>{{ t('openInExplorer') }}</span>
+          </m3e-menu-item>
+          <m3e-menu-item class="ctx-item delete-item" @click="handleAction('delete')">
+            <span slot="icon" class="material-symbols-rounded">delete</span>
+            <span>{{ t('delete') }}</span>
+          </m3e-menu-item>
+          <m3e-divider></m3e-divider>
         </template>
 
-        <!-- Tutorial Context Menu (ONLY Copy) -->
-        <template v-else-if="type === 'tutorial'">
-          <button class="context-item-btn" @click="handleAction('copy')">
-            <span class="material-symbols-rounded">content_copy</span>
-            <span>{{ t('copy') }}</span>
-            <span class="shortcut">Ctrl+C</span>
-          </button>
-        </template>
-
-        <!-- Editor Context Menu (File & Edit options) -->
-        <template v-else-if="type === 'editor'">
-          <div class="menu-section-label">{{ t('editMenu') }}</div>
-          <button class="context-item-btn" @click="handleAction('copy')">
-            <span class="material-symbols-rounded">content_copy</span>
-            <span>{{ t('copy') }}</span>
-            <span class="shortcut">Ctrl+C</span>
-          </button>
-          <button class="context-item-btn" @click="handleAction('cut')">
-            <span class="material-symbols-rounded">content_cut</span>
-            <span>{{ t('cut') }}</span>
-            <span class="shortcut">Ctrl+X</span>
-          </button>
-          <button class="context-item-btn" @click="handleAction('paste')">
-            <span class="material-symbols-rounded">content_paste</span>
-            <span>{{ t('paste') }}</span>
-            <span class="shortcut">Ctrl+V</span>
-          </button>
-          <div class="menu-divider"></div>
-          <button class="context-item-btn" @click="handleAction('find')">
-            <span class="material-symbols-rounded">search</span>
-            <span>{{ t('find') }}</span>
-            <span class="shortcut">Ctrl+F</span>
-          </button>
-          <button class="context-item-btn" @click="handleAction('replace')">
-            <span class="material-symbols-rounded">find_replace</span>
-            <span>{{ t('replace') }}</span>
-            <span class="shortcut">Ctrl+H</span>
-          </button>
-
-          <div class="menu-divider"></div>
-          <div class="menu-section-label">{{ t('fileMenu') }}</div>
-          <button class="context-item-btn" @click="handleAction('save')">
-            <span class="material-symbols-rounded">save</span>
-            <span>{{ t('save') }}</span>
-            <span class="shortcut">Ctrl+S</span>
-          </button>
-          <button class="context-item-btn" @click="handleAction('new-file')">
-            <span class="material-symbols-rounded">note_add</span>
-            <span>{{ t('newFile') }}</span>
-          </button>
-        </template>
-
-        <!-- File Tree Context Menu -->
-        <template v-else-if="type === 'filetree'">
-          <template v-if="targetItem">
-            <button
-              v-if="!targetItem.isFolder && targetItem.name.endsWith('.py')"
-              class="context-item-btn run-item"
-              @click="handleAction('run')"
-            >
-              <span class="material-symbols-rounded">play_arrow</span>
-              <span>{{ t('run') }}</span>
-            </button>
-            <button class="context-item-btn" @click="handleAction('rename')">
-              <span class="material-symbols-rounded">edit</span>
-              <span>{{ t('rename') }}</span>
-            </button>
-            <button class="context-item-btn" @click="handleAction('reveal-in-explorer')">
-              <span class="material-symbols-rounded">folder_open</span>
-              <span>{{ t('openInExplorer') }}</span>
-            </button>
-            <button class="context-item-btn delete-item" @click="handleAction('delete')">
-              <span class="material-symbols-rounded">delete</span>
-              <span>{{ t('delete') }}</span>
-            </button>
-            <div class="menu-divider"></div>
-          </template>
-
-          <button class="context-item-btn" @click="handleAction('new-file')">
-            <span class="material-symbols-rounded">note_add</span>
-            <span>{{ t('newFile') }}</span>
-          </button>
-          <button class="context-item-btn" @click="handleAction('new-folder')">
-            <span class="material-symbols-rounded">create_new_folder</span>
-            <span>{{ t('newFolder') }}</span>
-          </button>
-        </template>
-      </div>
-    </Transition>
+        <m3e-menu-item class="ctx-item" @click="handleAction('new-file')">
+          <span slot="icon" class="material-symbols-rounded">note_add</span>
+          <span>{{ t('newFile') }}</span>
+        </m3e-menu-item>
+        <m3e-menu-item class="ctx-item" @click="handleAction('new-folder')">
+          <span slot="icon" class="material-symbols-rounded">create_new_folder</span>
+          <span>{{ t('newFolder') }}</span>
+        </m3e-menu-item>
+      </template>
+    </m3e-menu>
   </Teleport>
 </template>
 
 <style scoped>
-.custom-context-menu {
+/* 光标锚点：零尺寸，仅用于定位菜单 */
+.context-menu-anchor {
   position: fixed;
+  width: 0;
+  height: 0;
   z-index: 999999;
-  transform-origin: top left;
-  background-color: var(--surface-color);
-  border: 1px solid var(--border-color-muted);
-  border-radius: 16px;
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.3);
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 260px;
-  width: max-content;
-  user-select: none;
 }
 
-.menu-section-label {
-  font-size: 0.6875rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-  padding: 4px 10px 2px 10px;
-  letter-spacing: 0.5px;
+
+/* 运行（绿）与删除（错误色）的语义着色，仅改文字色，保持原生交互 */
+.ctx-item.run-item {
+  --m3e-menu-item-color: var(--success);
 }
 
-.context-item-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: transparent;
-  border: none;
-  color: var(--text-color);
-  padding: 8px 12px;
-  border-radius: 999px;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  cursor: pointer;
-  text-align: left;
-  transition: background-color 0.15s, color 0.15s;
-  width: 100%;
-  white-space: nowrap;
+.ctx-item.delete-item {
+  --m3e-menu-item-color: var(--error);
 }
 
-.context-item-btn:hover {
-  background-color: var(--surface-variant);
-  color: var(--primary);
-}
-
-.context-item-btn span.material-symbols-rounded {
-  font-size: 18px;
-}
-
-.context-item-btn .shortcut {
-  margin-left: auto;
-  font-size: 0.75rem;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  padding-left: 20px;
-  flex-shrink: 0;
-}
-
-.context-item-btn.delete-item:hover {
-  background-color: var(--error);
-  color: var(--on-error);
-}
-
-.context-item-btn.run-item {
-  color: #16a34a;
-}
-
-.context-item-btn.run-item:hover {
-  background-color: #dcfce7;
-  color: #15803d;
-}
-
-.menu-divider {
-  height: 1px;
-  background-color: var(--border-color-muted);
-  margin: 4px 0;
-}
-
-.m3-menu-enter-active,
-.m3-menu-leave-active {
-  transition: all 0.15s cubic-bezier(0.2, 0, 0, 1);
-}
-
-.m3-menu-enter-from,
-.m3-menu-leave-to {
-  opacity: 0;
-  transform: scale(0.95);
-}
 </style>

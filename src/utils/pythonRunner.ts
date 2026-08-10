@@ -1,5 +1,7 @@
 import { ConsoleOutput, FSItem } from '../types';
 import { nativePython } from './nativePython';
+import { t, tf } from './i18n';
+import { uid } from './id';
 
 declare global {
   interface Window {
@@ -8,14 +10,61 @@ declare global {
   }
 }
 
-export class PythonRunnerService {
+class PythonRunnerService {
   private pyodide: any = null;
   private isLoading = false;
   private isReady = false;
   private demoScope: Record<string, any> = {};
 
+  // 本地 npm 包 pyodide：构建时由 vite-plugin-static-copy 从 node_modules 复制到 /pyodide/
+  private static readonly PYODIDE_INDEX_URL = '/pyodide/';
+  // 加载超时：桌面端可能无网络，避免“Connecting to Pyodide...”无限卡死无提示
+  private static readonly PYODIDE_TIMEOUT_MS = 15000;
+
   // 当前原生工作区根目录（由 App 在打开本地文件夹时设置），用于给本机 Python 指定 cwd
   public workspaceRoot: string | null = null;
+
+  // 加载本地 Pyodide 脚本，带超时（script 既不打 onload 也不打 onerror 时会一直挂着）
+  private loadPyodideScript(timeoutMs = PythonRunnerService.PYODIDE_TIMEOUT_MS): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      let settled = false;
+      const fail = (msg: string) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        script.remove();
+        reject(new Error(msg));
+      };
+      const timer = setTimeout(() => fail(t('pyodideTimeout')), timeoutMs);
+      script.src = `${PythonRunnerService.PYODIDE_INDEX_URL}pyodide.js`;
+      script.onload = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      script.onerror = () => fail(t('pyodideCdnUnavailable'));
+      document.head.appendChild(script);
+    });
+  }
+
+  // 初始化 Pyodide 实例（拉取 wasm），带超时防止无网时无限等待
+  private loadPyodideInstance(timeoutMs = PythonRunnerService.PYODIDE_TIMEOUT_MS): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(t('pyodideInitTimeout'))), timeoutMs);
+      (async () => {
+        try {
+          const inst = await window.loadPyodide!({ indexURL: PythonRunnerService.PYODIDE_INDEX_URL });
+          clearTimeout(timer);
+          resolve(inst);
+        } catch (e) {
+          clearTimeout(timer);
+          reject(e);
+        }
+      })();
+    });
+  }
 
   public async initPyodide(onOutput?: (out: ConsoleOutput) => void): Promise<boolean> {
     if (this.isReady) return true;
@@ -23,59 +72,47 @@ export class PythonRunnerService {
 
     this.isLoading = true;
     try {
-      if (typeof window !== 'undefined') {
-        if (!window.loadPyodide) {
-          onOutput?.({
-            id: Math.random().toString(36).substring(2),
-            type: 'system',
-            text: '[INFO] Connecting to Pyodide WASM engine...',
-            timestamp: new Date().toLocaleTimeString()
-          });
+      // Tauri WebView 恒有 window，直接检查脚本是否已注入
+      if (!window.loadPyodide) {
+        onOutput?.({
+          id: uid(),
+          type: 'system',
+          text: t('pyodideLoading'),
+          timestamp: new Date().toLocaleTimeString()
+        });
 
-          await new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js';
-            script.onload = resolve;
-            script.onerror = () => reject(new Error('Pyodide CDN unavailable'));
-            document.head.appendChild(script);
-          });
-        }
+        await this.loadPyodideScript();
+      }
 
-        if (window.loadPyodide) {
-          const PYODIDE_CDN = 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/';
-          this.pyodide = await window.loadPyodide({ indexURL: PYODIDE_CDN });
-          window.pyodideInstance = this.pyodide;
-          this.isReady = true;
-          this.isLoading = false;
+      if (window.loadPyodide) {
+        this.pyodide = await this.loadPyodideInstance();
+        window.pyodideInstance = this.pyodide;
+        this.isReady = true;
+        this.isLoading = false;
 
-          onOutput?.({
-            id: Math.random().toString(36).substring(2),
-            type: 'system',
-            text: '[INFO] Pyodide Python 3.11 WASM Engine Active!',
-            timestamp: new Date().toLocaleTimeString()
-          });
-          return true;
-        }
+        onOutput?.({
+          id: uid(),
+          type: 'system',
+          text: t('pyodideActive'),
+          timestamp: new Date().toLocaleTimeString()
+        });
+        return true;
       }
       throw new Error('Web environment missing');
     } catch (err: any) {
       this.isLoading = false;
       this.isReady = false;
       onOutput?.({
-        id: Math.random().toString(36).substring(2),
+        id: uid(),
         type: 'system',
-        text: '[INFO] Web Presentation Mode active (Using Instant Python Demo Engine).',
+        text: tf('pyodideUnavailable', { err: err?.message || err }),
         timestamp: new Date().toLocaleTimeString()
       });
       return false;
     }
   }
 
-  public isPyodideReady(): boolean {
-    return this.isReady;
-  }
-
-  public syncFileSystem(items: FSItem[], _basePath = '') {
+  public syncFileSystem(items: FSItem[]) {
     if (!this.pyodide) return;
     try {
       const fs = this.pyodide.FS;
@@ -83,7 +120,7 @@ export class PythonRunnerService {
         const fullPath = item.path.startsWith('/') ? item.path : '/' + item.path;
         if (item.isFolder) {
           try { fs.mkdir(fullPath); } catch (e: any) {}
-          if (item.children) this.syncFileSystem(item.children, fullPath);
+          if (item.children) this.syncFileSystem(item.children);
         } else {
           const content = item.content || '';
           try {
@@ -128,7 +165,7 @@ export class PythonRunnerService {
 
         const stdoutHandler = (text: string) => {
           onOutput({
-            id: Math.random().toString(36).substring(2),
+            id: uid(),
             type: 'stdout',
             text,
             timestamp: new Date().toLocaleTimeString()
@@ -137,7 +174,7 @@ export class PythonRunnerService {
 
         const stderrHandler = (text: string) => {
           onOutput({
-            id: Math.random().toString(36).substring(2),
+            id: uid(),
             type: 'stderr',
             text,
             timestamp: new Date().toLocaleTimeString()
@@ -148,7 +185,7 @@ export class PythonRunnerService {
         this.pyodide.setStderr({ batched: stderrHandler });
 
         onOutput({
-          id: Math.random().toString(36).substring(2),
+          id: uid(),
           type: 'stdout',
           text: '\n',
           timestamp: new Date().toLocaleTimeString()
@@ -159,16 +196,16 @@ export class PythonRunnerService {
         const durationMs = Math.round(performance.now() - startTime);
 
         onOutput({
-          id: Math.random().toString(36).substring(2),
+          id: uid(),
           type: 'stdout',
           text: '\n',
           timestamp: new Date().toLocaleTimeString()
         });
 
         onOutput({
-          id: Math.random().toString(36).substring(2),
+          id: uid(),
           type: 'system',
-          text: `[INFO] Process finished with code 0 in ${durationMs}ms`,
+          text: tf('processFinishedCode', { duration: durationMs }),
           timestamp: new Date().toLocaleTimeString()
         });
 
@@ -176,7 +213,7 @@ export class PythonRunnerService {
       } catch (err: any) {
         const durationMs = Math.round(performance.now() - startTime);
         onOutput({
-          id: Math.random().toString(36).substring(2),
+          id: uid(),
           type: 'error',
           text: err?.message || String(err),
           timestamp: new Date().toLocaleTimeString()
@@ -186,7 +223,7 @@ export class PythonRunnerService {
     }
 
     // Default: Lightweight instant presentation demo mode
-    return this.runDemoInterpreter(code, workspaceFiles, onOutput, startTime);
+    return this.runDemoInterpreter(code, onOutput, startTime);
   }
 
   public async runREPL(
@@ -202,7 +239,7 @@ export class PythonRunnerService {
     }
 
     onOutput({
-      id: Math.random().toString(36).substring(2),
+      id: uid(),
       type: 'input',
       text: `>>> ${statement}`,
       timestamp: new Date().toLocaleTimeString()
@@ -216,7 +253,7 @@ export class PythonRunnerService {
       try {
         const stdoutHandler = (text: string) => {
           onOutput({
-            id: Math.random().toString(36).substring(2),
+            id: uid(),
             type: 'stdout',
             text,
             timestamp: new Date().toLocaleTimeString()
@@ -226,7 +263,7 @@ export class PythonRunnerService {
         const result = await this.pyodide.runPythonAsync(statement);
         if (result !== undefined) {
           onOutput({
-            id: Math.random().toString(36).substring(2),
+            id: uid(),
             type: 'stdout',
             text: String(result),
             timestamp: new Date().toLocaleTimeString()
@@ -235,7 +272,7 @@ export class PythonRunnerService {
         return result;
       } catch (err: any) {
         onOutput({
-          id: Math.random().toString(36).substring(2),
+          id: uid(),
           type: 'error',
           text: err?.message || String(err),
           timestamp: new Date().toLocaleTimeString()
@@ -249,14 +286,13 @@ export class PythonRunnerService {
 
   private runDemoInterpreter(
     code: string,
-    _workspaceFiles: FSItem[],
     onOutput: (out: ConsoleOutput) => void,
     startTime: number
   ): { success: boolean; durationMs: number } {
     onOutput({
-      id: Math.random().toString(36).substring(2),
+      id: uid(),
       type: 'info',
-      text: '[INFO] Running in Python You Presentation Demo Mode...',
+      text: t('demoModeRunning'),
       timestamp: new Date().toLocaleTimeString()
     });
 
@@ -307,7 +343,7 @@ export class PythonRunnerService {
       }
 
       onOutput({
-        id: Math.random().toString(36).substring(2),
+        id: uid(),
         type: 'stdout',
         text: '\n',
         timestamp: new Date().toLocaleTimeString()
@@ -316,7 +352,7 @@ export class PythonRunnerService {
       if (logs.length > 0) {
         logs.forEach((log) => {
           onOutput({
-            id: Math.random().toString(36).substring(2),
+            id: uid(),
             type: 'stdout',
             text: log,
             timestamp: new Date().toLocaleTimeString()
@@ -324,9 +360,9 @@ export class PythonRunnerService {
         });
       } else {
         onOutput({
-          id: Math.random().toString(36).substring(2),
+          id: uid(),
           type: 'stdout',
-          text: '[INFO] Code executed successfully in presentation mode.',
+          text: t('demoExecuted'),
           timestamp: new Date().toLocaleTimeString()
         });
       }
@@ -334,14 +370,14 @@ export class PythonRunnerService {
       const durationMs = Math.round(performance.now() - startTime);
 
       onOutput({
-        id: Math.random().toString(36).substring(2),
+        id: uid(),
         type: 'stdout',
         text: '\n',
         timestamp: new Date().toLocaleTimeString()
       });
 
       onOutput({
-        id: Math.random().toString(36).substring(2),
+        id: uid(),
         type: 'system',
         text: `[INFO] Process finished with code 0 in ${durationMs}ms`,
         timestamp: new Date().toLocaleTimeString()
@@ -351,7 +387,7 @@ export class PythonRunnerService {
     } catch (err: any) {
       const durationMs = Math.round(performance.now() - startTime);
       onOutput({
-        id: Math.random().toString(36).substring(2),
+        id: uid(),
         type: 'error',
         text: err?.message || String(err),
         timestamp: new Date().toLocaleTimeString()
@@ -367,7 +403,7 @@ export class PythonRunnerService {
         const content = trimmed.substring(6, trimmed.length - 1).trim();
         const res = this.evaluatePythonExpression(content, this.demoScope);
         onOutput({
-          id: Math.random().toString(36).substring(2),
+          id: uid(),
           type: 'stdout',
           text: String(res),
           timestamp: new Date().toLocaleTimeString()
@@ -389,7 +425,7 @@ export class PythonRunnerService {
       const res = this.evaluatePythonExpression(trimmed, this.demoScope);
       if (res !== undefined) {
         onOutput({
-          id: Math.random().toString(36).substring(2),
+          id: uid(),
           type: 'stdout',
           text: typeof res === 'object' ? JSON.stringify(res) : String(res),
           timestamp: new Date().toLocaleTimeString()
@@ -398,9 +434,9 @@ export class PythonRunnerService {
       return res;
     } catch (err: any) {
       onOutput({
-        id: Math.random().toString(36).substring(2),
+        id: uid(),
         type: 'error',
-        text: `[REPL Error] ${err?.message || err}`,
+        text: tf('replErrorMsg', { err: err?.message || err }),
         timestamp: new Date().toLocaleTimeString()
       });
     }
@@ -445,9 +481,8 @@ export class PythonRunnerService {
 
     // Basic arithmetic evaluation safety
     try {
-      // Replace python operators ** and // for JS math evaluation
+      // Replace python operators // for JS math evaluation
       let jsExpr = expr
-        .replace(/\*\*/g, '**')
         .replace(/\/\//g, 'Math.floor/')
         .replace(/and/g, '&&')
         .replace(/or/g, '||')
@@ -477,24 +512,24 @@ export class PythonRunnerService {
     if (!forceDemoMode && this.isReady && this.pyodide) {
       try {
         onOutput?.({
-          id: Math.random().toString(36).substring(2),
+          id: uid(),
           type: 'system',
-          text: `[INFO] Installing package '${pkgName}' via Pyodide micropip...`,
+          text: tf('pyodideInstallingPkg', { name: pkgName }),
           timestamp: new Date().toLocaleTimeString()
         });
         await this.pyodide.loadPackage(pkgName);
         onOutput?.({
-          id: Math.random().toString(36).substring(2),
+          id: uid(),
           type: 'system',
-          text: `[INFO] Package '${pkgName}' installed successfully!`,
+          text: tf('pyodideInstalledPkg', { name: pkgName }),
           timestamp: new Date().toLocaleTimeString()
         });
         return true;
       } catch (err: any) {
         onOutput?.({
-          id: Math.random().toString(36).substring(2),
+          id: uid(),
           type: 'error',
-          text: `[ERROR] Failed to install '${pkgName}': ${err?.message || err}`,
+          text: tf('pyodideInstallFail', { name: pkgName, err: err?.message || err }),
           timestamp: new Date().toLocaleTimeString()
         });
         return false;
@@ -502,9 +537,9 @@ export class PythonRunnerService {
     }
 
     onOutput?.({
-      id: Math.random().toString(36).substring(2),
+      id: uid(),
       type: 'system',
-      text: `[INFO] Package '${pkgName}' registered in presentation mode.`,
+      text: tf('demoPkgRegistered', { name: pkgName }),
       timestamp: new Date().toLocaleTimeString()
     });
     return true;

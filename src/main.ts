@@ -1,5 +1,7 @@
 import { createApp } from 'vue';
 import App from './App.vue';
+
+import "@m3e/web/all";
 import './assets/index.css';
 import { minimizeWindow, maximizeWindow, closeWindow } from './utils/tauriWindow';
 

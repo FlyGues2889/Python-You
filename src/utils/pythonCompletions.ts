@@ -1,6 +1,7 @@
 // 轻量 Python 代码补全数据源（方案 A：词法级提示，无类型分析）
 // 提供：关键字 / 内置函数 / 标准库模块 / 常用代码片段 / 工作区标识符
 import type { FSItem } from '../types';
+import { t } from './i18n';
 
 export interface CompletionItem {
   label: string; // 展示文本
@@ -39,13 +40,13 @@ const MODULES = [
 ];
 
 const SNIPPETS: CompletionItem[] = [
-  { label: 'ifmain', insertText: 'if __name__ == "__main__":\n    pass', kind: 'snippet', detail: '程序入口' },
-  { label: 'def', insertText: 'def name():\n    pass', kind: 'snippet', detail: '定义函数' },
-  { label: 'class', insertText: 'class Name:\n    def __init__(self):\n        pass', kind: 'snippet', detail: '定义类' },
-  { label: 'for', insertText: 'for item in items:\n    ', kind: 'snippet', detail: 'for 循环' },
-  { label: 'if', insertText: 'if condition:\n    ', kind: 'snippet', detail: 'if 分支' },
-  { label: 'withopen', insertText: 'with open("file.txt", "r", encoding="utf-8") as f:\n    content = f.read()', kind: 'snippet', detail: '读取文件' },
-  { label: 'try', insertText: 'try:\n    pass\nexcept Exception as e:\n    print(e)', kind: 'snippet', detail: '异常处理' }
+  { label: 'ifmain', insertText: 'if __name__ == "__main__":\n    pass', kind: 'snippet', detail: t('completionDetailIfMain') },
+  { label: 'def', insertText: 'def name():\n    pass', kind: 'snippet', detail: t('completionDetailDef') },
+  { label: 'class', insertText: 'class Name:\n    def __init__(self):\n        pass', kind: 'snippet', detail: t('completionDetailClass') },
+  { label: 'for', insertText: 'for item in items:\n    ', kind: 'snippet', detail: t('completionDetailFor') },
+  { label: 'if', insertText: 'if condition:\n    ', kind: 'snippet', detail: t('completionDetailIf') },
+  { label: 'withopen', insertText: 'with open("file.txt", "r", encoding="utf-8") as f:\n    content = f.read()', kind: 'snippet', detail: t('completionDetailReadFile') },
+  { label: 'try', insertText: 'try:\n    pass\nexcept Exception as e:\n    print(e)', kind: 'snippet', detail: t('completionDetailTry') }
 ];
 
 // 从工作区所有 .py 文件里收集标识符。
@@ -121,16 +122,16 @@ export function getCompletions(
       label: id,
       insertText: callable ? `${id}()` : id,
       kind: 'identifier',
-      detail: callable ? '函数/类' : '变量',
+      detail: callable ? t('completionDetailCallable') : t('completionDetailVariable'),
       caretOffset: callable ? id.length + 1 : id.length
     };
   });
 
   const all: CompletionItem[] = [
     ...SNIPPETS,
-    ...KEYWORDS.map((k): CompletionItem => ({ label: k, insertText: k, kind: 'keyword', detail: '关键字', caretOffset: k.length })),
-    ...BUILTINS.map((b): CompletionItem => ({ label: b, insertText: `${b}()`, kind: 'builtin', detail: '内置函数', caretOffset: b.length + 1 })),
-    ...MODULES.map((m): CompletionItem => ({ label: m, insertText: m, kind: 'module', detail: '标准库模块', caretOffset: m.length })),
+    ...KEYWORDS.map((k): CompletionItem => ({ label: k, insertText: k, kind: 'keyword', detail: t('completionDetailKeyword'), caretOffset: k.length })),
+    ...BUILTINS.map((b): CompletionItem => ({ label: b, insertText: `${b}()`, kind: 'builtin', detail: t('completionDetailBuiltin'), caretOffset: b.length + 1 })),
+    ...MODULES.map((m): CompletionItem => ({ label: m, insertText: m, kind: 'module', detail: t('completionDetailModule'), caretOffset: m.length })),
     ...wsItems
   ];
 

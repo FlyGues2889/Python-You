@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import MD3Loading from './MD3Loading.vue';
-
 interface Props {
   show: boolean;
   status?: string;
@@ -13,7 +11,7 @@ defineProps<Props>();
   <Transition name="fade">
     <div v-if="show" class="m3-loading-modal-overlay" role="dialog" aria-modal="true">
       <div class="m3-loading-content">
-        <MD3Loading variant="contained" size="48" />
+        <m3e-loading-indicator variant="contained"></m3e-loading-indicator>
         <p v-if="status" class="m3-loading-status">{{ status }}</p>
       </div>
     </div>
