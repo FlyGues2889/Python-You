@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { AppConfig } from '../types';
 import { useI18n } from '../utils/i18n';
+import { resolveCodeTheme } from '../utils/theme';
 import PageHeader from './PageHeader.vue';
 import EditorPreview from './EditorPreview.vue';
 
@@ -37,6 +39,11 @@ const onFontSizeInput = (e: Event) => {
     props.config.fontSize = v;
   }
 };
+// 'system'（跟随系统主题）在预览处解析为实际主题，与 App.vue 的编辑器/终端保持一致
+const resolvedCodeTheme = computed(() =>
+  resolveCodeTheme(props.config.codeTheme, props.config.themeMode)
+);
+
 const onSwitchChange = (e: Event, key: 'enableWheelZoom' | 'autoPairQuotes' | 'demoMode') => {
   props.config[key] = !!(e.target as any).checked;
 };
@@ -85,7 +92,7 @@ const onDemoModeChange = (e: Event) => onSwitchChange(e, 'demoMode');
         </div>
 
         <!-- Live Editor Preview -->
-        <EditorPreview :config="config" />
+        <EditorPreview :config="config" :code-theme="resolvedCodeTheme" />
 
         <m3e-list slot="content">
           <m3e-list-item>
@@ -94,6 +101,11 @@ const onDemoModeChange = (e: Event) => onSwitchChange(e, 'demoMode');
             <span slot="supporting-text">{{ t('codeThemeSubtitle') }}</span>
             <div slot="trailing" class="settings-trailing">
               <m3e-select class="theme-select" panel-class="theme-select-panel" @change="onCodeThemeChange">
+                <!-- 跟随系统主题：独立选项，位于两个分组之上；选中时由
+                     resolveCodeTheme 按外观主题映射为浅/深色实际主题 -->
+                <m3e-option value="system" :selected="config.codeTheme === 'system'">
+                  {{ t('followSystemTheme') }}
+                </m3e-option>
                 <!-- 按深/浅色分组展示：深色组在前（默认选中项保持首位） -->
                 <m3e-optgroup>
                   <span slot="label">{{ t('themeDark') }}</span>
@@ -105,6 +117,11 @@ const onDemoModeChange = (e: Event) => onSwitchChange(e, 'demoMode');
                 <m3e-optgroup>
                   <span slot="label">{{ t('themeLight') }}</span>
                   <m3e-option value="github-light" :selected="config.codeTheme === 'github-light'">GitHub
+                    Light</m3e-option>
+                  <m3e-option value="one-light" :selected="config.codeTheme === 'one-light'">One Light</m3e-option>
+                  <m3e-option value="vs-code-light" :selected="config.codeTheme === 'vs-code-light'">VS Code
+                    Light</m3e-option>
+                  <m3e-option value="solarized-light" :selected="config.codeTheme === 'solarized-light'">Solarized
                     Light</m3e-option>
                 </m3e-optgroup>
               </m3e-select>
@@ -167,7 +184,7 @@ const onDemoModeChange = (e: Event) => onSwitchChange(e, 'demoMode');
             {{ t('aboutApp') }}
             <span slot="supporting-text">{{ t('aboutAppDesc') }}</span>
             <div slot="trailing" class="settings-trailing">
-              v0.3.2
+              v0.3.3
             </div>
           </m3e-list-item>
 
@@ -207,6 +224,11 @@ const onDemoModeChange = (e: Event) => onSwitchChange(e, 'demoMode');
   flex-direction: column;
   gap: 1.5rem;
   margin-top: 1.5rem;
+  max-width: 72rem;
+  /* 设置卡片列居中：左右自动外边距 */
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
 }
 
 .settings-grid m3e-card {

@@ -19,49 +19,11 @@ input, textarea, [contenteditable="true"], [contenteditable] {
   user-select: text;
 }
 
+/* 全局设计 token（字体/字号见 font.css，主题色见 theme.css，此处仅过渡动画） */
 :root {
-  /* Fonts */
-  --font-sans: "HarmonyOS Sans SC", "system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", sans-serif;
-  --font-headings: "Nunito", "HarmonyOS Sans SC", sans-serif;
-  --font-mono: "Maple Mono", "Maple Mono NF CN", "ui-monospace", "SFMono-Regular", "SF Mono", "Menlo", "Consolas", "Liberation Mono", "Fira Code", "JetBrains Mono", monospace;
-  --font-terminal: "Maple Mono", "Maple Mono NF CN", "HarmonyOS Sans SC", "system-ui", "-apple-system", monospace;
-
-  /* Theme variables are loaded from theme.css and mapped there */
-  
-  /* Accent Colors (Light) mapped using MD3 Tertiary colors for harmonious palette */
-  --accent-indigo-bg: var(--primary-container);
-  --accent-indigo-text: var(--on-primary-container);
-  --accent-indigo-border: var(--primary);
-  --accent-amber-bg: var(--tertiary-container);
-  --accent-amber-text: var(--on-tertiary-container);
-  --accent-amber-border: var(--tertiary);
-  --accent-emerald-bg: #e8f5e9;
-  --accent-emerald-text: #1b5e20;
-  --accent-emerald-border: #2e7d32;
-  --accent-rose-bg: var(--error-container);
-  --accent-rose-text: var(--on-error-container);
-  --accent-rose-border: var(--error);
-
   --transition-fast: 0.15s ease;
   --transition-normal: 0.25s ease;
   --transition-slow: 0.35s ease;
-}
-
-/* --- Dark Theme Variables --- */
-:root.dark {
-  /* Accent Colors (Dark) mapped using MD3 Tertiary colors for harmonious palette */
-  --accent-indigo-bg: var(--primary-container);
-  --accent-indigo-text: var(--on-primary-container);
-  --accent-indigo-border: var(--primary);
-  --accent-amber-bg: var(--tertiary-container);
-  --accent-amber-text: var(--on-tertiary-container);
-  --accent-amber-border: var(--tertiary);
-  --accent-emerald-bg: #1b5e20;
-  --accent-emerald-text: #e8f5e9;
-  --accent-emerald-border: #81c784;
-  --accent-rose-bg: var(--error-container);
-  --accent-rose-text: var(--on-error-container);
-  --accent-rose-border: var(--error);
 }
 
 /* --- Global Styles --- */
@@ -100,22 +62,50 @@ input[type="reset"] {
   border-radius: 9999px;
 }
 
-/* Custom Scrollbar Styles */
-/* 滚动条颜色统一为 outline、粗细统一为细档（document 树内 4px；组件库 shadow 内
-   scrollbar-width: thin，Chromium 标准 thin 档）。三条通道，缺一不可：
-   1) --m3e-scrollbar-thumb-color —— 组件库（m3e-content-pane/m3e-toc/m3e-search-bar 等）
-      shadow 内滚动容器自身的 scrollbar-color 用它，默认回退硬编码 #938f94，必须覆盖
-   2) scrollbar-color/scrollbar-width（:root，Inherited: yes，跨 shadow 继承）——
-      无显式设置的滚动容器（select/dialog/autocomplete/list 等组件 shadow 内、
-      document 树内自定义滚动容器）回退到它；width: thin 使这些容器不再用 UA 默认
-      auto（Windows 经典宽条）
-   3) ::-webkit-scrollbar —— document 树内滚动容器 */
+/* ============================================================
+   全局滚动条（统一设定，集中管理）
+   ------------------------------------------------------------
+   组件库 @m3e/web 引用关系：
+   - 组件库 shadow 内滚动容器使用标准属性并引用全局变量：
+       scrollbar-color: var(--m3e-scrollbar-thumb-color, #938f94) transparent
+       scrollbar-width: var(--m3e-scrollbar-width / --m3e-scrollbar-thin-width)
+     因此只需统一定义 --m3e-scrollbar-* 即可控制所有组件滚动条，
+     不要在组件内单独写滚动条样式（碎片化）。
+   - document 树滚动容器（textarea 除外，WebView2 中其伪元素通道失效）
+     走双通道：标准属性继承 + WebKit 伪元素，两条通道互相兜底。
+   - 按钮：WebKit 自定义滚动条模式默认渲染两端箭头按钮，必须显式隐藏。
+     ::-webkit-scrollbar-button 独立成条（不得与复合选择器共用规则——
+     旧引擎解析不了复合伪元素选择器时整条规则会被丢弃）。
+   ============================================================ */
 :root {
-  --m3e-scrollbar-thumb-color: var(--outline);
+  /* 默认隐藏滚动条；显示由两个精确来源控制（实测修正，勿改回全局 :hover：
+     body 恒 hover 会让 scrollbar-color/变量继承污染所有后代导致常显）：
+     - 组件库 shadow 内（标准通道）：JS 给滚动容器 host 加 .scroll-hover 类
+       → 变量半透明显示；否则 transparent 隐藏
+     - document 树（WebKit 伪元素通道）：thumb 默认 transparent，
+       容器自身 :hover 时显示（见下方伪元素规则） */
+  --m3e-scrollbar-thumb-color: transparent;
   --m3e-scrollbar-track-color: transparent;
-  --m3e-scrollbar-width: thin; /* 组件库显式 scrollbar-width: var(--m3e-scrollbar-width, auto) 的组件（tabs/tree/nav-menu 等） */
+  --m3e-scrollbar-width: thin; /* 组件库 tabs/tree/nav-menu 等的 thin 档 */
   scrollbar-color: var(--m3e-scrollbar-thumb-color) var(--m3e-scrollbar-track-color);
   scrollbar-width: thin;
+}
+
+/* 组件库 shadow 内滚动条显示：JS（App.vue 全局监听 mouseover/composedPath）
+   找到滚动容器后在其 shadow host 上挂此类，变量经继承进入 shadow。
+   注意：.scroll-hover 只由 JS 精确添加，不得替换为全局 :hover */
+.scroll-hover {
+  --m3e-scrollbar-thumb-color: color-mix(in srgb, var(--outline) 30%, transparent);
+}
+
+/* ---- WebKit 伪元素通道（document 树） ---- */
+
+/* 滚动条两端按钮：一律隐藏（display:none + 尺寸归零双保险）。
+   独立成条，勿与其他选择器共用，防止解析失败拖垮按钮隐藏 */
+::-webkit-scrollbar-button {
+  display: none;
+  height: 0;
+  width: 0;
 }
 
 ::-webkit-scrollbar {
@@ -124,30 +114,28 @@ input[type="reset"] {
   cursor: pointer;
 }
 
-::-webkit-scrollbar-track {
+/* 悬停时加宽方便拖拽（仅 WebKit 通道生效时；textarea 不适用，见组件内自绘条）。
+   :hover 绑定在滚动容器自身（伪元素选择器不随祖先 hover 触发） */
+*:not(html):hover::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
   background: transparent;
   cursor: pointer;
 }
 
-/* 取消滚动条两端箭头按钮（WebKit 自定义模式下默认不渲染，显式声明防 UA 默认）；
-   滚动角落也透明，避免横竖滚动条交汇处出现灰色方块 */
-::-webkit-scrollbar-button {
-  display: none;
-}
-
-::-webkit-scrollbar-corner {
-  background: transparent;
-}
-
+/* thumb 默认透明（隐藏），容器自身 hover 时显示半透明（outline 30%） */
 ::-webkit-scrollbar-thumb {
-  background: var(--outline);
+  background: transparent;
   border-radius: 9999px;
   cursor: pointer;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: var(--outline);
-  cursor: pointer;
+*:not(html):hover::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--outline) 30%, transparent);
 }
 
 /* --- Helper Utilities --- */
@@ -158,106 +146,4 @@ button:focus-visible {
   outline: 2px solid var(--primary) !important;
   outline-offset: 2px !important;
 }
-
-.material-symbols-rounded {
-  font-size: 18px; /* 全局默认；MD3 组件按尺寸自行覆盖（如 FAB S/M/L 的图标字号） */
-}
-
-/* -fill 变体的完整声明（覆盖 font.css 的 24px 版本） */
-.material-symbols-rounded-fill {
-  font-family: 'Material Symbols Rounded';
-  font-weight: normal;
-  font-style: normal;
-  font-size: 18px;
-  line-height: 1;
-  letter-spacing: normal;
-  text-transform: none;
-  display: inline-block;
-  white-space: nowrap;
-  word-wrap: normal;
-  direction: ltr;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  font-feature-settings: 'liga';
-  font-variation-settings: 'FILL' 1;
-}
-
-/* Icon sizes inside buttons */
-button .material-symbols-rounded,
-button .material-symbols-rounded-fill {
-  font-size: 18px !important;
-}
-
-/* --- Code Color Style Themes --- */
-/* m3e-content-pane 的背景绘制在 shadow 内 .base 上（自带圆角与裁剪），
-   给 host 涂背景会以直角矩形盖住圆角 → 根规则的背景排除 content-pane；
-   color 是前景色，仍由 host 继承给 slot 内容 */
-.theme-github-dark:not(m3e-content-pane) { background-color: #0d1117 !important; }
-.theme-github-dark { color: #c9d1d9 !important; }
-.theme-github-dark .code-area-wrapper { background-color: #0d1117 !important; }
-.theme-github-dark .code-textarea { caret-color: #c9d1d9 !important; }
-.theme-github-dark .hljs-keyword { color: #ff7b72; font-weight: 600; }
-.theme-github-dark .hljs-string { color: #a5d6ff; }
-.theme-github-dark .hljs-comment { color: #8b949e; font-style: italic; }
-.theme-github-dark .hljs-number { color: #79c0ff; }
-.theme-github-dark .hljs-function, .theme-github-dark .hljs-title { color: #d2a8ff; font-weight: 600; }
-.theme-github-dark .hljs-built_in { color: #ffa657; }
-.theme-github-dark .hljs-params { color: #c9d1d9; }
-
-.theme-monokai:not(m3e-content-pane) { background-color: #272822 !important; }
-.theme-monokai { color: #f8f8f2 !important; }
-.theme-monokai .code-area-wrapper { background-color: #272822 !important; }
-.theme-monokai .code-textarea { caret-color: #f8f8f2 !important; }
-.theme-monokai .hljs-keyword { color: #f92672; font-weight: 600; }
-.theme-monokai .hljs-string { color: #e6db74; }
-.theme-monokai .hljs-comment { color: #75715e; font-style: italic; }
-.theme-monokai .hljs-number { color: #ae81ff; }
-.theme-monokai .hljs-function, .theme-monokai .hljs-title { color: #a6e22e; font-weight: 600; }
-.theme-monokai .hljs-built_in { color: #66d9ef; }
-.theme-monokai .hljs-params { color: #fd971f; }
-
-.theme-one-dark:not(m3e-content-pane) { background-color: #282c34 !important; }
-.theme-one-dark { color: #abb2bf !important; }
-.theme-one-dark .code-area-wrapper { background-color: #282c34 !important; }
-.theme-one-dark .code-textarea { caret-color: #abb2bf !important; }
-.theme-one-dark .hljs-keyword { color: #c678dd; font-weight: 600; }
-.theme-one-dark .hljs-string { color: #98c379; }
-.theme-one-dark .hljs-comment { color: #5c6370; font-style: italic; }
-.theme-one-dark .hljs-number { color: #d19a66; }
-.theme-one-dark .hljs-function, .theme-one-dark .hljs-title { color: #61afef; font-weight: 600; }
-.theme-one-dark .hljs-built_in { color: #e5c07b; }
-.theme-one-dark .hljs-params { color: #abb2bf; }
-
-.theme-vs-code:not(m3e-content-pane) { background-color: #1e1e1e !important; }
-.theme-vs-code { color: #d4d4d4 !important; }
-.theme-vs-code .code-area-wrapper { background-color: #1e1e1e !important; }
-.theme-vs-code .code-textarea { caret-color: #d4d4d4 !important; }
-.theme-vs-code .hljs-keyword { color: #569cd6; font-weight: 600; }
-.theme-vs-code .hljs-string { color: #ce9178; }
-.theme-vs-code .hljs-comment { color: #6a9955; font-style: italic; }
-.theme-vs-code .hljs-number { color: #b5cea8; }
-.theme-vs-code .hljs-function, .theme-vs-code .hljs-title { color: #dcdcaa; font-weight: 600; }
-.theme-vs-code .hljs-built_in { color: #4ec9b0; }
-.theme-vs-code .hljs-params { color: #9cdcfe; }
-
-.theme-github-light:not(m3e-content-pane) { background-color: #ffffff !important; }
-.theme-github-light { color: #24292e !important; }
-.theme-github-light .code-area-wrapper { background-color: #ffffff !important; }
-.theme-github-light .code-textarea { caret-color: #24292e !important; }
-.theme-github-light .hljs-keyword { color: #d73a49; font-weight: 600; }
-.theme-github-light .hljs-string { color: #032f62; }
-.theme-github-light .hljs-comment { color: #6a737d; font-style: italic; }
-.theme-github-light .hljs-number { color: #005cc5; }
-.theme-github-light .hljs-function, .theme-github-light .hljs-title { color: #6f42c1; font-weight: 600; }
-.theme-github-light .hljs-built_in { color: #e36209; }
-.theme-github-light .hljs-params { color: #24292e; }
-
-/* m3e-content-pane 的主题背景：背景绘制在 shadow 内 .base 上，host 的
-   background-color 不生效，须经 --m3e-content-pane-container-color 传入主题色 */
-m3e-content-pane.theme-github-dark { --m3e-content-pane-container-color: #0d1117; }
-m3e-content-pane.theme-monokai { --m3e-content-pane-container-color: #272822; }
-m3e-content-pane.theme-one-dark { --m3e-content-pane-container-color: #282c34; }
-m3e-content-pane.theme-vs-code { --m3e-content-pane-container-color: #1e1e1e; }
-m3e-content-pane.theme-github-light { --m3e-content-pane-container-color: #ffffff; }
 

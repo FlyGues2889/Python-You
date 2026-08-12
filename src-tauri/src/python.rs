@@ -324,7 +324,21 @@ pub fn python_repl_start(app: AppHandle, state: State<PythonState>, cwd: Option<
     *state.current_session.lock().unwrap() = Some("repl".to_string());
 
     let mut cmd = Command::new(&py);
-    cmd.arg("-u").arg("-i");
+    // REPL 无 tty 且 stdin 为管道（python_repl_input 写入）：help() 无参会进入
+    // pydoc 交互并从 stdin 读取 → 管道无数据 → 子进程永久阻塞，REPL 卡死。
+    // 启动时用 -i -c 注入安全 help 包装（先执行初始化再进入交互）：
+    // help() 打印提示不读 stdin，help(obj) 惰性 import pydoc 打印文档。
+    const REPL_HELP_PATCH: &str = "import builtins
+def _py_help(obj=None):
+    if obj is None:
+        print('帮助：使用 help(对象) 查看对象的文档。')
+        return
+    import pydoc
+    # pydoc.plain 剥离 \\b 粗体/下划线格式（真实终端渲染成样式，
+    # 非终端通道会变成 iinntt 式重复字符乱码）
+    print(pydoc.plain(pydoc.render_doc(obj)))
+builtins.help = _py_help";
+    cmd.arg("-u").arg("-i").arg("-c").arg(REPL_HELP_PATCH);
     if let Some(dir) = &cwd {
         cmd.current_dir(dir);
     }

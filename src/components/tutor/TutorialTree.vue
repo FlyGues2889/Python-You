@@ -409,7 +409,7 @@ const filteredStages = computed(() => {
   font-size: 0.8125rem;
   font-weight: 700;
   color: var(--text-color);
-  white-space: nowrap !important;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
@@ -436,7 +436,7 @@ const filteredStages = computed(() => {
   font-size: 0.8125rem;
   font-weight: 600;
   color: var(--text-secondary);
-  white-space: nowrap !important;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
@@ -493,7 +493,7 @@ const filteredStages = computed(() => {
 }
 
 .topic-title-text {
-  white-space: nowrap !important;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;

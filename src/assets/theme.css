@@ -168,12 +168,19 @@
   --surface-container-high: var(--md-sys-color-surface-container-high);
   --surface-container-highest: var(--md-sys-color-surface-container-highest);
 
-  /* 文字大小等级（深浅主题共用） */
-  --text-size-xs: 0.75rem;
-  --text-size-sm: 0.9rem;
-  --text-size-s: 1rem;
-  --text-size-m: 1.2rem;
-  --text-size-l: 1.6rem;
+  /* 语义强调色（accent）：indigo/amber 走 MD3 色系，emerald 为固定品牌绿（亮色值） */
+  --accent-indigo-bg: var(--primary-container);
+  --accent-indigo-text: var(--on-primary-container);
+  --accent-indigo-border: var(--primary);
+  --accent-amber-bg: var(--tertiary-container);
+  --accent-amber-text: var(--on-tertiary-container);
+  --accent-amber-border: var(--tertiary);
+  --accent-emerald-bg: #e8f5e9;
+  --accent-emerald-text: #1b5e20;
+  --accent-emerald-border: #2e7d32;
+  --accent-rose-bg: var(--error-container);
+  --accent-rose-text: var(--on-error-container);
+  --accent-rose-border: var(--error);
 }
 
 /* ---------- 深色主题 ---------- */
@@ -336,4 +343,133 @@
   --surface-container: var(--md-sys-color-surface-container);
   --surface-container-high: var(--md-sys-color-surface-container-high);
   --surface-container-highest: var(--md-sys-color-surface-container-highest);
+
+  /* 语义强调色（accent）：emerald 品牌绿深色值 */
+  --accent-indigo-bg: var(--primary-container);
+  --accent-indigo-text: var(--on-primary-container);
+  --accent-indigo-border: var(--primary);
+  --accent-amber-bg: var(--tertiary-container);
+  --accent-amber-text: var(--on-tertiary-container);
+  --accent-amber-border: var(--tertiary);
+  --accent-emerald-bg: #1b5e20;
+  --accent-emerald-text: #e8f5e9;
+  --accent-emerald-border: #81c784;
+  --accent-rose-bg: var(--error-container);
+  --accent-rose-text: var(--on-error-container);
+  --accent-rose-border: var(--error);
 }
+
+/* =========================================================
+   代码高亮主题（5 套，供 CodeEditor/REPLConsole/TerminalPanel/
+   EditorPreview 通过 theme-<name> 类挂载）
+   m3e-content-pane 的背景绘制在 shadow 内 .base 上（自带圆角与裁剪），
+   给 host 涂背景会以直角矩形盖住圆角 → 根规则的背景排除 content-pane；
+   color 是前景色，仍由 host 继承给 slot 内容
+   ========================================================= */
+.theme-github-dark:not(m3e-content-pane) { background-color: #0d1117 !important; }
+.theme-github-dark { color: #c9d1d9 !important; }
+.theme-github-dark .code-area-wrapper { background-color: #0d1117 !important; }
+.theme-github-dark .code-textarea { caret-color: #c9d1d9 !important; }
+.theme-github-dark .hljs-keyword { color: #ff7b72; font-weight: 600; }
+.theme-github-dark .hljs-string { color: #a5d6ff; }
+.theme-github-dark .hljs-comment { color: #8b949e; font-style: italic; }
+.theme-github-dark .hljs-number { color: #79c0ff; }
+.theme-github-dark .hljs-function, .theme-github-dark .hljs-title { color: #d2a8ff; font-weight: 600; }
+.theme-github-dark .hljs-built_in { color: #ffa657; }
+.theme-github-dark .hljs-params { color: #c9d1d9; }
+
+.theme-monokai:not(m3e-content-pane) { background-color: #272822 !important; }
+.theme-monokai { color: #f8f8f2 !important; }
+.theme-monokai .code-area-wrapper { background-color: #272822 !important; }
+.theme-monokai .code-textarea { caret-color: #f8f8f2 !important; }
+.theme-monokai .hljs-keyword { color: #f92672; font-weight: 600; }
+.theme-monokai .hljs-string { color: #e6db74; }
+.theme-monokai .hljs-comment { color: #75715e; font-style: italic; }
+.theme-monokai .hljs-number { color: #ae81ff; }
+.theme-monokai .hljs-function, .theme-monokai .hljs-title { color: #a6e22e; font-weight: 600; }
+.theme-monokai .hljs-built_in { color: #66d9ef; }
+.theme-monokai .hljs-params { color: #fd971f; }
+
+.theme-one-dark:not(m3e-content-pane) { background-color: #282c34 !important; }
+.theme-one-dark { color: #abb2bf !important; }
+.theme-one-dark .code-area-wrapper { background-color: #282c34 !important; }
+.theme-one-dark .code-textarea { caret-color: #abb2bf !important; }
+.theme-one-dark .hljs-keyword { color: #c678dd; font-weight: 600; }
+.theme-one-dark .hljs-string { color: #98c379; }
+.theme-one-dark .hljs-comment { color: #5c6370; font-style: italic; }
+.theme-one-dark .hljs-number { color: #d19a66; }
+.theme-one-dark .hljs-function, .theme-one-dark .hljs-title { color: #61afef; font-weight: 600; }
+.theme-one-dark .hljs-built_in { color: #e5c07b; }
+.theme-one-dark .hljs-params { color: #abb2bf; }
+
+.theme-vs-code:not(m3e-content-pane) { background-color: #1e1e1e !important; }
+.theme-vs-code { color: #d4d4d4 !important; }
+.theme-vs-code .code-area-wrapper { background-color: #1e1e1e !important; }
+.theme-vs-code .code-textarea { caret-color: #d4d4d4 !important; }
+.theme-vs-code .hljs-keyword { color: #569cd6; font-weight: 600; }
+.theme-vs-code .hljs-string { color: #ce9178; }
+.theme-vs-code .hljs-comment { color: #6a9955; font-style: italic; }
+.theme-vs-code .hljs-number { color: #b5cea8; }
+.theme-vs-code .hljs-function, .theme-vs-code .hljs-title { color: #dcdcaa; font-weight: 600; }
+.theme-vs-code .hljs-built_in { color: #4ec9b0; }
+.theme-vs-code .hljs-params { color: #9cdcfe; }
+
+.theme-github-light:not(m3e-content-pane) { background-color: #ffffff !important; }
+.theme-github-light { color: #24292e !important; }
+.theme-github-light .code-area-wrapper { background-color: #ffffff !important; }
+.theme-github-light .code-textarea { caret-color: #24292e !important; }
+.theme-github-light .hljs-keyword { color: #d73a49; font-weight: 600; }
+.theme-github-light .hljs-string { color: #032f62; }
+.theme-github-light .hljs-comment { color: #6a737d; font-style: italic; }
+.theme-github-light .hljs-number { color: #005cc5; }
+.theme-github-light .hljs-function, .theme-github-light .hljs-title { color: #6f42c1; font-weight: 600; }
+.theme-github-light .hljs-built_in { color: #e36209; }
+.theme-github-light .hljs-params { color: #24292e; }
+
+.theme-one-light:not(m3e-content-pane) { background-color: #fafafa !important; }
+.theme-one-light { color: #383a42 !important; }
+.theme-one-light .code-area-wrapper { background-color: #fafafa !important; }
+.theme-one-light .code-textarea { caret-color: #383a42 !important; }
+.theme-one-light .hljs-keyword { color: #a626a4; font-weight: 600; }
+.theme-one-light .hljs-string { color: #50a14f; }
+.theme-one-light .hljs-comment { color: #a0a1a7; font-style: italic; }
+.theme-one-light .hljs-number { color: #986801; }
+.theme-one-light .hljs-function, .theme-one-light .hljs-title { color: #4078f2; font-weight: 600; }
+.theme-one-light .hljs-built_in { color: #c18401; }
+.theme-one-light .hljs-params { color: #383a42; }
+
+.theme-vs-code-light:not(m3e-content-pane) { background-color: #ffffff !important; }
+.theme-vs-code-light { color: #000000 !important; }
+.theme-vs-code-light .code-area-wrapper { background-color: #ffffff !important; }
+.theme-vs-code-light .code-textarea { caret-color: #000000 !important; }
+.theme-vs-code-light .hljs-keyword { color: #0000ff; font-weight: 600; }
+.theme-vs-code-light .hljs-string { color: #a31515; }
+.theme-vs-code-light .hljs-comment { color: #008000; font-style: italic; }
+.theme-vs-code-light .hljs-number { color: #098658; }
+.theme-vs-code-light .hljs-function, .theme-vs-code-light .hljs-title { color: #795e26; font-weight: 600; }
+.theme-vs-code-light .hljs-built_in { color: #267f99; }
+.theme-vs-code-light .hljs-params { color: #001080; }
+
+.theme-solarized-light:not(m3e-content-pane) { background-color: #fdf6e3 !important; }
+.theme-solarized-light { color: #657b83 !important; }
+.theme-solarized-light .code-area-wrapper { background-color: #fdf6e3 !important; }
+.theme-solarized-light .code-textarea { caret-color: #657b83 !important; }
+.theme-solarized-light .hljs-keyword { color: #859900; font-weight: 600; }
+.theme-solarized-light .hljs-string { color: #2aa198; }
+.theme-solarized-light .hljs-comment { color: #93a1a1; font-style: italic; }
+.theme-solarized-light .hljs-number { color: #d33682; }
+.theme-solarized-light .hljs-function, .theme-solarized-light .hljs-title { color: #268bd2; font-weight: 600; }
+.theme-solarized-light .hljs-built_in { color: #b58900; }
+.theme-solarized-light .hljs-params { color: #657b83; }
+
+/* m3e-content-pane 的主题背景：背景绘制在 shadow 内 .base 上，host 的
+   background-color 不生效，须经 --m3e-content-pane-container-color 传入主题色 */
+m3e-content-pane.theme-github-dark { --m3e-content-pane-container-color: #0d1117; }
+m3e-content-pane.theme-monokai { --m3e-content-pane-container-color: #272822; }
+m3e-content-pane.theme-one-dark { --m3e-content-pane-container-color: #282c34; }
+m3e-content-pane.theme-vs-code { --m3e-content-pane-container-color: #1e1e1e; }
+m3e-content-pane.theme-github-light { --m3e-content-pane-container-color: #ffffff; }
+m3e-content-pane.theme-one-light { --m3e-content-pane-container-color: #fafafa; }
+m3e-content-pane.theme-vs-code-light { --m3e-content-pane-container-color: #ffffff; }
+m3e-content-pane.theme-solarized-light { --m3e-content-pane-container-color: #fdf6e3; }
+

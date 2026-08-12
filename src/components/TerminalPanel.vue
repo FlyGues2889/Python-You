@@ -163,6 +163,9 @@ onUnmounted(() => {
 .terminal-logs-body.theme-one-dark { --m3e-content-pane-container-color: #282c34; color: #abb2bf; }
 .terminal-logs-body.theme-vs-code { --m3e-content-pane-container-color: #1e1e1e; color: #d4d4d4; }
 .terminal-logs-body.theme-github-light { --m3e-content-pane-container-color: #ffffff; color: #24292e; }
+.terminal-logs-body.theme-one-light { --m3e-content-pane-container-color: #fafafa; color: #383a42; }
+.terminal-logs-body.theme-vs-code-light { --m3e-content-pane-container-color: #ffffff; color: #000000; }
+.terminal-logs-body.theme-solarized-light { --m3e-content-pane-container-color: #fdf6e3; color: #657b83; }
 
 /* 所有后代均可选中：避免拖选经过 log-line 的空隙/容器时选区被 user-select:none 截断取消 */
 .terminal-logs-body *,

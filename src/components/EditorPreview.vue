@@ -5,6 +5,7 @@ import hljs from 'highlight.js';
 
 const props = defineProps<{
   config: AppConfig;
+  codeTheme?: string; // 已解析的代码主题（'system' 由上层映射为具体主题）
 }>();
 
 const sampleCode = `# Python You 实时编辑器配置预览
@@ -26,7 +27,7 @@ const highlightedSample = computed(() => {
 });
 
 const currentThemeClass = computed(() => {
-  const t = props.config.codeTheme || 'github-dark';
+  const t = props.codeTheme || props.config.codeTheme || 'github-dark';
   return `theme-${t}`;
 });
 </script>
@@ -93,12 +94,12 @@ const currentThemeClass = computed(() => {
   padding: 0;
   line-height: 1.5;
   white-space: pre;
-  background: transparent !important;
+  background: transparent;
 }
 
 .preview-code-pre code.hljs {
-  background: transparent !important;
-  padding: 0 !important;
-  font-family: var(--font-mono) !important;
+  background: transparent;
+  padding: 0;
+  font-family: var(--font-mono);
 }
 </style>

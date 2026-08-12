@@ -87,6 +87,25 @@ class PythonRunnerService {
       if (window.loadPyodide) {
         this.pyodide = await this.loadPyodideInstance();
         window.pyodideInstance = this.pyodide;
+
+        // Pyodide 无真实 stdin：builtins.input 默认调用浏览器原生 prompt() 弹窗。
+        // help() 无参会进入 pydoc 交互模式并读 stdin → 弹窗且输入无效。
+        // 用包装函数替换 builtins.help：help() 打印提示（不进入交互、不读 stdin），
+        // help(obj) 惰性 import pydoc 打印文档。初始化阶段不 import pydoc，
+        // 避免在 Pyodide 初始化链路中引入失败面。
+        this.pyodide.runPython(`
+import builtins
+def _py_help(obj=None):
+    if obj is None:
+        print('帮助：使用 help(对象) 查看对象的文档。')
+        return
+    import pydoc
+    # pydoc.plain 剥离 \b 粗体/下划线格式（真实终端渲染成样式，
+    # 非终端通道会变成 iinntt 式重复字符乱码）
+    print(pydoc.plain(pydoc.render_doc(obj)))
+builtins.help = _py_help
+`);
+
         this.isReady = true;
         this.isLoading = false;
 

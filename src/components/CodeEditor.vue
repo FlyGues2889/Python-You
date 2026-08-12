@@ -17,6 +17,7 @@ const props = defineProps<{
   activeTabId: string | null;
   config: AppConfig;
   workspaceFiles: FSItem[];
+  codeTheme?: string; // 已解析的代码主题（'system' 由 App.vue 映射为具体主题）
   initialCursors?: Record<string, { line: number; col: number }>;
 }>();
 
@@ -116,6 +117,97 @@ const matchedLineNumbers = computed(() => {
   return set;
 });
 
+/* ---- VS Code 风格自定义滚动条 ----
+   原生滚动条在 WebView2 中不可靠（::-webkit-scrollbar 伪元素路径失效、标准通道
+   无法控制透明度/自动隐藏），隐藏原生条后用 JS 驱动自绘条：thumb 位置/尺寸跟随
+   滚动；滚动中（is-visible，防抖 800ms）或悬停时显示，透明度 0.3，停止后淡出 */
+const vScrollbarRef = ref<HTMLElement | null>(null);
+const vScrollThumbRef = ref<HTMLElement | null>(null);
+const hScrollbarRef = ref<HTMLElement | null>(null);
+const hScrollThumbRef = ref<HTMLElement | null>(null);
+let scrollbarHideTimer: any = null;
+
+const updateScrollbarGeometry = () => {
+  const el = textareaRef.value;
+  if (!el) return;
+
+  // 垂直条：thumb 高度 = 视口比例，位置 = 滚动比例
+  const vTrack = vScrollbarRef.value;
+  const vThumb = vScrollThumbRef.value;
+  if (vTrack && vThumb) {
+    const canV = el.scrollHeight > el.clientHeight;
+    vTrack.style.visibility = canV ? 'visible' : 'hidden';
+    if (canV) {
+      const trackH = vTrack.clientHeight;
+      const thumbH = Math.max(32, (el.clientHeight / el.scrollHeight) * trackH);
+      const maxScroll = el.scrollHeight - el.clientHeight;
+      vThumb.style.height = `${thumbH}px`;
+      vThumb.style.top = `${(el.scrollTop / maxScroll) * (trackH - thumbH)}px`;
+    }
+  }
+
+  // 水平条
+  const hTrack = hScrollbarRef.value;
+  const hThumb = hScrollThumbRef.value;
+  if (hTrack && hThumb) {
+    const canH = el.scrollWidth > el.clientWidth;
+    hTrack.style.visibility = canH ? 'visible' : 'hidden';
+    if (canH) {
+      const trackW = hTrack.clientWidth;
+      const thumbW = Math.max(32, (el.clientWidth / el.scrollWidth) * trackW);
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      hThumb.style.width = `${thumbW}px`;
+      hThumb.style.left = `${(el.scrollLeft / maxScroll) * (trackW - thumbW)}px`;
+    }
+  }
+};
+
+// 滚动期间显示滚动条（键盘方向键滚动同样触发 scroll 事件），停止后淡出
+const showScrollbars = () => {
+  vScrollbarRef.value?.classList.add('is-visible');
+  hScrollbarRef.value?.classList.add('is-visible');
+  clearTimeout(scrollbarHideTimer);
+  scrollbarHideTimer = setTimeout(() => {
+    vScrollbarRef.value?.classList.remove('is-visible');
+    hScrollbarRef.value?.classList.remove('is-visible');
+  }, 800);
+};
+
+// 点击轨道跳转 / 按住 thumb 拖动：指针位置映射为 scrollTop/scrollLeft
+const startScrollDrag = (e: PointerEvent, axis: 'vertical' | 'horizontal') => {
+  const el = textareaRef.value;
+  const track = axis === 'vertical' ? vScrollbarRef.value : hScrollbarRef.value;
+  const thumb = axis === 'vertical' ? vScrollThumbRef.value : hScrollThumbRef.value;
+  if (!el || !track || !thumb) return;
+  e.preventDefault();
+
+  const scrollToPointer = (ev: PointerEvent) => {
+    const rect = track!.getBoundingClientRect();
+    if (axis === 'vertical') {
+      const thumbH = thumb!.offsetHeight;
+      const maxScroll = el.scrollHeight - el.clientHeight;
+      const ratio = maxScroll > 0 ? (ev.clientY - rect.top - thumbH / 2) / (rect.height - thumbH) : 0;
+      el.scrollTop = Math.max(0, Math.min(1, ratio)) * maxScroll;
+    } else {
+      const thumbW = thumb!.offsetWidth;
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      const ratio = maxScroll > 0 ? (ev.clientX - rect.left - thumbW / 2) / (rect.width - thumbW) : 0;
+      el.scrollLeft = Math.max(0, Math.min(1, ratio)) * maxScroll;
+    }
+  };
+
+  scrollToPointer(e); // 点击即跳转
+  const move = (ev: PointerEvent) => scrollToPointer(ev);
+  const up = () => {
+    track!.classList.remove('is-dragging');
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+  };
+  track.classList.add('is-dragging');
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+};
+
 // Sync scrolling between textarea, line numbers, and highlight layer
 const handleScroll = () => {
   if (textareaRef.value) {
@@ -126,8 +218,16 @@ const handleScroll = () => {
       codeHighlightRef.value.scrollTop = textareaRef.value.scrollTop;
       codeHighlightRef.value.scrollLeft = textareaRef.value.scrollLeft;
     }
+    updateScrollbarGeometry();
+    showScrollbars();
   }
 };
+
+// 内容 / 字号 / 主题变化后重算滚动条几何
+watch(
+  () => [props.config?.fontSize, props.config?.tabSize, props.codeTheme || props.config?.codeTheme, activeTab.value?.content],
+  () => nextTick(updateScrollbarGeometry)
+);
 
 // Track cursor position
 const updateCursorPosition = () => {
@@ -862,6 +962,7 @@ watch(() => [props.tabs.length, props.activeTabId], () => {
 }, { deep: true });
 
 let tabsResizeObserver: ResizeObserver | null = null;
+let editorScrollbarObserver: ResizeObserver | null = null;
 onMounted(() => {
   updateTabsScrollState();
   const el = tabsBarRef.value;
@@ -869,10 +970,21 @@ onMounted(() => {
     tabsResizeObserver = new ResizeObserver(updateTabsScrollState);
     tabsResizeObserver.observe(el);
   }
+  nextTick(() => {
+    updateScrollbarGeometry();
+    if (textareaRef.value && !editorScrollbarObserver) {
+      // 窗口 / 面板尺寸变化（split-pane 拖拽等）时重算滚动条
+      editorScrollbarObserver = new ResizeObserver(updateScrollbarGeometry);
+      editorScrollbarObserver.observe(textareaRef.value);
+    }
+  });
 });
 onBeforeUnmount(() => {
   tabsResizeObserver?.disconnect();
   tabsResizeObserver = null;
+  editorScrollbarObserver?.disconnect();
+  editorScrollbarObserver = null;
+  clearTimeout(scrollbarHideTimer);
 });
 
 </script>
@@ -956,10 +1068,10 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- Code Textarea & Line Numbers Area -->
-      <div class="editor-workspace-body" :class="`theme-${config.codeTheme || 'github-dark'}`"
+      <div class="editor-workspace-body" :class="`theme-${codeTheme || config.codeTheme || 'github-dark'}`"
         @contextmenu.prevent="e => emit('contextmenu-editor', e)">
         <!-- Line Numbers Column（主题类同时挂在自身：背景/文字直接跟随代码主题，不依赖父级继承） -->
-        <div ref="lineNumbersRef" class="line-numbers-column" :class="`theme-${config.codeTheme || 'github-dark'}`"
+        <div ref="lineNumbersRef" class="line-numbers-column" :class="`theme-${codeTheme || config.codeTheme || 'github-dark'}`"
           :style="{ fontSize: `${config.fontSize || 15}px`, width: lineNumberColumnWidth }">
           <div v-for="n in linesCount" :key="n" class="line-num" :class="{
             'active-line-num': n === cursorLine,
@@ -975,7 +1087,7 @@ onBeforeUnmount(() => {
           <pre ref="codeHighlightRef" class="code-highlight-overlay" aria-hidden="true"
             :style="{ fontSize: `${config.fontSize || 15}px`, tabSize: config.tabSize || 4 }"><code class="hljs"
           v-html="highlightedCode"></code></pre>
-          <textarea ref="textareaRef" :value="activeTab.content" class="code-textarea"
+          <textarea ref="textareaRef" :value="activeTab.content" wrap="off" class="code-textarea"
             :style="{ fontSize: `${config.fontSize || 15}px`, tabSize: config.tabSize || 4 }" spellcheck="false"
             autocomplete="off" autocorrect="off" autocapitalize="off" @input="handleInput" @keydown="handleKeyDown"
             @scroll="handleScroll" @wheel="handleWheelZoom" @click="updateCursorPosition" @keyup="updateCursorPosition"
@@ -998,6 +1110,16 @@ onBeforeUnmount(() => {
               <span class="footer-sep">·</span>
               <kbd>Ctrl+Space</kbd><span>{{ t('completionInvoke') }}</span>
             </div>
+          </div>
+
+          <!-- VS Code 风格自定义滚动条（原生滚动条隐藏后由 JS 驱动位置与尺寸） -->
+          <div ref="vScrollbarRef" class="custom-scrollbar vertical"
+            @pointerdown="startScrollDrag($event, 'vertical')">
+            <div ref="vScrollThumbRef" class="custom-scrollbar-thumb"></div>
+          </div>
+          <div ref="hScrollbarRef" class="custom-scrollbar horizontal"
+            @pointerdown="startScrollDrag($event, 'horizontal')">
+            <div ref="hScrollThumbRef" class="custom-scrollbar-thumb"></div>
           </div>
         </div>
 
@@ -1177,6 +1299,9 @@ kbd {
 .line-numbers-column.theme-one-dark { background-color: #282c34; color: #abb2bf; }
 .line-numbers-column.theme-vs-code { background-color: #1e1e1e; color: #d4d4d4; }
 .line-numbers-column.theme-github-light { background-color: #ffffff; color: #24292e; }
+.line-numbers-column.theme-one-light { background-color: #fafafa; color: #383a42; }
+.line-numbers-column.theme-vs-code-light { background-color: #ffffff; color: #000000; }
+.line-numbers-column.theme-solarized-light { background-color: #fdf6e3; color: #657b83; }
 
 .line-num {
   height: 1.5em;
@@ -1260,29 +1385,31 @@ kbd {
   font-family: var(--font-mono);
   line-height: 1.5;
   tab-size: 4;
-  white-space: pre !important;
-  word-break: normal !important;
-  word-wrap: normal !important;
-  overflow-wrap: normal !important;
-  overflow: hidden !important;
+  white-space: pre;
+  word-break: normal;
+  word-wrap: normal;
+  overflow-wrap: normal;
+  overflow: hidden;
   pointer-events: none;
-  background: transparent !important;
+  background: transparent;
   box-sizing: border-box;
 }
 
+/* 覆盖 highlight.js 样式：选择器特异性 (0,1,2) 已高于 hljs 的 .hljs (0,1,0)，
+   无需 !important（hljs 主题样式表自身不使用 !important） */
 .code-highlight-overlay code.hljs {
-  padding: 0 !important;
-  padding-right: 120px !important;
-  background: transparent !important;
-  font-family: var(--font-mono) !important;
-  font-size: inherit !important;
-  line-height: inherit !important;
-  white-space: pre !important;
-  word-break: normal !important;
-  word-wrap: normal !important;
-  overflow-wrap: normal !important;
-  display: inline-block !important;
-  width: max-content !important;
+  padding: 0;
+  padding-right: 120px;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: inherit;
+  line-height: inherit;
+  white-space: pre;
+  word-break: normal;
+  word-wrap: normal;
+  overflow-wrap: normal;
+  display: inline-block;
+  width: max-content;
   min-width: calc(100% + 120px);
 }
 
@@ -1302,19 +1429,87 @@ kbd {
   caret-color: var(--text-color);
   font-family: var(--font-mono);
   line-height: 1.5;
-  white-space: pre !important;
-  word-break: normal !important;
-  word-wrap: normal !important;
-  overflow-wrap: normal !important;
-  overflow: auto !important;
+  white-space: pre;
+  word-break: normal;
+  word-wrap: normal;
+  overflow-wrap: normal;
+  overflow: auto;
   tab-size: 4;
   box-sizing: border-box;
   z-index: 2;
+  /* 隐藏原生滚动条（自绘条接管）：标准通道 + webkit 伪元素双保险，
+     WebView2 中两者至少一个生效，确保原生条不显示 */
+  scrollbar-width: none;
+}
+
+.code-textarea::-webkit-scrollbar {
+  display: none;
 }
 
 .code-textarea::selection {
-  background-color: #f59e0b !important;
-  color: #000000 !important;
+  background-color: #f59e0b;
+  color: #000000;
+}
+
+/* ---- VS Code 风格自定义滚动条 ---- */
+/* 默认透明（鼠标不在区域内且未滚动时隐藏）；滚动中（is-visible，JS 防抖）或
+   悬停时显示；thumb 背景 color-mix 30% = 显示态视觉透明度 0.3，hover 提亮 */
+.custom-scrollbar {
+  position: absolute;
+  z-index: 5;
+  border-radius: 9999px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+/* 默认 4px 细条；hover / 拖拽时加宽到 12px 方便抓取（垂直条右缘不动向左扩，
+   水平条底缘不动向上扩，不遮文字：textarea 底部 padding 12px） */
+.custom-scrollbar.vertical {
+  right: 0;
+  top: 2px;
+  bottom: 2px;
+  width: 4px;
+  transition: opacity 0.2s ease, width 0.15s ease;
+}
+
+.custom-scrollbar.vertical:hover,
+.custom-scrollbar.vertical.is-dragging {
+  width: 12px;
+}
+
+.custom-scrollbar.horizontal {
+  left: 2px;
+  right: 2px;
+  bottom: 0;
+  height: 4px;
+  transition: opacity 0.2s ease, height 0.15s ease;
+}
+
+.custom-scrollbar.horizontal:hover,
+.custom-scrollbar.horizontal.is-dragging {
+  height: 12px;
+}
+
+.custom-scrollbar-thumb {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--outline) 30%, transparent);
+  transition: background-color 0.2s ease;
+}
+
+/* 显示状态：滚动中 / 拖拽中 / 悬停 */
+.custom-scrollbar.is-visible,
+.custom-scrollbar.is-dragging,
+.code-area-wrapper:hover .custom-scrollbar {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.code-area-wrapper:hover .custom-scrollbar-thumb {
+  background: color-mix(in srgb, var(--outline) 60%, transparent);
 }
 
 /* Code Completion Popup */

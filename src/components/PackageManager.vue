@@ -168,83 +168,58 @@ const handleUninstall = (pkgName: string) => {
       </div>
     </div>
 
-    <!-- Package List View with Categorized Sections -->
+    <!-- Package List View with Categorized Sections（与设置界面一致的卡片分组） -->
     <div class="pkg-list-container">
       <!-- 1. Installed Packages Category -->
-      <div class="pkg-category-section">
-        <div class="list-section-title">
-          <span>{{ t('installedSectionTitle') }}</span>
+      <m3e-card variant="outlined">
+        <div slot="header" class="pkg-card-header">
+          <h4 class="pkg-card-title">{{ t('installedSectionTitle') }}</h4>
           <span class="count-tag">{{ installedPackages.length }} 个</span>
         </div>
 
-        <div v-if="installedPackages.length > 0" class="pkg-list">
-          <div v-for="pkg in installedPackages" :key="pkg.name" class="pkg-list-item is-installed">
-            <div class="item-left">
-              <div class="pkg-icon-wrapper">
-                <span class="material-symbols-rounded pkg-icon">extension</span>
-              </div>
-              <div class="pkg-main-info">
-                <div class="title-row">
-                  <h3 class="pkg-title">{{ pkg.name }}</h3>
-                  <span class="pkg-status-tag installed">
-                    {{ t('installedTag') }}
-                  </span>
-                </div>
-                <p class="pkg-desc">{{ pkg.descZh }}</p>
-              </div>
-            </div>
-
-            <div class="item-right">
-              <m3e-button variant="outlined" size="extra-small"
-                @click="handleUninstall(pkg.name)">
+        <m3e-list v-if="installedPackages.length > 0" slot="content" class="pkg-m3e-list">
+          <m3e-list-item v-for="pkg in installedPackages" :key="pkg.name" selected>
+            <span slot="leading" class="material-symbols-rounded">extension</span>
+            {{ pkg.name }}
+            <span slot="supporting-text">{{ pkg.descZh }}</span>
+            <div slot="trailing" class="item-actions">
+              <m3e-button variant="outlined" size="extra-small" @click="handleUninstall(pkg.name)">
                 <span slot="icon" class="material-symbols-rounded">delete</span>
                 {{ t('uninstall') }}
               </m3e-button>
             </div>
-          </div>
-        </div>
-        <div v-else class="empty-category-hint">
+          </m3e-list-item>
+        </m3e-list>
+        <div v-else slot="content" class="empty-category-hint">
           <span>暂无已安装的扩展包</span>
         </div>
-      </div>
+      </m3e-card>
 
       <!-- 2. Available Packages Category -->
-      <div class="pkg-category-section">
-        <div class="list-section-title">
-          <span>{{ t('availableSectionTitle') }}</span>
+      <m3e-card variant="outlined">
+        <div slot="header" class="pkg-card-header">
+          <h4 class="pkg-card-title">{{ t('availableSectionTitle') }}</h4>
           <span class="count-tag">{{ availablePackages.length }} 个</span>
         </div>
 
-        <div v-if="availablePackages.length > 0" class="pkg-list">
-          <div v-for="pkg in availablePackages" :key="pkg.name" class="pkg-list-item">
-            <div class="item-left">
-              <div class="pkg-icon-wrapper">
-                <span class="material-symbols-rounded pkg-icon">extension</span>
-              </div>
-              <div class="pkg-main-info">
-                <div class="title-row">
-                  <h3 class="pkg-title">{{ pkg.name }}</h3>
-                  <span class="pkg-status-tag available">
-                    {{ t('availableTag') }}
-                  </span>
-                </div>
-                <p class="pkg-desc">{{ pkg.descZh }}</p>
-              </div>
-            </div>
-
-            <div class="item-right">
-              <m3e-button variant="filled" size="extra-small" :disabled="installingSet.has(pkg.name.toLowerCase())"
-                @click="handleInstall(pkg.name)">
+        <m3e-list v-if="availablePackages.length > 0" slot="content" class="pkg-m3e-list">
+          <m3e-list-item v-for="pkg in availablePackages" :key="pkg.name">
+            <span slot="leading" class="material-symbols-rounded">extension</span>
+            {{ pkg.name }}
+            <span slot="supporting-text">{{ pkg.descZh }}</span>
+            <div slot="trailing" class="item-actions">
+              <m3e-button variant="filled" size="extra-small"
+                :disabled="installingSet.has(pkg.name.toLowerCase())" @click="handleInstall(pkg.name)">
                 <span slot="icon" class="material-symbols-rounded">download</span>
                 {{ installingSet.has(pkg.name.toLowerCase()) ? t('installing') : t('loadPkg') }}
               </m3e-button>
             </div>
-          </div>
-        </div>
-        <div v-else class="empty-category-hint">
+          </m3e-list-item>
+        </m3e-list>
+        <div v-else slot="content" class="empty-category-hint">
           <span>暂无可载入的拓展包</span>
         </div>
-      </div>
+      </m3e-card>
     </div>
   </m3e-content-pane>
 </template>
@@ -260,8 +235,13 @@ const handleUninstall = (pkgName: string) => {
   --m3e-content-pane-container-padding: 2rem;
 }
 
+/* 与设置界面一致：内容列居中（72rem 最大宽 + 左右自动外边距） */
 .install-section {
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
+  max-width: 72rem;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
 }
 
 .install-bar-card {
@@ -279,17 +259,34 @@ const handleUninstall = (pkgName: string) => {
 .pkg-list-container {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.5rem;
+  max-width: 72rem;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
 }
 
-.list-section-title {
+/* 分组卡片：与设置界面同款圆角与内边距 */
+.pkg-list-container m3e-card {
+  --m3e-card-shape: 20px;
+  --m3e-card-padding: 1rem;
+}
+
+.pkg-card-header {
+  h4 {
+    line-height: 2.4rem;
+  }
+
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 0.875rem;
+}
+
+.pkg-card-title {
+  font-size: 1rem;
   font-weight: 700;
-  color: var(--text-secondary);
-  padding: 0 4px;
+  color: var(--secondary);
+  margin: 0;
 }
 
 .count-tag {
@@ -298,114 +295,22 @@ const handleUninstall = (pkgName: string) => {
   color: var(--text-tertiary);
 }
 
-.pkg-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+/* m3e-list 列表：行间距与卡片圆角统一由组件库绘制；已安装组 selected 高亮 */
+.pkg-m3e-list {
+  --m3e-list-item-container-shape: 24px;
 }
 
-.pkg-list-item {
-  background-color: var(--surface-color);
-  border: 1px solid var(--border-color-muted);
-  border-radius: 24px;
-  padding: 16px 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  transition: all 0.15s ease;
+.empty-category-hint {
+  padding: 1.5rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--text-tertiary);
 }
 
-.pkg-list-item:hover {
-  border-color: var(--primary);
-  box-shadow: 0 4px 12px rgba(var(--shadow-rgb), 0.06);
-}
-
-.pkg-list-item.is-installed {
-  background-color: var(--secondary-container);
-
-  .pkg-icon-wrapper {
-    background-color: var(--primary);
-
-    .pkg-icon {
-      color: var(--primary-container)
-    }
-  }
-}
-
-.item-left {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex: 1;
-  min-width: 0;
-}
-
-.pkg-icon-wrapper {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background-color: var(--secondary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-
-  .pkg-icon {
-    font-size: 22px;
-    color: var(--secondary-container);
-  }
-}
-
-
-.pkg-main-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.title-row {
+.item-actions {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.pkg-title {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--text-color);
-  margin: 0;
-  line-height: 1.2;
-}
-
-.pkg-status-tag {
-  display: inline-block;
-  font-size: 0.6875rem;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-weight: 600;
-}
-
-.pkg-status-tag.installed {
-  background-color: var(--primary);
-  color: var(--primary-container);
-
-}
-
-.pkg-status-tag.available {
-  background-color: var(--tertiary-container);
-  color: var(--tertiary);
-}
-
-.pkg-desc {
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  line-height: 1.4;
-  margin: 0;
-}
-
-.item-right {
   flex-shrink: 0;
 }
 

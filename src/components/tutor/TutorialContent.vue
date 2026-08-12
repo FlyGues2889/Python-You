@@ -549,14 +549,14 @@ pre,
 pre.code-block,
 .code-block {
   margin: 0;
-  padding: 0 !important;
+  padding: 0;
 }
 
 .code-block code,
 pre code {
   margin: 0;
   padding: 16px;
-  font-family: var(--font-mono) !important;
+  font-family: var(--font-mono);
   font-size: 0.875rem;
   line-height: 1.6;
   color: #d4d4d4;

@@ -47,8 +47,8 @@ defineProps<{
 }
 
 .header-title-text {
-  font-size: 1.5rem !important;
-  font-weight: 700 !important;
+  font-size: 1.5rem;
+  font-weight: 700;
   color: var(--text-color);
   line-height: 1.3;
   margin: 0;

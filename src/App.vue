@@ -11,7 +11,7 @@ import REPLConsole from './components/REPLConsole.vue';
 import PackageManager from './components/PackageManager.vue';
 import TutorialView from './components/tutor/TutorialView.vue';
 import SettingsView from './components/SettingsView.vue';
-import MD3LoadingModal from './components/MD3Components/MD3LoadingModal.vue';
+import MD3LoadingModal from './components/selfComponents/loadingModal.vue';
 import { minimizeWindow, maximizeWindow, closeWindow } from './utils/tauriWindow';
 import ContextMenu from './components/ContextMenu.vue';
 import { safeStorage } from './utils/storage';
@@ -22,6 +22,7 @@ import { revealItemInDir, openPath } from '@tauri-apps/plugin-opener';
 
 import { syncWorkspacePackages } from './utils/packageUtils';
 import { uid } from './utils/id';
+import { resolveCodeTheme } from './utils/theme';
 import { setQuizQuestionResult, syncQuizCompletion, getQuizQuestionResult } from './components/tutor/quizData';
 
 const { t, tf } = useI18n();
@@ -422,6 +423,9 @@ const config = ref<AppConfig>({
   autoPairQuotes: true,
   demoMode: false
 });
+
+// 已解析的代码主题：'system'（跟随系统主题）按外观主题映射为实际浅/深色主题
+const resolvedCodeTheme = computed(() => resolveCodeTheme(config.value.codeTheme, config.value.themeMode));
 
 // Toast message notifier
 const toastMessage = ref<string | null>(null);
@@ -1215,11 +1219,48 @@ const handleTutorialBtnClick = () => {
   handleReturnToTutorial(src.id);
 };
 
+/* 全局滚动条 hover 显示（VS Code 风格）：
+   mouseover 时沿 composedPath（含 shadow DOM 内元素）找第一个可滚动容器，
+   给其 shadow host（或自身）挂 .scroll-hover 类 → 组件库 shadow 内滚动条
+   显示半透明（index.css .scroll-hover 变量）；document 树滚动条走
+   WebKit 伪元素 :hover，无需此类。
+   不能用全局 :hover 规则代替（body 恒 hover 会污染变量继承导致常显）。 */
+let scrollHoverEl: HTMLElement | null = null;
+const findScrollContainer = (path: EventTarget[]): HTMLElement | null => {
+  for (const node of path) {
+    if (node instanceof HTMLElement) {
+      const s = getComputedStyle(node);
+      const scrollable = (s.overflowY === 'auto' || s.overflowY === 'scroll') &&
+        (node.scrollHeight > node.clientHeight + 1 || node.scrollWidth > node.clientWidth + 1);
+      if (scrollable) {
+        // shadow 内元素：类挂到 host（document 树 CSS 匹配不到 shadow 内元素，
+        // 变量经 host 继承进 shadow）
+        const root = node.getRootNode();
+        return (root instanceof ShadowRoot && root.host instanceof HTMLElement) ? root.host : node;
+      }
+    }
+  }
+  return null;
+};
+const handleScrollHover = (e: Event) => {
+  const container = findScrollContainer(e.composedPath());
+  if (container === scrollHoverEl) return;
+  scrollHoverEl?.classList.remove('scroll-hover');
+  scrollHoverEl = container;
+  container?.classList.add('scroll-hover');
+};
+const clearScrollHover = () => {
+  scrollHoverEl?.classList.remove('scroll-hover');
+  scrollHoverEl = null;
+};
+
 onMounted(() => {
   document.addEventListener('contextmenu', (e) => {
     e.preventDefault();
   });
   document.addEventListener('mousedown', handleDocumentMousedown, true);
+  document.addEventListener('mouseover', handleScrollHover);
+  document.addEventListener('mouseleave', clearScrollHover);
 });
 </script>
 
@@ -1459,7 +1500,7 @@ onMounted(() => {
               orientation="vertical" @input="onInnerSplitInput">
               <m3e-card slot="start">
                 <CodeEditor ref="codeEditorRef" :tabs="openTabs" :active-tab-id="activeEditorTabId" :config="config"
-                  :workspace-files="workspaceItems" :initial-cursors="sessionCursors"
+                  :workspace-files="workspaceItems" :code-theme="resolvedCodeTheme" :initial-cursors="sessionCursors"
                   @cursor-change="handleCursorChange" @select-tab="handleSelectTab" @close-tab="handleCloseTab"
                   @content-change="handleContentChange" @save-tab="handleSaveTab"
                   @add-console-output="out => consoleOutputs.push(out)"
@@ -1467,7 +1508,7 @@ onMounted(() => {
               </m3e-card>
 
               <m3e-card slot="end" class="terminal-card">
-                <TerminalPanel :outputs="consoleOutputs" :code-theme="config.codeTheme" @clear="consoleOutputs = []"
+                <TerminalPanel :outputs="consoleOutputs" :code-theme="resolvedCodeTheme" @clear="consoleOutputs = []"
                   @contextmenu-terminal="e => openContextMenu(e, 'terminal', null, 'run')" />
               </m3e-card>
             </m3e-split-pane>
@@ -1485,6 +1526,7 @@ onMounted(() => {
 
           <!-- Interactive Python REPL Console View -->
           <REPLConsole v-else-if="activeNavTab === 'console'" :config="config" :logs="replLogs"
+            :code-theme="resolvedCodeTheme"
             @add-log="out => replLogs.push(out)" @clear-logs="replLogs = []"
             @add-console-output="out => consoleOutputs.push(out)"
             @contextmenu-terminal="e => openContextMenu(e, 'terminal', null, 'repl')" />

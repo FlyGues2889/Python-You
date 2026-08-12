@@ -2,7 +2,7 @@
 import { ref, watch } from 'vue';
 import { FSItem } from '../types';
 import { useI18n } from '../utils/i18n';
-import MD3IconButton from './MD3Components/MD3IconButton.vue';
+import MD3IconButton from './selfComponents/iconButton.vue';
 
 const props = defineProps<{
   item: FSItem;

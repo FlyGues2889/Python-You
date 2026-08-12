@@ -8,6 +8,7 @@ import { useI18n } from '../utils/i18n';
 const props = defineProps<{
   config?: AppConfig;
   logs?: ConsoleOutput[];
+  codeTheme?: string; // 已解析的代码主题（'system' 由 App.vue 映射为具体主题）
 }>();
 
 const emit = defineEmits<{
@@ -142,7 +143,7 @@ const clearLogs = () => {
            主题类只挂在显示区上：全局 .theme-* 规则（index.css）只会涂这一层，
            卡片框与外边距区域保持 --surface-color；滚动监听挂在 shadow 内滚动容器上 -->
       <m3e-content-pane ref="consoleContainerRef" class="repl-body"
-        :class="`theme-${config?.codeTheme || 'github-dark'}`" @click="onBodyClick">
+        :class="`theme-${codeTheme || config?.codeTheme || 'github-dark'}`" @click="onBodyClick">
         <div v-if="logs.length === 0" class="repl-welcome">
           Python 3.11.0 (main, Pyodide WASM Runtime)
           Type "help", "copyright", "credits" or "license" for more information.
@@ -186,6 +187,9 @@ const clearLogs = () => {
 .repl-body.theme-one-dark { --m3e-content-pane-container-color: #282c34; color: #abb2bf; }
 .repl-body.theme-vs-code { --m3e-content-pane-container-color: #1e1e1e; color: #d4d4d4; }
 .repl-body.theme-github-light { --m3e-content-pane-container-color: #ffffff; color: #24292e; }
+.repl-body.theme-one-light { --m3e-content-pane-container-color: #fafafa; color: #383a42; }
+.repl-body.theme-vs-code-light { --m3e-content-pane-container-color: #ffffff; color: #000000; }
+.repl-body.theme-solarized-light { --m3e-content-pane-container-color: #fdf6e3; color: #657b83; }
 
 .repl-header {
   height: 42px;

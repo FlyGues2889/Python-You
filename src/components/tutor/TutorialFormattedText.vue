@@ -64,7 +64,7 @@ const parsedSegments = computed<TextSegment[]>(() => {
 }
 
 .inline-code-badge {
-  font-family: var(--font-mono, 'Fira Code', 'Consolas', monospace) !important;
+  font-family: var(--font-mono, 'Fira Code', 'Consolas', monospace);
   font-size: 0.88em;
   font-weight: 600;
   color: var(--on-secondary-container);

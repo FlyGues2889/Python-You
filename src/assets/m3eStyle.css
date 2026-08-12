@@ -21,6 +21,12 @@ m3e-menu-item {
   --m3e-menu-item-icon-label-space: 0.5rem;
 }
 
+/* 列表项（m3e-list-item）的 leading 图标插槽：统一图标字号（--text-size-sm）；
+   slot 内容位于 document 树，全局规则可直接命中 */
+m3e-list-item [slot="leading"] {
+  font-size: var(--text-size-l);
+}
+
 /* 主布局 split-pane 拖拽手柄：全局唯一布局组件 */
 m3e-split-pane {
   --m3e-split-pane-drag-handle-container-width: 8px;

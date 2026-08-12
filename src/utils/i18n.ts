@@ -1,18 +1,11 @@
 const translations = {
   zh: {
     // Navigation Sidebar
-    navEditor: '编辑',
     navTutorial: '教程',
     navConsole: '交互终端',
     navPackages: '扩展包',
     navSettings: '设置',
     explorer: '代码编辑',
-    tutorial: 'Python 教程',
-    console: '交互终端',
-    packages: '扩展包',
-    settings: '设置',
-    expandSidebar: '展开侧边栏',
-    collapseSidebar: '收起侧边栏',
 
     // Title bar controls & menus
     minimize: '最小化',
@@ -37,10 +30,7 @@ const translations = {
     settingsTitle: '偏好设置',
     settingsSubtitle: '自定义外观主题、语言与代码编辑器配置',
     generalSettings: '通用设置',
-    language: '界面语言',
-    languageSubtitle: '选择 IDE 的系统显示语言',
     themeMode: '外观主题',
-    themeSubtitle: '切换深色或浅色外观模式',
     themeModeSubtitle: '切换深色或浅色外观模式',
     themeSystem: '跟随系统',
     themeLight: '浅色',
@@ -49,6 +39,7 @@ const translations = {
     editorSettings: '编辑器配置',
     codeTheme: '代码颜色风格',
     codeThemeSubtitle: '选择高亮配色主题方案',
+    followSystemTheme: '跟随系统主题',
     fontSize: '代码字体大小',
     fontSizeSubtitle: '调整代码编辑器中的文字大小',
     enableWheelZoom: 'Ctrl + 滚轮缩放字体',
@@ -69,19 +60,11 @@ const translations = {
     // Code Editor & Tabs
     welcomeTitle: '工作区为空',
     welcomeSubtitle: '请 选择一个 Python 文件 或 点击“新建文件” 开始编码',
-    shortcutSave: '保存文件',
-    shortcutRun: '运行脚本',
     runCode: '执行',
     stopCode: '停止',
-    noOpenTabs: '暂无打开的文件',
-    terminalOutput: '运行终端输出',
     clearTerminal: '清空终端记录',
-    toggleTerminal: '展开/收起终端',
-    terminalPlaceholder: '点击“运行代码”按钮以在此处打印输出...',
     findPlaceholder: '查找内容...',
     replacePlaceholder: '替换为...',
-    findNext: '下一个',
-    findPrev: '上一个',
     replaceBtn: '替换',
     replaceAllBtn: '全部替换',
     noMatches: '无匹配',
@@ -90,9 +73,6 @@ const translations = {
     workspace: '工作区文件',
     newFileTooltip: '新建文件',
     newFolderTooltip: '新建文件夹',
-    importFilesTooltip: '打开文件',
-    collapseTreeTooltip: '折叠文件树',
-    expandTreeTooltip: '展开文件树',
     folderNamePlaceholder: '文件夹名称...',
     fileNamePlaceholder: '文件名.py',
     noMatchingFiles: '暂无匹配文件',
@@ -107,22 +87,15 @@ const translations = {
     replTitle: '交互式 REPL 终端',
     clearTerminalTooltip: '清空控制台记录',
     replPlaceholder: '输入 Python 语句',
-    execute: '执行',
 
     // Package Manager
     pkgTitle: 'Python 拓展包管理器 (Pyodide / PyPI)',
-    pkgSubtitle: '搜索并一键安装纯 Python 扩展包及标准 Pyodide 轮子包',
+    pkgSubtitle: '搜索并安装纯 Python 扩展包及标准 Pyodide 轮子包',
     pkgSearchPlaceholder: '输入 PyPI / Pyodide 包名称 (如: pillow)...',
-    installPkg: '一键安装',
+    installPkg: '安装',
     installing: '正在安装...',
-    installed: '已安装',
-    available: '可安装',
-    ready: '已准备就绪',
     loadPkg: '一键加载包',
-    installedTag: '已下载',
-    availableTag: '未下载',
     uninstall: '卸载',
-    uninstallPkg: '卸载包',
     installedSectionTitle: '已安装拓展包',
     availableSectionTitle: '可载入拓展包',
 
@@ -133,7 +106,6 @@ const translations = {
     unsavedChangesMsg: '文件 "{name}" 存在未保存的更改。是否在关闭前保存？',
     dontSave: '不保存',
     cancel: '取消',
-    confirm: '确认',
     toastFileSaved: '已保存文件 "{name}"',
     toastFileDeleted: '已删除 "{name}"',
     toastFileCreated: '成功新建文件 "{name}"',
@@ -142,8 +114,6 @@ const translations = {
     toastExported: '文件 "{name}" 已导出下载',
     toastImported: '已成功打开文件',
     returnToTutorial: '返回教程',
-    expandFileTree: '展开文件树',
-    collapseFileTree: '收起文件树',
 
     // Loading / Startup Status
     loadingStart: '正在启动 Python You…',
@@ -152,7 +122,6 @@ const translations = {
     loadingRestoringSession: '正在恢复上次会话…',
 
     // App Toasts & Messages
-    toastSelectTerminalText: '请先在终端中选中要复制的文本',
     toastSelectTutorialText: '请先在教程正文中选中要复制的文本',
     toastCopiedSelection: '已复制选中文本',
     toastCopiedToClipboard: '已复制到剪贴板',
@@ -173,10 +142,6 @@ const translations = {
     toastOutputMismatch: '输出与预期不符：预期「{expected}」，实际「{actual}」',
     correspondingTutorial: '对应教程',
     quizSuffix: '（测验）',
-    viewTutorialTitle: 'Python 教程',
-    viewConsoleTitle: '交互式终端',
-    viewPackagesTitle: '包管理器',
-    viewSettingsTitle: 'IDE 设置',
 
     // Code Editor
     kindKeyword: '关键字',
@@ -235,11 +200,6 @@ const translations = {
     helpSettingsText: '「设置」页面可调整外观主题、代码配色、字号、Tab 宽度等，所有修改即时生效并自动保存。',
 
     // Package Manager
-    pkgCount: '{count} 个',
-    pkgNoneInstalled: '暂无已安装的扩展包',
-    pkgNoneAvailable: '暂无可载入的拓展包',
-    pkgCustomDesc: '已安装扩展包 \'{name}\'',
-    pipUninstalled: '[Pip] 已卸载包: {name}',
 
     // Quiz / Tutorial UI
     backToTutorial: '返回教程',
@@ -271,8 +231,6 @@ const translations = {
 
     // Tutorial Article Content UI
     tocTitle: '目录',
-    expandToc: '展开目录',
-    collapseToc: '收起目录',
     readingTimeText: '{time} min read',
     keyTakeaways: '核心要点',
     markComplete: '标记为完成',
@@ -283,16 +241,10 @@ const translations = {
 
     // Tutorial Catalog (原 tutorialUI)
     tutorialSearchPlaceholder: '搜索课程或知识点...',
-    tutorialNoResults: '未找到与搜索内容匹配的教程章节',
     tutorialClickToRun: '点击在编辑器中直接运行',
-    tutorialRunInEditor: '载入编辑器并运行',
     tutorialCopyCode: '复制源码',
     tutorialCopied: '已复制到剪贴板',
     tutorialTipsTitle: '学习小贴士',
-    tutorialReturnToTutorial: '返回教程',
-    tutorialStageTag: '阶段',
-    tutorialSectionCodeTitle: '示例代码与校验',
-    tutorialNotesTitle: '说明：',
     tutorialCatalog: '教程目录',
     tutorialExpandCatalog: '展开教程大纲',
     tutorialCollapseCatalog: '收起教程大纲',
@@ -304,13 +256,11 @@ const translations = {
     tutorialNext: '下一页',
 
     // MD3 Component Defaults
-    badgeNoResult: '无结果',
-    selectPlaceholder: '请选择',
     openingFolder: '正在打开...',
 
     // Python Engine Status & Messages（面向用户的提示）
     engineLocal: 'Python {version} (本地进程)',
-    enginePyodideFallback: 'Pyodide (未检测到本机 Python)',
+    enginePyodideFallback: 'Pyodide (未检测到 Python)',
     runLocalPython: '▶ 使用本机 Python {version} 执行...',
     processExited: '[INFO] 进程已结束，退出码 {code}，耗时 {duration}ms',
     replSessionEnded: '[INFO] REPL 会话已结束',
