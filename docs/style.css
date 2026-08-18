@@ -535,7 +535,7 @@ button {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 10px 18px;
+  padding: 14px 18px 10px 18px;
   background-color: var(--surface-color);
   flex-shrink: 0;
   z-index: 10;
@@ -1297,4 +1297,20 @@ table.sec-table {
 }
 #tree m3e-tree-item[selected] {
   border: none;
+}
+
+/* Pyodide 下载状态（顶栏，主题按钮左侧） */
+.py-download-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.py-download-spinner {
+  --m3e-loading-indicator-size: 24px; /* 组件默认 38px，经变量缩放 */
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
 }

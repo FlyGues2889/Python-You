@@ -132,14 +132,20 @@ function clearOutput() { outputEl.innerHTML = ''; }
 let pyodide = null;
 const pyStatus = $('#pyStatus');
 const runBtn = $('#runBtn');
+// 顶栏下载状态（主题按钮左侧）：加载中显示 spinner + 状态文字
+const pyDownloadStatus = $('#pyDownloadStatus');
+const pyDownloadText = $('#pyDownloadText');
 
 async function loadPyodideRuntime() {
   if (pyodide) return;
   pyStatus.textContent = '正在加载 Pyodide（首次需联网下载，约 15MB）…';
   pyStatus.className = 'py-status loading';
   runBtn.disabled = true;
+  pyDownloadStatus.hidden = false;
+  pyDownloadText.textContent = '正在下载 Pyodide 引擎…';
   try {
     if (!window.loadPyodide) {
+      pyDownloadText.textContent = '正在下载 Pyodide 引擎…';
       await new Promise((resolve, reject) => {
         const s = document.createElement('script');
         s.src = PYODIDE_CDN + 'pyodide.js';
@@ -148,11 +154,14 @@ async function loadPyodideRuntime() {
         document.head.appendChild(s);
       });
     }
+    pyDownloadText.textContent = '正在初始化引擎…';
     pyodide = await window.loadPyodide({ indexURL: PYODIDE_CDN });
+    pyDownloadStatus.hidden = true;
     pyStatus.textContent = 'Pyodide 就绪（Python 3.11）';
     pyStatus.className = 'py-status ready';
     runBtn.disabled = false;
   } catch (e) {
+    pyDownloadStatus.hidden = true;
     pyStatus.textContent = '引擎加载失败：' + e.message;
     pyStatus.className = 'py-status error';
   }

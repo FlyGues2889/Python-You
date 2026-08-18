@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="vendor/material-symbols/rounded.css">
   <script src="vendor/m3e/all.bundle.js"></script>
   <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="./appIcon.ico">
 </head>
 
 <body>
@@ -23,6 +24,11 @@
       <span class="brand-name">Python You <em>教程</em></span>
     </div>
     <div class="topbar-actions">
+      <!-- Pyodide 下载状态（加载中显示，位于主题按钮左侧） -->
+      <span class="py-download-status" id="pyDownloadStatus" hidden>
+        <m3e-loading-indicator class="py-download-spinner"></m3e-loading-indicator>
+        <span id="pyDownloadText">正在下载 Pyodide 引擎…</span>
+      </span>
       <m3e-icon-button id="themeToggle" size="small" variant="standard" title="切换亮暗主题">
         <span class="material-symbols-rounded" id="themeIcon">dark_mode</span>
       </m3e-icon-button>
