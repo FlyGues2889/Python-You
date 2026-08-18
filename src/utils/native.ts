@@ -17,6 +17,15 @@ interface PythonInfo {
   available: boolean;
   version?: string | null;
   command?: string | null;
+  versions?: PythonVersion[];
+}
+
+// 本机 Python 解释器（python / python3 / py 启动器及 py -x.y 具体版本）
+export interface PythonVersion {
+  id: string; // 选择器 id，config.interpreter 存此值
+  version: string; // 如 "Python 3.13.14"
+  label: string; // 展示名
+  command: string[]; // 启动命令拆分，如 ["py", "-3.13"]
 }
 
 interface PyOutputEvent {
@@ -68,6 +77,9 @@ export const nativeApi = {
   // ---------- Python 子进程 ----------
   detectPython(): Promise<PythonInfo> {
     return invoke('python_detect');
+  },
+  selectPython(id: string): Promise<void> {
+    return invoke('python_select', { id });
   },
   runPython(code: string, cwd?: string | null): Promise<void> {
     return invoke('python_run', { code, cwd: cwd || null });

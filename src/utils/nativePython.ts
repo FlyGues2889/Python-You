@@ -1,7 +1,7 @@
 // 原生 Python 引擎适配层：与 PythonRunnerService 对外行为保持一致，
 // 通过 nativeApi 驱动本机 Python 子进程，输出统一转成 ConsoleOutput。
 import { ref } from 'vue';
-import { nativeApi } from './native';
+import { nativeApi, type PythonVersion } from './native';
 import { t, tf } from './i18n';
 import type { ConsoleOutput, FSItem } from '../types';
 import { uid } from './id';
@@ -31,9 +31,19 @@ class NativePythonRunner {
   private tempWorkspacePath: string | null = null;
 
   public statusLabel = ref(t('engineLabelDefault'));
+  // 本机可用的解释器列表（python / python3 / py 及其具体版本），供设置页与版本管理器展示
+  public versions = ref<PythonVersion[]>([]);
+  // 是否允许使用原生引擎：config.interpreter === 'pyodide' 时由 App.vue 关闭
+  public enabled = true;
 
   get supported(): boolean {
     return nativeApi.available();
+  }
+
+  // 版本号精简为主版本.次版本（"Python 3.13.14" → "3.13"），按钮/状态标签用
+  private shortVersion(v: string): string {
+    const m = v.match(/(\d+\.\d+)/);
+    return m ? m[1] : v;
   }
 
   async detect(): Promise<{ available: boolean; version: string }> {
@@ -44,14 +54,36 @@ class NativePythonRunner {
       const info = await nativeApi.detectPython();
       this.pythonAvailable = !!info.available;
       this.pythonVersion = info.version || '';
+      this.versions.value = info.versions || [];
     } catch {
       this.pythonAvailable = false;
     }
     this.detected = true;
     this.statusLabel.value = this.pythonAvailable
-      ? tf('engineLocal', { version: this.pythonVersion })
-      : t('enginePyodideFallback');
+      ? tf('engineLocal', { version: this.shortVersion(this.pythonVersion) })
+      : t('engineLabelDefault');
     return { available: this.pythonAvailable, version: this.pythonVersion };
+  }
+
+  // 应用解释器选择（设置页 / 编辑器版本管理器）：
+  // - 'pyodide'：禁用原生引擎（回退 Pyodide），状态标签固定为 Pyodide
+  //   （Rust 检测仍会返回本机版本，不能用 detect 结果覆盖）
+  // - 具体版本 id：通知 Rust 切换，并刷新检测结果与状态标签
+  // - 'auto' / 未定义：允许原生引擎，Rust 自动选择第一个可用版本
+  async applyInterpreter(id: string | undefined): Promise<void> {
+    this.enabled = id !== 'pyodide';
+    if (id && id !== 'auto') {
+      try {
+        await nativeApi.selectPython(id);
+      } catch {
+        // 选择失败（如解释器已卸载）时保持当前状态
+      }
+    }
+    this.detected = null;
+    await this.detect();
+    if (id === 'pyodide') {
+      this.statusLabel.value = t('engineLabelDefault');
+    }
   }
 
   private async ensureListener() {

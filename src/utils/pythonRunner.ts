@@ -165,7 +165,7 @@ builtins.help = _py_help
     forceDemoMode = false
   ): Promise<{ success: boolean; durationMs: number }> {
     // 渐进增强：Tauri 环境且本机有 Python 时，优先用真实子进程执行
-    if (!forceDemoMode && nativePython.supported) {
+    if (!forceDemoMode && nativePython.supported && nativePython.enabled) {
       const det = await nativePython.detect();
       if (det.available) {
         return nativePython.runCode(code, workspaceFiles, onOutput, this.workspaceRoot);
@@ -250,7 +250,7 @@ builtins.help = _py_help
     onOutput: (out: ConsoleOutput) => void,
     forceDemoMode = false
   ): Promise<any> {
-    if (!forceDemoMode && nativePython.supported) {
+    if (!forceDemoMode && nativePython.supported && nativePython.enabled) {
       const det = await nativePython.detect();
       if (det.available) {
         return nativePython.runREPL(statement, onOutput, this.workspaceRoot);

@@ -39,4 +39,5 @@ export interface AppConfig {
   enableWheelZoom?: boolean;
   autoPairQuotes?: boolean;
   demoMode?: boolean;
+  interpreter?: string; // 'auto' | 'pyodide' | 本机解释器 id（python_detect versions[].id）
 }

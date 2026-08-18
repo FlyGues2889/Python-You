@@ -27,6 +27,7 @@ pub fn run() {
             fs::fs_materialize_workspace,
             fs::ensure_default_workspace,
             python::python_detect,
+            python::python_select,
             python::python_run,
             python::python_stop,
             python::python_repl_start,

@@ -49,6 +49,14 @@ const translations = {
     autoPairQuotes: '自动配对引号',
     autoPairQuotesSubtitle: '输入引号时自动补全另一半；选中文本时自动用引号包裹',
 
+    pythonConfig: 'Python 配置',
+    pythonConfigSubtitle: '配置演示模式与 Python 解释器',
+    interpreter: 'Python 解释器',
+    interpreterSubtitle: '选择用于运行代码的解释器',
+    interpreterAuto: '自动选择',
+    interpreterPyodide: 'Pyodide (WASM)',
+    interpreterLocal: '本机 Python',
+
     aboutTitle: '关于 Python You',
     aboutApp: 'Python You',
     aboutAppDesc: '基于浏览器 WASM 与 Pyodide 的本地 Python 集成开发环境',
@@ -171,7 +179,7 @@ const translations = {
     undoTitle: '撤销 (Ctrl+Z)',
     redoTitle: '重做 (Ctrl+Y)',
     cursorPositionText: '第 {line} 行，第 {col} 列',
-    engineLabelDefault: 'Python 3.11 Pyodide',
+    engineLabelDefault: 'Pyodide',
     findPrevTitle: '上一个 (Shift+Enter)',
     findNextTitle: '下一个 (Enter)',
     closeTitle: '关闭',
@@ -185,7 +193,7 @@ const translations = {
 
     // 使用帮助弹窗
     helpTitle: '使用帮助',
-    helpGotIt: '知道了',
+    helpGotIt: '确定',
     helpBasicsTitle: '基础操作',
     helpBasicsText: '通过左侧文件树或工具栏「新建文件 / 新建文件夹」创建项目文件；右键文件可重命名、删除、运行或导出。\n打开文件后在编辑区编写代码，点击工具栏「执行」按钮运行当前脚本，输出显示在下方终端面板。',
     helpShortcutsTitle: '常用快捷键',
@@ -259,8 +267,7 @@ const translations = {
     openingFolder: '正在打开...',
 
     // Python Engine Status & Messages（面向用户的提示）
-    engineLocal: 'Python {version} (本地进程)',
-    enginePyodideFallback: 'Pyodide (未检测到 Python)',
+    engineLocal: 'Python {version}',
     runLocalPython: '▶ 使用本机 Python {version} 执行...',
     processExited: '[INFO] 进程已结束，退出码 {code}，耗时 {duration}ms',
     replSessionEnded: '[INFO] REPL 会话已结束',
@@ -268,20 +275,20 @@ const translations = {
     pipInstalledOk: '[Pip] 已通过 pip 安装 {name}',
     pipInstallFailed: '[Pip] 安装 {name} 失败（退出码 {code}）',
     pipError: '[Pip] {err}',
-    pyodideLoading: '[INFO] 未检测到本机 Python，尝试加载本地 Pyodide WASM 引擎（失败将回退到演示模式）...',
+    pyodideLoading: '[INFO] 尝试加载本地 Pyodide WASM 引擎...',
     pyodideActive: '[INFO] Pyodide Python 3.11 WASM Engine Active!',
     pyodideUnavailable: '[INFO] Pyodide WASM 引擎不可用（{err}），已切换到演示模式。',
-    pyodideTimeout: 'Pyodide WASM 引擎加载超时（可能没有网络）',
-    pyodideCdnUnavailable: 'Pyodide 引擎加载失败（本地资源缺失）',
-    pyodideInitTimeout: 'Pyodide WASM 引擎初始化超时（可能没有网络）',
-    demoModeRunning: '[INFO] Running in Python You Presentation Demo Mode...',
-    demoExecuted: '[INFO] Code executed successfully in presentation mode.',
+    pyodideTimeout: 'Pyodide WASM 引擎加载超时',
+    pyodideCdnUnavailable: 'Pyodide 引擎加载失败',
+    pyodideInitTimeout: 'Pyodide WASM 引擎初始化超时，检查你的网络',
+    demoModeRunning: '[INFO] 正在以演示模式启动...',
+    demoExecuted: '[INFO] 代码在演示模式下成功执行。',
     replErrorMsg: '[REPL Error] {err}',
-    pyodideInstallingPkg: '[INFO] Installing package \'{name}\' via Pyodide micropip...',
-    pyodideInstalledPkg: '[INFO] Package \'{name}\' installed successfully!',
-    pyodideInstallFail: '[ERROR] Failed to install \'{name}\': {err}',
-    demoPkgRegistered: '[INFO] Package \'{name}\' registered in presentation mode.',
-    processFinishedCode: '[INFO] Process finished with code 0 in {duration}ms'
+    pyodideInstallingPkg: '[INFO] 正在通过 Pyodide micropip 安装包\'{name}\'',
+    pyodideInstalledPkg: '[INFO] 成功安装包 \'{name}\'',
+    pyodideInstallFail: '[ERROR] 安装包 \'{name}\'失败。错误: {err}',
+    demoPkgRegistered: '[INFO] 包 \'{name}\' 已在演示模式中成功注册。',
+    processFinishedCode: '[INFO] 进程已完成并退出，代码 0 ，完成时间 {duration}ms'
   },
 };
 

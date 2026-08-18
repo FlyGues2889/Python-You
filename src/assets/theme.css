@@ -7,6 +7,18 @@
      与 m3e 组件共享同一套颜色（统一使用本 theme.css）。
    ========================================================= */
 
+/* =========================================================
+   MD3 形状 token（组件库只在 shadow 内定义，外部 var() 需在此补全；
+   数值按 MD3 规范：extra-large = 28px）
+   ========================================================= */
+:root {
+  --md-sys-shape-corner-extra-small: 4px;
+  --md-sys-shape-corner-small: 8px;
+  --md-sys-shape-corner-medium: 12px;
+  --md-sys-shape-corner-large: 16px;
+  --md-sys-shape-corner-extra-large: 28px;
+}
+
 /* ---------- 浅色主题 ---------- */
 :root, .light-theme {
   /* ============ md-sys 角色色（@m3e/web 原生消费） ============ */

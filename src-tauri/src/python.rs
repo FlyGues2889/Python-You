@@ -17,6 +17,8 @@ pub struct PythonState {
     pub proc: Mutex<Option<Child>>,
     pub repl_stdin: Mutex<Option<ChildStdin>>,
     pub python_path: Mutex<Option<String>>,
+    // 用户选择的解释器 id（"python" / "py" / "py-3.13" / 等），None = 自动选第一个可用
+    pub selected_python: Mutex<Option<String>>,
     // 当前正在运行的任务会话（run / repl / pip），用于停止时正确通知前端收尾
     pub current_session: Mutex<Option<String>>,
 }
@@ -27,6 +29,7 @@ impl Default for PythonState {
             proc: Mutex::new(None),
             repl_stdin: Mutex::new(None),
             python_path: Mutex::new(None),
+            selected_python: Mutex::new(None),
             current_session: Mutex::new(None),
         }
     }
@@ -38,6 +41,20 @@ pub struct PythonInfo {
     available: bool,
     version: Option<String>,
     command: Option<String>,
+    versions: Vec<PythonVersion>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PythonVersion {
+    /// 选择器 id（前端 config.interpreter 存此值）
+    id: String,
+    /// 版本字符串，如 "Python 3.13.14"
+    version: String,
+    /// 展示名，如 "Python 3.13.14 (py -3.13)"
+    label: String,
+    /// 启动命令拆分（首元素为可执行文件，后续为固定参数，如 ["py", "-3.13"]）
+    command: Vec<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -110,27 +127,93 @@ fn detect_version(cmd: &str) -> Option<String> {
     None
 }
 
-fn detect_python() -> Option<(String, String)> {
-    for cmd in ["python", "python3", "py"] {
+// 扫描本机所有可用 Python 解释器（python / python3 / py 启动器及其具体版本）
+fn scan_python_versions() -> Vec<PythonVersion> {
+    let mut out: Vec<PythonVersion> = Vec::new();
+    for cmd in ["python", "python3"] {
         if let Some(ver) = detect_version(cmd) {
-            return Some((cmd.to_string(), ver));
+            out.push(PythonVersion {
+                id: cmd.to_string(),
+                version: ver.clone(),
+                label: format!("{} ({})", ver, cmd),
+                command: vec![cmd.to_string()],
+            });
         }
     }
-    None
+    // py 启动器本身 + py -0 枚举的具体版本
+    if let Some(ver) = detect_version("py") {
+        out.push(PythonVersion {
+            id: "py".to_string(),
+            version: ver.clone(),
+            label: format!("{} (py)", ver),
+            command: vec!["py".to_string()],
+        });
+        for v in list_py_versions() {
+            out.push(PythonVersion {
+                id: format!("py-{}", v),
+                version: format!("Python {}", v),
+                label: format!("Python {} (py -{})", v, v),
+                command: vec!["py".to_string(), format!("-{}", v)],
+            });
+        }
+    }
+    out
 }
 
-fn resolve_python(state: &State<PythonState>) -> Result<(String, String), String> {
-    if let Some(cmd) = state.python_path.lock().unwrap().clone() {
-        let ver = detect_version(&cmd).unwrap_or_default();
-        return Ok((cmd, ver));
+// `py -0` 列出本机安装的所有 Python 版本（输出行形如 " -V:3.13 *"）
+fn list_py_versions() -> Vec<String> {
+    use std::io::Read;
+
+    let mut c = Command::new("py");
+    c.arg("-0");
+    no_console(&mut c);
+    c.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = match c.spawn() {
+        Ok(ch) => ch,
+        Err(_) => return Vec::new(),
+    };
+    let mut buf = String::new();
+    if let Some(mut so) = child.stdout.take() {
+        let _ = so.read_to_string(&mut buf);
     }
-    match detect_python() {
-        Some((cmd, ver)) => {
-            *state.python_path.lock().unwrap() = Some(cmd.clone());
-            Ok((cmd, ver))
+    let _ = child.wait();
+    buf.lines()
+        .filter_map(|l| {
+            let v = l.trim().strip_prefix("-V:").unwrap_or(l.trim());
+            let v = v.trim().trim_end_matches('*').trim();
+            if v.is_empty() {
+                None
+            } else {
+                Some(v.to_string())
+            }
+        })
+        .collect()
+}
+
+// 解析当前应使用的解释器命令参数；按 state.selected_python 选择，未选择时用第一个可用
+fn resolve_python(state: &State<PythonState>) -> Result<Vec<String>, String> {
+    let all = scan_python_versions();
+    if all.is_empty() {
+        return Err("未检测到本机 Python 环境，请安装 Python 3.8+ 后使用本地引擎（当前将回退到 Pyodide / 演示模式）".to_string());
+    }
+    let selected = state.selected_python.lock().unwrap().clone();
+    if let Some(id) = selected {
+        if let Some(v) = all.iter().find(|v| v.id == id) {
+            return Ok(v.command.clone());
         }
-        None => Err("未检测到本机 Python 环境，请安装 Python 3.8+ 后使用本地引擎（当前将回退到 Pyodide / 演示模式）".to_string()),
     }
+    Ok(all[0].command.clone())
+}
+
+fn command_from_parts(parts: &[String]) -> Command {
+    let mut cmd = Command::new(&parts[0]);
+    if parts.len() > 1 {
+        cmd.args(&parts[1..]);
+    }
+    // Windows 下 Python stdout/stdin/-c 默认按 ANSI 码页（GBK）编解码，
+    // 与 Rust/前端 UTF-8 不一致会导致中文输出乱码/丢失 → 统一 UTF-8
+    cmd.env("PYTHONUTF8", "1");
+    cmd
 }
 
 fn emit(app: &AppHandle, kind: &str, text: &str, session: &str) {
@@ -248,18 +331,36 @@ fn write_temp_script(code: &str) -> Result<PathBuf, String> {
 
 #[tauri::command]
 pub fn python_detect(state: State<PythonState>) -> PythonInfo {
-    match resolve_python(&state) {
-        Ok((cmd, ver)) => PythonInfo {
-            available: true,
-            version: Some(ver),
-            command: Some(cmd),
-        },
-        Err(_) => PythonInfo {
+    let all = scan_python_versions();
+    if all.is_empty() {
+        return PythonInfo {
             available: false,
             version: None,
             command: None,
-        },
+            versions: Vec::new(),
+        };
     }
+    let selected = state.selected_python.lock().unwrap().clone();
+    let cur = selected
+        .as_ref()
+        .and_then(|id| all.iter().find(|v| v.id == *id))
+        .unwrap_or(&all[0]);
+    PythonInfo {
+        available: true,
+        version: Some(cur.version.clone()),
+        command: Some(cur.command.join(" ")),
+        versions: all,
+    }
+}
+
+// 前端切换解释器（设置页 / 编辑器版本管理器）；id 为 python_detect 返回的 versions[].id
+#[tauri::command]
+pub fn python_select(state: State<PythonState>, id: String) -> Result<(), String> {
+    if !scan_python_versions().iter().any(|v| v.id == id) {
+        return Err(format!("未知的 Python 解释器: {id}"));
+    }
+    *state.selected_python.lock().unwrap() = Some(id);
+    Ok(())
 }
 
 #[tauri::command]
@@ -269,9 +370,9 @@ pub fn python_run(
     code: String,
     cwd: Option<String>,
 ) -> Result<(), String> {
-    let (py, _) = resolve_python(&state)?;
+    let py_parts = resolve_python(&state)?;
     let script = write_temp_script(&code)?;
-    let mut cmd = Command::new(&py);
+    let mut cmd = command_from_parts(&py_parts);
     cmd.arg("-u").arg(&script);
     cmd.env("PYTHONPATH", "."); // 让脚本可以 import 工作区里的兄弟模块
     if let Some(dir) = &cwd {
@@ -302,7 +403,7 @@ pub fn python_stop(app: AppHandle, state: State<PythonState>) -> Result<(), Stri
 
 #[tauri::command]
 pub fn python_repl_start(app: AppHandle, state: State<PythonState>, cwd: Option<String>) -> Result<(), String> {
-    let (py, _) = resolve_python(&state)?;
+    let py_parts = resolve_python(&state)?;
 
     // 清理上一个会话
     let prev_session = {
@@ -323,11 +424,13 @@ pub fn python_repl_start(app: AppHandle, state: State<PythonState>, cwd: Option<
     }
     *state.current_session.lock().unwrap() = Some("repl".to_string());
 
-    let mut cmd = Command::new(&py);
+    let mut cmd = command_from_parts(&py_parts);
     // REPL 无 tty 且 stdin 为管道（python_repl_input 写入）：help() 无参会进入
     // pydoc 交互并从 stdin 读取 → 管道无数据 → 子进程永久阻塞，REPL 卡死。
     // 启动时用 -i -c 注入安全 help 包装（先执行初始化再进入交互）：
     // help() 打印提示不读 stdin，help(obj) 惰性 import pydoc 打印文档。
+    // PYTHONUTF8 由 command_from_parts 统一设置：-c 参数与管道 stdin/stdout
+    // 均为 UTF-8（Windows 默认 ANSI 码页会导致中文乱码）
     const REPL_HELP_PATCH: &str = "import builtins
 def _py_help(obj=None):
     if obj is None:
@@ -442,8 +545,8 @@ pub fn shutdown(state: &PythonState) {
 
 #[tauri::command]
 pub fn python_pip_install(app: AppHandle, state: State<PythonState>, pkg: String) -> Result<(), String> {
-    let (py, _) = resolve_python(&state)?;
-    let mut cmd = Command::new(&py);
+    let py_parts = resolve_python(&state)?;
+    let mut cmd = command_from_parts(&py_parts);
     cmd.arg("-m").arg("pip").arg("install").arg("--no-input").arg(&pkg);
     spawn_streaming(app, &state, cmd, None, "pip")
 }

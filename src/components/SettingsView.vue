@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { AppConfig } from '../types';
 import { useI18n } from '../utils/i18n';
 import { resolveCodeTheme } from '../utils/theme';
+import { nativePython } from '../utils/nativePython';
 import PageHeader from './PageHeader.vue';
 import EditorPreview from './EditorPreview.vue';
 
@@ -43,6 +44,13 @@ const onFontSizeInput = (e: Event) => {
 const resolvedCodeTheme = computed(() =>
   resolveCodeTheme(props.config.codeTheme, props.config.themeMode)
 );
+
+// 解释器选择：写入配置并应用（与 App.vue 编辑器版本管理器同一状态源）
+const onInterpreterChange = async (e: Event) => {
+  const id = (e.target as any).value as string;
+  props.config.interpreter = id;
+  await nativePython.applyInterpreter(id);
+};
 
 const onSwitchChange = (e: Event, key: 'enableWheelZoom' | 'autoPairQuotes' | 'demoMode') => {
   props.config[key] = !!(e.target as any).checked;
@@ -173,6 +181,45 @@ const onDemoModeChange = (e: Event) => onSwitchChange(e, 'demoMode');
         </m3e-list>
       </m3e-card>
 
+      <!-- Python Configuration -->
+      <m3e-card variant="outlined">
+        <div slot="header" class="settings-card-header">
+          <h4 class="settings-card-title">{{ t('pythonConfig') }}</h4>
+        </div>
+        <m3e-list slot="content">
+          <m3e-list-item>
+            <span slot="leading" class="material-symbols-rounded">slideshow</span>
+            {{ t('demoMode') }}
+            <span slot="supporting-text">{{ t('demoModeSubtitle') }}</span>
+            <div slot="trailing" class="settings-trailing">
+              <m3e-switch :checked="config.demoMode" @change="onDemoModeChange" />
+            </div>
+          </m3e-list-item>
+
+          <!-- 解释器选择：仅本机安装有至少一个 Python 版本时显示 -->
+          <m3e-list-item v-if="nativePython.versions.value.length > 0">
+            <span slot="leading" class="material-symbols-rounded">terminal</span>
+            {{ t('interpreter') }}
+            <span slot="supporting-text">{{ t('interpreterSubtitle') }}</span>
+            <div slot="trailing" class="settings-trailing">
+              <m3e-select class="theme-select" @change="onInterpreterChange">
+                <m3e-option value="auto" :selected="!config.interpreter || config.interpreter === 'auto'">
+                  {{ t('interpreterAuto') }}
+                </m3e-option>
+                <m3e-option value="pyodide" :selected="config.interpreter === 'pyodide'">
+                  {{ t('interpreterPyodide') }}
+                </m3e-option>
+                <m3e-optgroup>
+                  <span slot="label">{{ t('themeDark') }}</span>
+                  <m3e-option v-for="v in nativePython.versions.value" :key="v.id" :value="v.id"
+                    :selected="config.interpreter === v.id">{{ v.label }}</m3e-option>
+                </m3e-optgroup>
+              </m3e-select>
+            </div>
+          </m3e-list-item>
+        </m3e-list>
+      </m3e-card>
+
       <!-- About Python You -->
       <m3e-card variant="outlined">
         <div slot="header" class="settings-card-header">
@@ -184,16 +231,7 @@ const onDemoModeChange = (e: Event) => onSwitchChange(e, 'demoMode');
             {{ t('aboutApp') }}
             <span slot="supporting-text">{{ t('aboutAppDesc') }}</span>
             <div slot="trailing" class="settings-trailing">
-              v0.3.3
-            </div>
-          </m3e-list-item>
-
-          <m3e-list-item>
-            <span slot="leading" class="material-symbols-rounded">slideshow</span>
-            {{ t('demoMode') }}
-            <span slot="supporting-text">{{ t('demoModeSubtitle') }}</span>
-            <div slot="trailing" class="settings-trailing">
-              <m3e-switch :checked="config.demoMode" @change="onDemoModeChange" />
+              v0.3.4
             </div>
           </m3e-list-item>
 
@@ -280,19 +318,5 @@ m3e-card {
 }
 </style>
 
-<!-- 非 scoped：m3e-select 的选项面板由 JS 动态插入（insertAdjacentElement afterend，位于
-     select 同级而非后代），无 data-v 属性，scoped 选择器命中不了。
-     经 select 的 panel-class 属性加唯一类名定位。 -->
-<style>
-.theme-select-panel m3e-optgroup {
-  /* 分类标题：减小行高（容器 48px → 32px）、文字改 secondary，与选项正文区分；
-     变量会继承给组内 option，须一并恢复默认 */
-  --m3e-option-height: 32px;
-  --m3e-option-color: var(--secondary);
-}
-
-.theme-select-panel m3e-optgroup m3e-option {
-  --m3e-option-height: 48px;
-  --m3e-option-color: var(--on-surface);
-}
-</style>
+<!-- optgroup 分组 label 样式已全局化（m3eStyle.css 按 m3e-option-panel 元素名
+     命中所有 select 面板），此处无需非 scoped 块 -->

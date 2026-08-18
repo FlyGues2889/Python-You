@@ -27,6 +27,30 @@ m3e-list-item [slot="leading"] {
   font-size: var(--text-size-l);
 }
 
+/* m3e-card 默认样式（全局兜底；各界面可用更高特异性 token 覆盖）：
+   - padding/border-radius/背景/描边均经 token 进入组件 shadow（.base 绘制）
+   - 背景与描边用 color-mix 半透明叠加，随主题色联动 */
+m3e-card {
+  --m3e-card-padding: 1rem;
+  --m3e-card-shape: var(--md-sys-shape-corner-extra-large);
+  --m3e-card-container-color: color-mix(in srgb, var(--md-sys-color-surface-container) 70%, transparent);
+  --m3e-card-outline-color: color-mix(in srgb, var(--md-sys-color-secondary) 10%, transparent);
+  --m3e-outlined-card-outline-thickness: 2px;
+}
+
+/* m3e-select 选项面板的 optgroup 分组 label：全局统一样式。
+   面板是组件动态创建的 m3e-option-panel 自定义元素（document 树），直接按元素名
+   选择即可命中所有 select（无需 panel-class）；变量会继承给组内 option，须恢复 */
+m3e-option-panel m3e-optgroup {
+  --m3e-option-height: 32px;
+  --m3e-option-color: var(--secondary);
+}
+
+m3e-option-panel m3e-optgroup m3e-option {
+  --m3e-option-height: 48px;
+  --m3e-option-color: var(--on-surface);
+}
+
 /* 主布局 split-pane 拖拽手柄：全局唯一布局组件 */
 m3e-split-pane {
   --m3e-split-pane-drag-handle-container-width: 8px;

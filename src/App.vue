@@ -421,7 +421,8 @@ const config = ref<AppConfig>({
   codeTheme: 'github-dark',
   enableWheelZoom: true,
   autoPairQuotes: true,
-  demoMode: false
+  demoMode: false,
+  interpreter: 'auto'
 });
 
 // 已解析的代码主题：'system'（跟随系统主题）按外观主题映射为实际浅/深色主题
@@ -468,6 +469,18 @@ const replLogs = ref<ConsoleOutput[]>([]);
 // 本地工作区根目录（Tauri 原生文件系统模式），null 表示纯虚拟工作区
 const workspaceRootPath = ref<string | null>(null);
 const engineLabel = computed(() => nativePython.statusLabel.value);
+
+// 切换解释器（设置页 / 编辑器版本管理器弹窗）：写入配置并应用
+const selectInterpreter = async (id: string) => {
+  config.value.interpreter = id;
+  await nativePython.applyInterpreter(id);
+};
+
+// 版本管理器弹窗
+const isInterpreterOpen = ref(false);
+const onInterpreterDialogChange = async (e: Event) => {
+  await selectInterpreter((e.target as any).value as string);
+};
 
 // ---- 会话恢复：上次关闭时打开的标签页 + 光标位置 ----
 const SESSION_KEY = 'python_you_session';
@@ -634,6 +647,8 @@ onMounted(async () => {
     timestamp: new Date().toLocaleTimeString()
   });
   isInitializing.value = false;
+  // 应用已保存的解释器选择（Rust 侧同步；detect 异步完成，不阻塞初始化）
+  nativePython.applyInterpreter(config.value.interpreter);
 });
 
 // Sync Workspace to LocalStorage
@@ -1473,9 +1488,11 @@ onMounted(() => {
               {{ t('cursorPositionText').replace('{line}', String(codeEditorRef?.cursorLine ?? 1)).replace('{col}',
                 String(codeEditorRef?.cursorCol ?? 1)) }}
             </span>
-            <span class="engine-badge">
-              {{ engineLabel || t('engineLabelDefault') }}
-            </span>
+            <!-- 解释器版本管理器：点击按钮弹出选择弹窗（文字超长省略） -->
+            <m3e-button size="extra-small" class="interpreter-btn" @click="isInterpreterOpen = true">
+              <span slot="icon" class="material-symbols-rounded">terminal</span>
+              <span class="interpreter-btn-label">{{ engineLabel || t('engineLabelDefault') }}</span>
+            </m3e-button>
           </div>
         </div>
 
@@ -1581,6 +1598,36 @@ onMounted(() => {
         <m3e-button variant="text" size="small" @click="handleUnsavedCancel">{{ t('cancel') }}</m3e-button>
         <m3e-button variant="outlined" size="small" @click="handleUnsavedDontSave">{{ t('dontSave') }}</m3e-button>
         <m3e-button variant="filled" size="small" @click="handleUnsavedSave">{{ t('save') }}</m3e-button>
+      </div>
+    </m3e-dialog>
+
+    <!-- 解释器版本管理器 Dialog -->
+    <m3e-dialog :open="isInterpreterOpen" @cancel="isInterpreterOpen = false" @closed="isInterpreterOpen = false">
+      <span slot="header" class="m3e-dialog-title-row">
+        <span class="material-symbols-rounded m3e-dialog-icon">terminal</span>
+        <span class="m3e-dialog-title">{{ t('interpreter') }}</span>
+      </span>
+      <div class="interpreter-dialog-body">
+        <p class="m3e-dialog-desc">{{ t('interpreterSubtitle') }}</p>
+        <m3e-select class="theme-select" @change="onInterpreterDialogChange">
+          <m3e-option value="auto" :selected="!config.interpreter || config.interpreter === 'auto'">
+            {{ t('interpreterAuto') }}
+          </m3e-option>
+          <m3e-option value="pyodide" :selected="config.interpreter === 'pyodide'">
+            {{ t('interpreterPyodide') }}
+          </m3e-option>
+          <m3e-optgroup>
+            <span slot="label">{{ t('interpreterLocal') }}</span>
+            <m3e-option v-for="v in nativePython.versions.value" :key="v.id" :value="v.id"
+              :selected="config.interpreter === v.id">{{ v.label }}</m3e-option>
+          </m3e-optgroup>
+        </m3e-select>
+        <p class="interpreter-current-status">
+          {{ engineLabel || t('engineLabelDefault') }}
+        </p>
+      </div>
+      <div slot="actions" class="m3e-dialog-actions">
+        <m3e-button variant="filled" size="small" @click="isInterpreterOpen = false">{{ t('helpGotIt') }}</m3e-button>
       </div>
     </m3e-dialog>
 
@@ -1785,11 +1832,15 @@ m3e-nav-rail {
   font-family: var(--font-mono);
 }
 
-.engine-badge {
-  color: var(--on-primary-container);
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-weight: 600;
+/* 版本管理器按钮：最长 16rem，文字超长省略 */
+.interpreter-btn {
+  max-width: 16rem;
+}
+
+.interpreter-btn-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .marginBtn {
@@ -1831,6 +1882,24 @@ m3e-nav-rail {
 
 .snack-action-btn {
   vertical-align: middle;
+}
+
+/* 解释器版本管理器弹窗：select 撑满、底部显示当前引擎状态 */
+.interpreter-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 20rem;
+}
+
+.interpreter-dialog-body .theme-select {
+  width: 100%;
+}
+
+.interpreter-current-status {
+  font-size: 0.8125rem;
+  color: var(--text-tertiary);
+  margin: 0;
 }
 
 /* m3e-dialog 内容样式 */
