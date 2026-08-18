@@ -1308,6 +1308,10 @@ table.sec-table {
   color: var(--text-secondary);
   white-space: nowrap;
 }
+/* hidden 属性需显式覆盖（display:inline-flex 会压过 UA 的 [hidden] 规则） */
+.py-download-status[hidden] {
+  display: none;
+}
 .py-download-spinner {
   --m3e-loading-indicator-size: 24px; /* 组件默认 38px，经变量缩放 */
   width: 24px;
