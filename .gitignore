@@ -37,3 +37,4 @@ src-tauri/gen/schemas
 *.txt
 *.cjs
 *.ps1
+*.mjs

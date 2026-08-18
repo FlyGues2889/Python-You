@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Python You 教程 · 网页版</title>
+  <!-- 本地 vendor：m3e 组件库（all.bundle.js：剥离 export 的普通脚本，file:// 可直接打开）
+     + Material Symbols 图标字体 -->
+  <link rel="stylesheet" href="vendor/material-symbols/rounded.css">
+  <script src="vendor/m3e/all.bundle.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <!-- 顶栏：目录抽屉按钮 / 搜索 / 主题切换 / 编辑器开关 -->
+  <header class="topbar">
+    <!-- 目录抽屉按钮：图标按钮，位于标题栏最左侧 -->
+    <m3e-icon-button id="menuBtn" size="small" variant="standard" title="打开教程目录">
+      <span class="material-symbols-rounded">menu</span>
+    </m3e-icon-button>
+    <div class="brand">
+      <span class="brand-name">Python You <em>教程</em></span>
+    </div>
+    <div class="topbar-actions">
+      <m3e-icon-button id="themeToggle" size="small" variant="standard" title="切换亮暗主题">
+        <span class="material-symbols-rounded" id="themeIcon">dark_mode</span>
+      </m3e-icon-button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- 目录抽屉（所有屏幕统一抽屉形式；汉堡按钮打开，backdrop 点击收起） -->
+    <aside class="tree-drawer" id="treeDrawer">
+      <m3e-content-pane class="tree-pane">
+        <div class="sidebar-title">教程目录</div>
+        <m3e-search-bar class="search-bar" clearable>
+          <span slot="leading" class="material-symbols-rounded">search</span>
+          <input slot="input" id="searchInput" placeholder="搜索课程或知识点…" spellcheck="false">
+        </m3e-search-bar>
+
+        <m3e-tree id="tree"></m3e-tree>
+      </m3e-content-pane>
+      <!-- 定位当前主题 FAB（源码同款） -->
+      <m3e-fab class="locate-fab" size="small" title="定位当前课程">
+        <span class="material-symbols-rounded">my_location</span>
+      </m3e-fab>
+    </aside>
+    <div id="treeBackdrop"></div>
+
+    <!-- 双面板（m3e-split-pane）：左/上 = 正文 60%，右/下 = 编辑器 40%，固定比例（无手柄） -->
+    <m3e-split-pane class="main-split" orientation="horizontal" value="60" id="mainSplit" disabled>
+      <!-- 教程正文：容器高度对应面板（不滚动），内部 content-inner 滚动 -->
+      <div slot="start" class="content-pane">
+        <div class="content-inner" id="contentInner">
+          <article id="tutorial-article"></article>
+        </div>
+      </div>
+
+      <!-- 代码编辑器 + 输出终端（右侧/下方面板，标题栏带快捷收起按钮） -->
+      <div slot="end" class="editor-pane">
+        <div class="editor-bar">
+          <span class="editor-title">代码编辑器</span>
+          <div class="editor-actions">
+            <span id="pyStatus" class="py-status">Pyodide 未加载</span>
+            <m3e-button id="runBtn" variant="filled" size="small" disabled>
+              <span slot="icon" class="material-symbols-rounded">play_arrow</span>
+              运行
+            </m3e-button>
+          </div>
+        </div>
+        <div class="editor-body">
+          <div class="editor-area">
+            <div id="lineNumbers" class="line-numbers"></div>
+            <div class="code-wrap">
+              <pre id="highlight" class="highlight" aria-hidden="true"><code id="highlightCode"></code></pre>
+              <textarea id="codeInput" class="code-input" spellcheck="false"
+                placeholder="# 在这里编写 Python 代码，点击运行执行"></textarea>
+            </div>
+          </div>
+          <div class="output-area">
+            <div class="output-header">
+              <span>输出</span>
+              <m3e-button id="clearOutput" variant="tonal" size="extra-small">清空</m3e-button>
+            </div>
+            <pre id="output" class="output"></pre>
+          </div>
+        </div>
+      </div>
+    </m3e-split-pane>
+  </main>
+
+  <!-- 加载遮罩（m3e-loading-indicator + 操作文字序列） -->
+  <div class="loading-modal" id="loadingModal">
+    <m3e-loading-indicator variant="contained"></m3e-loading-indicator>
+    <p class="loading-status" id="loadingStatus">正在启动 Python You 教程…</p>
+  </div>
+
+  <script src="tutorial-data.js"></script>
+  <script src="app.js"></script>
+</body>
+
+</html>

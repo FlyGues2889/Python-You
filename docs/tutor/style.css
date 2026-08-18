@@ -1,0 +1,1191 @@
+/* ============================================================
+   Python You 教程 · 网页版样式
+   主题 token 与组件样式提取自桌面版源码（theme.css / font.css /
+   m3eStyle.css），页面布局基于源码变量。自动生成，勿手改。
+   重新生成：node build-style.mjs
+   ============================================================ */
+
+/* ---------- 源码主题 token（theme.css） ---------- */
+:root {
+  --md-sys-shape-corner-extra-small: 4px;
+  --md-sys-shape-corner-small: 8px;
+  --md-sys-shape-corner-medium: 12px;
+  --md-sys-shape-corner-large: 16px;
+  --md-sys-shape-corner-extra-large: 28px;
+}
+
+:root,
+.light-theme {
+  /* ============ md-sys 角色色（@m3e/web 原生消费） ============ */
+  --md-sys-color-primary-rgb: 0, 97, 164;
+  --md-sys-color-primary: #0061a4;
+  --md-sys-color-on-primary-rgb: 255, 255, 255;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container-rgb: 209, 228, 255;
+  --md-sys-color-primary-container: #d1e4ff;
+  --md-sys-color-on-primary-container-rgb: 0, 29, 54;
+  --md-sys-color-on-primary-container: #001d36;
+
+  --md-sys-color-secondary-rgb: 83, 95, 112;
+  --md-sys-color-secondary: #535f70;
+  --md-sys-color-on-secondary-rgb: 255, 255, 255;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container-rgb: 215, 227, 248;
+  --md-sys-color-secondary-container: #d7e3f8;
+  --md-sys-color-on-secondary-container-rgb: 16, 28, 43;
+  --md-sys-color-on-secondary-container: #101c2b;
+
+  --md-sys-color-tertiary-rgb: 107, 87, 120;
+  --md-sys-color-tertiary: #6b5778;
+  --md-sys-color-on-tertiary-rgb: 255, 255, 255;
+  --md-sys-color-on-tertiary: #ffffff;
+  --md-sys-color-tertiary-container-rgb: 243, 218, 255;
+  --md-sys-color-tertiary-container: #f3daff;
+  --md-sys-color-on-tertiary-container-rgb: 37, 20, 49;
+  --md-sys-color-on-tertiary-container: #251431;
+
+  --md-sys-color-error-rgb: 186, 26, 26;
+  --md-sys-color-error: #ba1a1a;
+  --md-sys-color-on-error-rgb: 255, 255, 255;
+  --md-sys-color-on-error: #ffffff;
+  --md-sys-color-error-container-rgb: 255, 218, 214;
+  --md-sys-color-error-container: #ffdad6;
+  --md-sys-color-on-error-container-rgb: 65, 0, 2;
+  --md-sys-color-on-error-container: #410002;
+
+  /* 中性色 */
+  --md-sys-color-background-rgb: 253, 252, 255;
+  --md-sys-color-background: #fdfcff;
+  --md-sys-color-on-background-rgb: 26, 28, 30;
+  --md-sys-color-on-background: #1a1c1e;
+  --md-sys-color-surface-rgb: 253, 252, 255;
+  --md-sys-color-surface: #fdfcff;
+  --md-sys-color-on-surface-rgb: 26, 28, 30;
+  --md-sys-color-on-surface: #1a1c1e;
+  --md-sys-color-surface-variant-rgb: 223, 226, 235;
+  --md-sys-color-surface-variant: #dfe2eb;
+  --md-sys-color-on-surface-variant-rgb: 67, 71, 78;
+  --md-sys-color-on-surface-variant: #43474e;
+  --md-sys-color-outline-rgb: 115, 119, 127;
+  --md-sys-color-outline: #73777f;
+  --md-sys-color-outline-variant-rgb: 195, 198, 207;
+  --md-sys-color-outline-variant: #c3c6cf;
+  --md-sys-color-shadow-rgb: 0, 0, 0;
+  --md-sys-color-shadow: #000000;
+  --md-sys-color-scrim-rgb: 0, 0, 0;
+  --md-sys-color-scrim: #000000;
+  --md-sys-color-inverse-surface-rgb: 47, 48, 51;
+  --md-sys-color-inverse-surface: #2f3033;
+  --md-sys-color-inverse-on-surface-rgb: 241, 240, 244;
+  --md-sys-color-inverse-on-surface: #f1f0f4;
+  --md-sys-color-inverse-primary-rgb: 159, 202, 255;
+  --md-sys-color-inverse-primary: #9fcaff;
+
+  /* 固定变体（fixed）：m3e 组件在深色/浅色下都用浅色容器侧色调 */
+  --md-sys-color-primary-fixed: #d1e4ff;
+  --md-sys-color-primary-fixed-dim: #aac8ff;
+  --md-sys-color-on-primary-fixed: #001d36;
+  --md-sys-color-on-primary-fixed-variant: #00497d;
+  --md-sys-color-secondary-fixed: #d7e3f8;
+  --md-sys-color-secondary-fixed-dim: #bcc8de;
+  --md-sys-color-on-secondary-fixed: #101c2b;
+  --md-sys-color-on-secondary-fixed-variant: #3b4858;
+  --md-sys-color-tertiary-fixed: #f3daff;
+  --md-sys-color-tertiary-fixed-dim: #d8bce5;
+  --md-sys-color-on-tertiary-fixed: #251431;
+  --md-sys-color-on-tertiary-fixed-variant: #523f5f;
+
+  /* ============ md-sys Surface 层级（m3e 组件 surface-container-*） ============ */
+  --md-sys-color-surface-dim: #f1f5fb;
+  --md-sys-color-surface-bright: #fdfcff;
+  --md-sys-color-surface-container-lowest: #fdfcff;
+  --md-sys-color-surface-container-low: #f1f5fb;
+  --md-sys-color-surface-container: #e9f0f8;
+  --md-sys-color-surface-container-high: #e1ebf5;
+  --md-sys-color-surface-container-highest: #dfeaf4;
+
+  /* 应用沿用的 Surface 分级（浅色） */
+  --md-sys-color-surface-0-rgb: 253, 252, 255;
+  --md-sys-color-surface-0: #fdfcff;
+  --md-sys-color-surface-1-rgb: 241, 245, 251;
+  --md-sys-color-surface-1: #f1f5fb;
+  --md-sys-color-surface-2-rgb: 233, 240, 248;
+  --md-sys-color-surface-2: #e9f0f8;
+  --md-sys-color-surface-3-rgb: 225, 235, 245;
+  --md-sys-color-surface-3: #e1ebf5;
+  --md-sys-color-surface-4-rgb: 223, 234, 244;
+  --md-sys-color-surface-4: #dfeaf4;
+  --md-sys-color-surface-5-rgb: 218, 231, 243;
+  --md-sys-color-surface-5: #dae7f3;
+
+  /* ============ 应用别名（组件统一经此引用 md-sys token） ============ */
+  --bg-color: var(--md-sys-color-surface-0);
+  --surface-color: var(--md-sys-color-surface-1);
+  --surface-variant: var(--md-sys-color-surface-2);
+  /* 沿用应用取值（surface-2），避免深色下视觉漂移 */
+  --text-color: var(--md-sys-color-on-background);
+  --text-secondary: var(--md-sys-color-on-surface-variant);
+  --text-tertiary: var(--md-sys-color-outline);
+  --primary: var(--md-sys-color-primary);
+  --primary-rgb: var(--md-sys-color-primary-rgb);
+  --primary-hover: #004d80;
+  --primary-container: var(--md-sys-color-primary-container);
+  --on-primary: var(--md-sys-color-on-primary);
+  --on-primary-container: var(--md-sys-color-on-primary-container);
+  --secondary: var(--md-sys-color-secondary);
+  --on-secondary: var(--md-sys-color-on-secondary);
+  --secondary-container: var(--md-sys-color-secondary-container);
+  --on-secondary-container: var(--md-sys-color-on-secondary-container);
+  --tertiary: var(--md-sys-color-tertiary);
+  --on-tertiary: var(--md-sys-color-on-tertiary);
+  --tertiary-container: var(--md-sys-color-tertiary-container);
+  --on-tertiary-container: var(--md-sys-color-on-tertiary-container);
+  --border-color: var(--md-sys-color-outline);
+  --border-color-muted: var(--md-sys-color-outline-variant);
+  --outline: var(--md-sys-color-outline);
+  --outline-variant: var(--md-sys-color-outline-variant);
+  --error: var(--md-sys-color-error);
+  --success: #1a7f37;
+  /* 亮色成功绿：GitHub 同款，比 #16a34a 深、沉稳不刺眼 */
+  --on-error: var(--md-sys-color-on-error);
+  --error-container: var(--md-sys-color-error-container);
+  --on-error-container: var(--md-sys-color-on-error-container);
+  --background: var(--md-sys-color-background);
+  --surface: var(--md-sys-color-surface);
+  --on-surface: var(--md-sys-color-on-surface);
+  --shadow-rgb: var(--md-sys-color-shadow-rgb);
+  --on-background: var(--md-sys-color-on-background);
+  --on-surface-variant: var(--md-sys-color-on-surface-variant);
+  --inverse-surface: var(--md-sys-color-inverse-surface);
+  --inverse-on-surface: var(--md-sys-color-inverse-on-surface);
+  --on-inverse-surface: var(--md-sys-color-inverse-on-surface);
+  --surface-0: var(--md-sys-color-surface-0);
+  --surface-1: var(--md-sys-color-surface-1);
+  --surface-2: var(--md-sys-color-surface-2);
+  --surface-3: var(--md-sys-color-surface-3);
+  --surface-4: var(--md-sys-color-surface-4);
+  --surface-5: var(--md-sys-color-surface-5);
+
+  /* 统一焦点叠加 */
+  --focus-overlay: rgba(var(--md-sys-color-primary-rgb), 0.08);
+
+  /* MD3 抬升色调 */
+  --surface-tint: var(--md-sys-color-primary);
+  --surface-container-lowest: var(--md-sys-color-surface-container-lowest);
+  --surface-container-low: var(--md-sys-color-surface-container-low);
+  --surface-container: var(--md-sys-color-surface-container);
+  --surface-container-high: var(--md-sys-color-surface-container-high);
+  --surface-container-highest: var(--md-sys-color-surface-container-highest);
+
+  /* 语义强调色（accent）：indigo/amber 走 MD3 色系，emerald 为固定品牌绿（亮色值） */
+  --accent-indigo-bg: var(--primary-container);
+  --accent-indigo-text: var(--on-primary-container);
+  --accent-indigo-border: var(--primary);
+  --accent-amber-bg: var(--tertiary-container);
+  --accent-amber-text: var(--on-tertiary-container);
+  --accent-amber-border: var(--tertiary);
+  --accent-emerald-bg: #e8f5e9;
+  --accent-emerald-text: #1b5e20;
+  --accent-emerald-border: #2e7d32;
+  --accent-rose-bg: var(--error-container);
+  --accent-rose-text: var(--on-error-container);
+  --accent-rose-border: var(--error);
+}
+
+:root.dark,
+.dark-theme {
+  /* ============ md-sys 角色色（@m3e/web 原生消费） ============ */
+  --md-sys-color-primary-rgb: 159, 202, 255;
+  --md-sys-color-primary: #9fcaff;
+  --md-sys-color-on-primary-rgb: 0, 50, 88;
+  --md-sys-color-on-primary: #003258;
+  --md-sys-color-primary-container-rgb: 0, 73, 125;
+  --md-sys-color-primary-container: #00497d;
+  --md-sys-color-on-primary-container-rgb: 209, 228, 255;
+  --md-sys-color-on-primary-container: #d1e4ff;
+
+  --md-sys-color-secondary-rgb: 187, 199, 219;
+  --md-sys-color-secondary: #bbc7db;
+  --md-sys-color-on-secondary-rgb: 37, 49, 64;
+  --md-sys-color-on-secondary: #253140;
+  --md-sys-color-secondary-container-rgb: 59, 72, 88;
+  --md-sys-color-secondary-container: #3b4858;
+  --md-sys-color-on-secondary-container-rgb: 215, 227, 248;
+  --md-sys-color-on-secondary-container: #d7e3f8;
+
+  --md-sys-color-tertiary-rgb: 215, 190, 228;
+  --md-sys-color-tertiary: #d7bee4;
+  --md-sys-color-on-tertiary-rgb: 59, 41, 72;
+  --md-sys-color-on-tertiary: #3b2948;
+  --md-sys-color-tertiary-container-rgb: 82, 63, 95;
+  --md-sys-color-tertiary-container: #523f5f;
+  --md-sys-color-on-tertiary-container-rgb: 243, 218, 255;
+  --md-sys-color-on-tertiary-container: #f3daff;
+
+  --md-sys-color-error-rgb: 255, 180, 171;
+  --md-sys-color-error: #ffb4ab;
+  --md-sys-color-on-error-rgb: 105, 0, 5;
+  --md-sys-color-on-error: #690005;
+  --md-sys-color-error-container-rgb: 147, 0, 10;
+  --md-sys-color-error-container: #93000a;
+  --md-sys-color-on-error-container-rgb: 255, 180, 171;
+  --md-sys-color-on-error-container: #ffb4ab;
+
+  /* 中性色 */
+  --md-sys-color-background-rgb: 26, 28, 30;
+  --md-sys-color-background: #1a1c1e;
+  --md-sys-color-on-background-rgb: 226, 226, 230;
+  --md-sys-color-on-background: #e2e2e6;
+  --md-sys-color-surface-rgb: 26, 28, 30;
+  --md-sys-color-surface: #1a1c1e;
+  --md-sys-color-on-surface-rgb: 226, 226, 230;
+  --md-sys-color-on-surface: #e2e2e6;
+  --md-sys-color-surface-variant-rgb: 67, 71, 78;
+  --md-sys-color-surface-variant: #43474e;
+  --md-sys-color-on-surface-variant-rgb: 195, 198, 207;
+  --md-sys-color-on-surface-variant: #c3c6cf;
+  --md-sys-color-outline-rgb: 141, 145, 153;
+  --md-sys-color-outline: #8d9199;
+  --md-sys-color-outline-variant-rgb: 67, 71, 78;
+  --md-sys-color-outline-variant: #43474e;
+  --md-sys-color-shadow-rgb: 0, 0, 0;
+  --md-sys-color-shadow: #000000;
+  --md-sys-color-scrim-rgb: 0, 0, 0;
+  --md-sys-color-scrim: #000000;
+  --md-sys-color-inverse-surface-rgb: 226, 226, 230;
+  --md-sys-color-inverse-surface: #e2e2e6;
+  --md-sys-color-inverse-on-surface-rgb: 47, 48, 51;
+  --md-sys-color-inverse-on-surface: #2f3033;
+  --md-sys-color-inverse-primary-rgb: 0, 97, 164;
+  --md-sys-color-inverse-primary: #0061a4;
+
+  /* 固定变体（fixed）：深色下仍用浅色容器侧色调 */
+  --md-sys-color-primary-fixed: #d1e4ff;
+  --md-sys-color-primary-fixed-dim: #aac8ff;
+  --md-sys-color-on-primary-fixed: #001d36;
+  --md-sys-color-on-primary-fixed-variant: #00497d;
+  --md-sys-color-secondary-fixed: #d7e3f8;
+  --md-sys-color-secondary-fixed-dim: #bcc8de;
+  --md-sys-color-on-secondary-fixed: #101c2b;
+  --md-sys-color-on-secondary-fixed-variant: #3b4858;
+  --md-sys-color-tertiary-fixed: #f3daff;
+  --md-sys-color-tertiary-fixed-dim: #d8bce5;
+  --md-sys-color-on-tertiary-fixed: #251431;
+  --md-sys-color-on-tertiary-fixed-variant: #523f5f;
+
+  /* ============ md-sys Surface 层级（m3e 组件 surface-container-*） ============ */
+  --md-sys-color-surface-dim: #202429;
+  --md-sys-color-surface-bright: #1a1c1e;
+  --md-sys-color-surface-container-lowest: #1a1c1e;
+  --md-sys-color-surface-container-low: #202429;
+  --md-sys-color-surface-container: #242a30;
+  --md-sys-color-surface-container-high: #292f37;
+  --md-sys-color-surface-container-highest: #2a3038;
+
+  /* 应用沿用的 Surface 分级（深色） */
+  --md-sys-color-surface-0-rgb: 26, 28, 30;
+  --md-sys-color-surface-0: #1a1c1e;
+  --md-sys-color-surface-1-rgb: 32, 36, 41;
+  --md-sys-color-surface-1: #202429;
+  --md-sys-color-surface-2-rgb: 36, 42, 48;
+  --md-sys-color-surface-2: #242a30;
+  --md-sys-color-surface-3-rgb: 41, 47, 55;
+  --md-sys-color-surface-3: #292f37;
+  --md-sys-color-surface-4-rgb: 42, 48, 56;
+  --md-sys-color-surface-4: #2a3038;
+  --md-sys-color-surface-5-rgb: 44, 52, 61;
+  --md-sys-color-surface-5: #2c343d;
+
+  /* ============ 应用别名（组件统一经此引用 md-sys token） ============ */
+  --bg-color: var(--md-sys-color-surface-0);
+  --surface-color: var(--md-sys-color-surface-1);
+  --surface-variant: var(--md-sys-color-surface-2);
+  /* 沿用应用取值（surface-2），避免深色下视觉漂移 */
+  --text-color: var(--md-sys-color-on-background);
+  --text-secondary: var(--md-sys-color-on-surface-variant);
+  --text-tertiary: var(--md-sys-color-outline);
+  --primary: var(--md-sys-color-primary);
+  --primary-rgb: var(--md-sys-color-primary-rgb);
+  --primary-hover: #7db4ff;
+  --primary-container: var(--md-sys-color-primary-container);
+  --on-primary: var(--md-sys-color-on-primary);
+  --on-primary-container: var(--md-sys-color-on-primary-container);
+  --secondary: var(--md-sys-color-secondary);
+  --on-secondary: var(--md-sys-color-on-secondary);
+  --secondary-container: var(--md-sys-color-secondary-container);
+  --on-secondary-container: var(--md-sys-color-on-secondary-container);
+  --tertiary: var(--md-sys-color-tertiary);
+  --on-tertiary: var(--md-sys-color-on-tertiary);
+  --tertiary-container: var(--md-sys-color-tertiary-container);
+  --on-tertiary-container: var(--md-sys-color-on-tertiary-container);
+  --border-color: var(--md-sys-color-outline);
+  --border-color-muted: var(--md-sys-color-outline-variant);
+  --outline: var(--md-sys-color-outline);
+  --outline-variant: var(--md-sys-color-outline-variant);
+  --error: var(--md-sys-color-error);
+  --success: #3fb950;
+  /* 暗色成功绿：GitHub dark 同款，深色背景下亮而不刺眼 */
+  --on-error: var(--md-sys-color-on-error);
+  --error-container: var(--md-sys-color-error-container);
+  --on-error-container: var(--md-sys-color-on-error-container);
+  --background: var(--md-sys-color-background);
+  --surface: var(--md-sys-color-surface);
+  --on-surface: var(--md-sys-color-on-surface);
+  --shadow-rgb: var(--md-sys-color-shadow-rgb);
+  --on-background: var(--md-sys-color-on-background);
+  --on-surface-variant: var(--md-sys-color-on-surface-variant);
+  --inverse-surface: var(--md-sys-color-inverse-surface);
+  --inverse-on-surface: var(--md-sys-color-inverse-on-surface);
+  --on-inverse-surface: var(--md-sys-color-inverse-on-surface);
+  --surface-0: var(--md-sys-color-surface-0);
+  --surface-1: var(--md-sys-color-surface-1);
+  --surface-2: var(--md-sys-color-surface-2);
+  --surface-3: var(--md-sys-color-surface-3);
+  --surface-4: var(--md-sys-color-surface-4);
+  --surface-5: var(--md-sys-color-surface-5);
+
+  /* 统一焦点叠加 */
+  --focus-overlay: rgba(var(--md-sys-color-primary-rgb), 0.12);
+
+  /* MD3 抬升色调 */
+  --surface-tint: var(--md-sys-color-primary);
+  --surface-container-lowest: var(--md-sys-color-surface-container-lowest);
+  --surface-container-low: var(--md-sys-color-surface-container-low);
+  --surface-container: var(--md-sys-color-surface-container);
+  --surface-container-high: var(--md-sys-color-surface-container-high);
+  --surface-container-highest: var(--md-sys-color-surface-container-highest);
+
+  /* 语义强调色（accent）：emerald 品牌绿深色值 */
+  --accent-indigo-bg: var(--primary-container);
+  --accent-indigo-text: var(--on-primary-container);
+  --accent-indigo-border: var(--primary);
+  --accent-amber-bg: var(--tertiary-container);
+  --accent-amber-text: var(--on-tertiary-container);
+  --accent-amber-border: var(--tertiary);
+  --accent-emerald-bg: #1b5e20;
+  --accent-emerald-text: #e8f5e9;
+  --accent-emerald-border: #81c784;
+  --accent-rose-bg: var(--error-container);
+  --accent-rose-text: var(--on-error-container);
+  --accent-rose-border: var(--error);
+}
+
+/* ---------- 源码字体与排版（font.css） ---------- */
+:root {
+  /* 文字大小等级（深浅主题共用） */
+  --text-size-xs: 0.75rem;
+  --text-size-sm: 0.9rem;
+  --text-size-s: 1rem;
+  --text-size-m: 1.2rem;
+  --text-size-l: 1.6rem;
+}
+
+/* ---------- m3e 组件统一样式（m3eStyle.css） ---------- */
+/* m3eStyle.css —— 项目统一的 m3e 组件样式
+ * 把原本散落在各组件里的重复 token 覆盖集中到这里统一管理；
+ * 组件内仅保留各自的特殊尺寸（如 REPL 输入框 36px）与语义色。
+ * 本文件由 index.css 引入，全局生效。 */
+
+/* 搜索栏统一尺寸：40px 高、全圆角、--text-size-sm 输入文字（查找/替换/文件搜索等全部搜索框共用）；
+   内部 clear 按钮随容器缩小为 32px/18px（否则默认 56px 按钮会撑爆容器）。 */
+m3e-search-bar {
+  --m3e-search-bar-container-height: 40px;
+  --m3e-search-bar-container-shape: 9999px;
+  --m3e-search-bar-input-text-font-size: var(--text-size-sm) !important;
+  --m3e-icon-button-medium-container-height: 32px;
+  --m3e-icon-button-medium-icon-size: 18px;
+}
+
+/* 菜单项统一密度与图标：行高 44px → 36px 紧凑显示；
+   图标 0.9rem、图标与文字间距 0.5rem。 */
+m3e-menu-item {
+  --md-sys-density-scale: -2;
+  --m3e-menu-item-icon-size: var(--text-size-sm);
+  --m3e-menu-item-icon-label-space: 0.5rem;
+}
+
+/* 列表项（m3e-list-item）的 leading 图标插槽：统一图标字号（--text-size-sm）；
+   slot 内容位于 document 树，全局规则可直接命中 */
+m3e-list-item [slot="leading"] {
+  font-size: var(--text-size-l);
+}
+
+/* m3e-card 默认样式（全局兜底；各界面可用更高特异性 token 覆盖）：
+   - padding/border-radius/背景/描边均经 token 进入组件 shadow（.base 绘制）
+   - 背景与描边用 color-mix 半透明叠加，随主题色联动 */
+m3e-card {
+  --m3e-card-padding: 1rem;
+  --m3e-card-shape: var(--md-sys-shape-corner-extra-large);
+  --m3e-card-container-color: color-mix(in srgb, var(--md-sys-color-surface-container) 70%, transparent);
+  --m3e-card-outline-color: color-mix(in srgb, var(--md-sys-color-secondary) 10%, transparent);
+  --m3e-outlined-card-outline-thickness: 2px;
+}
+
+/* m3e-select 选项面板的 optgroup 分组 label：全局统一样式。
+   面板是组件动态创建的 m3e-option-panel 自定义元素（document 树），直接按元素名
+   选择即可命中所有 select（无需 panel-class）；变量会继承给组内 option，须恢复 */
+m3e-option-panel m3e-optgroup {
+  --m3e-option-height: 32px;
+  --m3e-option-color: var(--secondary);
+}
+
+m3e-option-panel m3e-optgroup m3e-option {
+  --m3e-option-height: 48px;
+  --m3e-option-color: var(--on-surface);
+}
+
+/* 主布局 split-pane 拖拽手柄：全局唯一布局组件 */
+m3e-split-pane {
+  --m3e-split-pane-drag-handle-container-width: 8px;
+  --m3e-split-pane-drag-handle-width: 2px;
+  --m3e-split-pane-drag-handle-pressed-width: 6px;
+}
+
+m3e-button {
+  --m3e-button-extra-small-label-text-font-size: var(--text-size-xs);
+  --m3e-button-disabled-container-color: none;
+}
+
+m3e-icon-button {
+  --m3e-filled-icon-button-disabled-icon-opacity: 0.3;
+}
+
+m3e-nav-rail {
+  --m3e-nav-bar-height: 100vh;
+  --m3e-nav-rail-top-space: 1rem;
+}
+
+m3e-content-pane {
+  padding-right: 0.5rem;
+}
+
+
+/* ============ 加载遮罩（与桌面版 MD3LoadingModal 同款体验） ============ */
+.loading-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 30000;
+  background-color: var(--surface-color);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 2.4rem;
+  transition: opacity 0.3s ease;
+
+  m3e-loading-indicator {
+    scale: 1.4;
+    margin-bottom: 1rem;
+  }
+}
+
+.loading-modal.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.loading-status {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  letter-spacing: 0.2px;
+  user-select: none;
+}
+
+/* ============ 基础 ============ */
+.layout {
+  margin: 0;
+  padding: 0;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* 防内容撑破 height:100%（flex 容器 min-height:auto 会按内容取），否则底部被 overflow 裁掉 */
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.material-symbols-rounded {
+  font-size: 20px;
+}
+
+/* ============ 顶栏 ============ */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 18px;
+  background-color: var(--surface-color);
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  color: var(--primary);
+}
+
+.brand-icon {
+  font-size: 1.4rem;
+}
+
+.brand-name {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--text-color);
+}
+
+.brand-name em {
+  font-style: normal;
+  color: var(--text-tertiary);
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* 编辑器开关按钮：filled 高亮，更显眼 */
+.editor-toggle-btn {
+  flex-shrink: 0;
+}
+
+.editor-toggle-btn m3e-button {
+  min-width: 6.5rem;
+}
+
+/* ============ 主布局：目录抽屉 + 正文|TOC（m3e-split-pane 拉杆） ============ */
+.layout {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  height: 0;
+}
+
+.main-split {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background-color: var(--surface-color);
+}
+
+
+/* 目录抽屉（所有屏幕统一抽屉形式） */
+.tree-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 320px;
+  max-width: 85vw;
+  transform: translateX(-102%);
+  transition: transform 0.25s ease;
+  z-index: 50;
+  background-color: var(--surface-color);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  border-radius: 0 2rem 2rem 0;
+}
+
+.tree-drawer.open {
+  transform: translateX(0);
+}
+
+#treeBackdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+body.drawer-open #treeBackdrop {
+  display: block;
+}
+
+.search-bar {
+  margin: 0 0.4rem 1.2rem 0.4rem;
+}
+
+/* 定位当前主题 FAB（源码同款：absolute 右下角） */
+.locate-fab {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 5;
+}
+
+.locate-fab .material-symbols-rounded {
+  font-size: 1.3rem;
+}
+
+.sidebar-title {
+  padding: 16px 16px 8px;
+  font-size: medium;
+  color: var(--secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.5rem;
+}
+
+/* 抽屉内目录树（m3e-tree） */
+.tree-pane {
+  height: 100%;
+  --m3e-content-pane-container-color: var(--surface-color);
+  --m3e-content-pane-container-padding: 4px 8px 16px;
+}
+
+#tree {
+  --m3e-tree-item-shape: 10px;
+  --m3e-tree-item-text-font-size: 0.85rem;
+  --m3e-tree-item-text-color: var(--text-secondary);
+  --m3e-tree-item-selected-text-color: var(--on-primary-container);
+  --m3e-tree-item-selected-state-layer-color: var(--primary-container);
+  --m3e-tree-item-icon-size: 1.15rem;
+  --m3e-tree-item-icon-color: var(--text-tertiary);
+  --m3e-tree-item-selected-icon-color: var(--primary);
+  user-select: none;
+}
+
+#tree m3e-tree-item .material-symbols-rounded {
+  font-size: 1.15rem;
+}
+
+/* 正在浏览的主题：高亮稳定（边框经 JS 加到 .base 内容行，源码 .topic-item.is-active 同款） */
+#tree m3e-tree-item[selected] {
+  --m3e-tree-item-shape: 9999px;
+  --m3e-tree-item-selected-text-color: var(--text-color);
+  --m3e-tree-item-selected-state-layer-color: transparent;
+  --m3e-tree-item-selected-icon-color: var(--secondary);
+}
+
+#tree m3e-tree-item[selected] .material-symbols-rounded {
+  color: var(--secondary);
+}
+
+
+/* ============ 面板 2：正文 ============ */
+.content-pane {
+  height: calc(100% - 24px);
+  /* 100% + margin 会溢出容器导致底部被裁，减去上下边距 */
+  margin: 12px;
+  background-color: var(--bg-color);
+  border-radius: 12px;
+  overflow: hidden;
+  /* 容器本身不滚动，高度 = 面板高度 */
+}
+
+.content-inner {
+  height: 100%;
+  margin: 1rem 0.5rem;
+  padding: 28px 32px 60px;
+  overflow-y: auto;
+  /* 内容在内部滚动 */
+  scrollbar-width: thin;
+}
+
+.topic-title {
+  font-size: 2.1rem;
+  margin-bottom: 28px;
+  color: var(--primary);
+}
+
+.topic-summary {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  margin-bottom: 24px;
+}
+
+.sec-heading {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 26px 0 10px;
+  padding-left: 10px;
+  border-left: 3px solid var(--primary);
+}
+
+.sec-text {
+  font-size: 0.93rem;
+  line-height: 1.75;
+  margin-bottom: 12px;
+  white-space: pre-line;
+}
+
+.inline-code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background-color: var(--surface-variant);
+  border: 1px solid var(--border-color-muted);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
+.sec-table-wrap {
+  overflow-x: auto;
+  margin: 12px 0 16px;
+  border: 1px solid var(--border-color-muted);
+  border-radius: 12px;
+}
+
+table.sec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.sec-table th {
+  background-color: var(--surface-variant);
+  padding: 9px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color-muted);
+  white-space: nowrap;
+}
+
+.sec-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color-muted);
+  vertical-align: top;
+}
+
+.sec-table tr:last-child td {
+  border-bottom: none;
+}
+
+.sec-notes {
+  background-color: var(--primary-container);
+  color: var(--on-primary-container);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  margin: 10px 0 14px;
+}
+
+/* ============ 代码块（github-dark 配色） ============ */
+.code-block {
+  margin: 12px 0 16px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #161b22;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  color: #8b949e;
+  border-bottom: 1px solid #21262d;
+}
+
+.code-block-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.code-block pre {
+  margin: 0;
+  padding: 14px;
+  overflow-x: auto;
+  background-color: #0d1117;
+}
+
+.code-block code {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: #c9d1d9;
+  white-space: pre;
+}
+
+.code-block .hl-keyword {
+  color: #ff7b72;
+}
+
+.code-block .hl-string {
+  color: #a5d6ff;
+}
+
+.code-block .hl-comment {
+  color: #8b949e;
+  font-style: italic;
+}
+
+.code-block .hl-number {
+  color: #79c0ff;
+}
+
+.code-block .hl-function {
+  color: #d2a8ff;
+}
+
+.code-block .hl-builtin {
+  color: #ffa657;
+}
+
+.code-block .hl-decorator {
+  color: #f2cc60;
+}
+
+/* ============ 要点 / 小贴士 ============ */
+.takeaways,
+.tips {
+  margin: 16px 0;
+  border-radius: 12px;
+  padding: 14px 18px;
+  font-size: 0.88rem;
+  border: 1px solid var(--border-color-muted);
+}
+
+.takeaways-title,
+.tips-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.takeaways-title {
+  color: var(--primary);
+}
+
+.tips-title {
+  color: var(--success);
+}
+
+.takeaways li,
+.tips li {
+  margin: 4px 0 4px 18px;
+  line-height: 1.6;
+}
+
+/* ============ 测验 ============ */
+.quiz-section {
+  margin-top: 30px;
+  border-top: 2px dashed var(--border-color-muted);
+  padding-top: 20px;
+}
+
+.quiz-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: 14px;
+}
+
+.quiz-item {
+  border: 1px solid var(--border-color-muted);
+  border-radius: 16px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+
+.quiz-q {
+  font-size: 0.93rem;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.quiz-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quiz-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  border: 1.4px solid var(--border-color-muted);
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  transition: all 0.15s;
+  background-color: var(--surface-variant);
+  color: var(--text-color);
+}
+
+.quiz-option:hover {
+  border-color: var(--primary);
+}
+
+.quiz-option.selected {
+  border-color: var(--primary);
+  background-color: var(--primary-container);
+  color: var(--on-primary-container);
+}
+
+.quiz-option.correct {
+  border-color: var(--success);
+  background-color: color-mix(in srgb, var(--success) 12%, transparent);
+}
+
+.quiz-option.wrong {
+  border-color: var(--error);
+  background-color: color-mix(in srgb, var(--error) 10%, transparent);
+}
+
+.quiz-result {
+  margin-top: 10px;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.quiz-result.ok {
+  color: var(--success);
+}
+
+.quiz-result.no {
+  color: var(--error);
+}
+
+.quiz-explanation {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.quiz-code-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* ============ 编辑器面板（split end 内） ============ */
+.editor-pane {
+  height: calc(100% - 24px);
+  display: flex;
+  flex-direction: column;
+  margin: 12px 12px 12px 0;
+  background-color: var(--surface-color);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.editor-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  flex-shrink: 0;
+  background-color: #161b22;
+  color: #8b949e;
+  border-radius: 0.4rem 0.4rem 0 0;
+}
+
+.editor-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.py-status {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.py-status.loading {
+  color: var(--primary);
+}
+
+.py-status.ready {
+  color: var(--success);
+}
+
+.py-status.error {
+  color: var(--error);
+}
+
+.editor-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.editor-area {
+  flex: 1.4;
+  display: flex;
+  min-width: 0;
+  background-color: #0d1117;
+  border-radius: 0 0 0.4rem 0.4rem;
+}
+
+.line-numbers {
+  width: 48px;
+  padding: 12px 8px 12px 0;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: #484f58;
+  user-select: none;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.code-wrap {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+}
+
+.highlight {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 12px 16px;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: #c9d1d9;
+  white-space: pre;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.code-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 12px 16px;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: transparent;
+  caret-color: #c9d1d9;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  white-space: pre;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.code-input::selection {
+  background: #264f78;
+  color: #fff;
+}
+
+.highlight .hl-keyword {
+  color: #ff7b72;
+}
+
+.highlight .hl-string {
+  color: #a5d6ff;
+}
+
+.highlight .hl-comment {
+  color: #8b949e;
+  font-style: italic;
+}
+
+.highlight .hl-number {
+  color: #79c0ff;
+}
+
+.highlight .hl-function {
+  color: #d2a8ff;
+}
+
+.highlight .hl-builtin {
+  color: #ffa657;
+}
+
+.highlight .hl-decorator {
+  color: #f2cc60;
+}
+
+.output-area {
+  flex: 1;
+  min-width: 0;
+  border-left: none;
+  background-color: #0d1117;
+  display: flex;
+  flex-direction: column;
+  margin-top: 0.5rem;
+  border-radius: 0.4rem;
+}
+
+.output-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 14px;
+  font-size: 0.75rem;
+  color: #8b949e;
+  border-bottom: 1px solid #21262d;
+  flex-shrink: 0;
+}
+
+.output {
+  flex: 1;
+  padding: 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: #c9d1d9;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.output .stderr {
+  color: #ff7b72;
+}
+
+.tree-empty {
+  text-align: center;
+}
+
+/* 窄屏适配（<900px：隐藏 TOC 面板，正文宽度不足时不显示） */
+
+
+/* 手机适配（<768px：仅正文 + 目录抽屉；编辑器隐藏）
+   目录抽屉由外层 split 的 start 面板充当：汉堡按钮展开（value=70），
+   backdrop 点击收起（value=0） */
+@media (max-width: 768px) {
+
+  /* 手机：编辑器面板整体边距对称 */
+  .editor-pane {
+    margin: 12px;
+  }
+}
