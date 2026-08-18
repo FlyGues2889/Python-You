@@ -193,7 +193,8 @@
 }
 
 :root.dark,
-.dark-theme {
+.dark-theme,
+[data-theme="dark"] {
   /* ============ md-sys 角色色（@m3e/web 原生消费） ============ */
   --md-sys-color-primary-rgb: 159, 202, 255;
   --md-sys-color-primary: #9fcaff;
@@ -695,7 +696,8 @@ body.drawer-open #treeBackdrop {
   /* 100% + margin 会溢出容器导致底部被裁，减去上下边距 */
   margin: 12px;
   background-color: var(--bg-color);
-  border-radius: 12px;
+  border: 1.4px solid var(--border-color-muted);
+  border-radius: 20px;
   overflow: hidden;
   /* 容器本身不滚动，高度 = 面板高度 */
 }
@@ -1001,7 +1003,7 @@ table.sec-table {
   flex-shrink: 0;
   background-color: #161b22;
   color: #8b949e;
-  border-radius: 0.4rem 0.4rem 0 0;
+  border-radius: 20px 20px 0 0;
 }
 
 .editor-title {
@@ -1040,6 +1042,7 @@ table.sec-table {
 }
 
 .editor-area {
+  max-height: 51.5vh;
   flex: 1.4;
   display: flex;
   min-width: 0;
@@ -1048,6 +1051,8 @@ table.sec-table {
 }
 
 .line-numbers {
+  white-space: pre;
+  /* 行号含换行符，默认 normal 会折叠成横排 */
   width: 48px;
   padding: 12px 8px 12px 0;
   text-align: right;
@@ -1078,6 +1083,15 @@ table.sec-table {
   white-space: pre;
   overflow: hidden;
   pointer-events: none;
+}
+
+/* 高亮层 code 继承父级字体：UA 默认 font-family: monospace 会覆盖
+   var(--font-mono)，字符宽度与 textarea 不同 → 光标/代码错位 */
+.highlight code {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: inherit;
 }
 
 .code-input {
@@ -1141,8 +1155,8 @@ table.sec-table {
   background-color: #0d1117;
   display: flex;
   flex-direction: column;
-  margin-top: 0.5rem;
-  border-radius: 0.4rem;
+  margin-top: 0.4rem;
+  border-radius: 0.4rem 0.4rem 20px 20px;
 }
 
 .output-header {
@@ -1188,4 +1202,99 @@ table.sec-table {
   .editor-pane {
     margin: 12px;
   }
+}
+/* 滚动条轨道透明（全局）：document 树走 webkit 伪元素；
+   组件库 shadow 内滚动条引用 --m3e-scrollbar-track-color 变量 */
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+:root {
+  --m3e-scrollbar-track-color: transparent;
+}
+
+/* 字体变量（系统默认：等宽栈用于编辑器/代码块，UI 字体用于正文） */
+:root {
+  --font-sans: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --font-headings: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Code", Consolas, "Courier New", monospace;
+  --font-terminal: ui-monospace, "SFMono-Regular", "Cascadia Code", Consolas, monospace;
+}
+
+/* 滚动条：定义 webkit 尺寸激活自定义模式（轨道透明规则随之生效），
+   标准通道同时设透明轨道 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #444c56;
+  border-radius: 9999px;
+}
+
+:root {
+  scrollbar-color: #444c56 transparent;
+}
+
+/* 上一节/下一节跳转卡片 */
+.topic-nav {
+  display: flex;
+  gap: 12px;
+  margin-top: 36px;
+  padding-top: 20px;
+  border-top: 2px dashed var(--border-color-muted);
+}
+.topic-nav-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 18px;
+  border: 1.4px solid var(--border-color-muted);
+  border-radius: 16px;
+  cursor: pointer;
+  background-color: var(--bg-color);
+  transition: border-color 0.15s, background-color 0.15s, transform 0.15s;
+  min-width: 0;
+}
+.topic-nav-card:hover {
+  border-color: var(--primary);
+  background-color: var(--primary-container);
+  transform: translateY(-1px);
+}
+.topic-nav-card.prev { text-align: left; }
+.topic-nav-card.next { text-align: right; }
+.topic-nav-card.disabled { visibility: hidden; }
+.topic-nav-label {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+.topic-nav-card.next .topic-nav-label { justify-content: flex-end; }
+.topic-nav-label .material-symbols-rounded { font-size: 1rem; }
+.topic-nav-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 目录项：全圆角；无 hover/选中高亮与边框（定位 FAB 仍可用 selected 定位） */
+#tree {
+  --m3e-tree-item-shape: 9999px;
+  --m3e-tree-item-hover-state-layer-color: transparent;
+  --m3e-tree-item-pressed-state-layer-color: transparent;
+  --m3e-tree-item-focus-state-layer-color: transparent;
+  --m3e-tree-item-selected-state-layer-color: transparent;
+  --m3e-tree-item-selected-text-color: var(--text-secondary);
+  --m3e-tree-item-selected-icon-color: var(--text-tertiary);
+}
+#tree m3e-tree-item[selected] {
+  border: none;
 }

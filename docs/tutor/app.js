@@ -269,7 +269,27 @@ function renderContent(topic) {
   // 测验
   html += renderQuiz(topic.id);
 
+  // 上一节 / 下一节跳转卡片（按教程顺序）
+  const topicIndex = TOPICS.findIndex(t => t.id === topic.id);
+  const prevTopic = topicIndex > 0 ? TOPICS[topicIndex - 1] : null;
+  const nextTopic = topicIndex < TOPICS.length - 1 ? TOPICS[topicIndex + 1] : null;
+  html += `<div class="topic-nav">
+    ${prevTopic ? `<div class="topic-nav-card prev" data-nav="${prevTopic.id}" title="${esc(prevTopic.title)}">
+      <span class="topic-nav-label"><span class="material-symbols-rounded">chevron_left</span>上一节</span>
+      <span class="topic-nav-title">${esc(prevTopic.title)}</span>
+    </div>` : '<div class="topic-nav-card prev disabled"></div>'}
+    ${nextTopic ? `<div class="topic-nav-card next" data-nav="${nextTopic.id}" title="${esc(nextTopic.title)}">
+      <span class="topic-nav-label">下一节<span class="material-symbols-rounded">chevron_right</span></span>
+      <span class="topic-nav-title">${esc(nextTopic.title)}</span>
+    </div>` : '<div class="topic-nav-card next disabled"></div>'}
+  </div>`;
+
   $('#tutorial-article').innerHTML = html;
+
+  // 上一节/下一节点击跳转
+  $$('.topic-nav-card[data-nav]').forEach((card) => {
+    card.addEventListener('click', () => selectTopic(card.dataset.nav));
+  });
 
   // 代码块按钮事件
   $$('[data-action]').forEach((btn) => {
@@ -618,16 +638,20 @@ $('#menuBtn').addEventListener('click', () => {
 });
 $('#treeBackdrop').addEventListener('click', closeDrawer);
 
-// 定位当前主题 FAB：滚动到树中当前选中项
+// 定位当前主题 FAB：若所在文件夹（stage）已折叠，先展开祖先再滚动定位
 $('.locate-fab').addEventListener('click', () => {
-  const active = treeEl.querySelector('m3e-tree-item[data-topic][selected]');
-  if (active) {
-    active.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  } else {
-    // 无选中时展开第一项所在位置
-    const first = treeEl.querySelector('m3e-tree-item[data-topic]');
-    first?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const target = treeEl.querySelector('m3e-tree-item[data-topic][selected]')
+    || treeEl.querySelector('m3e-tree-item[data-topic]');
+  if (!target) return;
+  // 展开所有祖先（折叠状态下隐藏项无法定位）
+  let anc = target.parentElement?.closest('m3e-tree-item');
+  while (anc) {
+    if (!anc.open && anc.hasChildItems) anc.open = true;
+    anc = anc.parentElement?.closest('m3e-tree-item');
   }
+  requestAnimationFrame(() => {
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
 });
 
 /* ---------- 初始化 ---------- */
