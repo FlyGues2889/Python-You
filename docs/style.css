@@ -1190,19 +1190,26 @@ table.sec-table {
   text-align: center;
 }
 
-/* 窄屏适配（<900px：隐藏 TOC 面板，正文宽度不足时不显示） */
-
-
-/* 手机适配（<768px：仅正文 + 目录抽屉；编辑器隐藏）
-   目录抽屉由外层 split 的 start 面板充当：汉堡按钮展开（value=70），
-   backdrop 点击收起（value=0） */
+/* 手机适配（<768px） */
 @media (max-width: 768px) {
+  div[slot="start"] {
+    height: calc(100vh - 64px);
+    width: 100vw;
 
-  /* 手机：编辑器面板整体边距对称 */
-  .editor-pane {
-    margin: 12px;
+    margin: 0;
+
+    position: absolute;
+    z-index: 1;
+
+    border-radius: 20px 20px 0 0;
+    border: none;
+  }
+
+  div[slot="end"] {
+    display: none;
   }
 }
+
 /* 滚动条轨道透明（全局）：document 树走 webkit 伪元素；
    组件库 shadow 内滚动条引用 --m3e-scrollbar-track-color 变量 */
 ::-webkit-scrollbar-track,
@@ -1228,6 +1235,7 @@ table.sec-table {
   width: 8px;
   height: 8px;
 }
+
 ::-webkit-scrollbar-thumb {
   background: #444c56;
   border-radius: 9999px;
@@ -1245,6 +1253,7 @@ table.sec-table {
   padding-top: 20px;
   border-top: 2px dashed var(--border-color-muted);
 }
+
 .topic-nav-card {
   flex: 1;
   display: flex;
@@ -1258,14 +1267,25 @@ table.sec-table {
   transition: border-color 0.15s, background-color 0.15s, transform 0.15s;
   min-width: 0;
 }
+
 .topic-nav-card:hover {
   border-color: var(--primary);
   background-color: var(--primary-container);
   transform: translateY(-1px);
 }
-.topic-nav-card.prev { text-align: left; }
-.topic-nav-card.next { text-align: right; }
-.topic-nav-card.disabled { visibility: hidden; }
+
+.topic-nav-card.prev {
+  text-align: left;
+}
+
+.topic-nav-card.next {
+  text-align: right;
+}
+
+.topic-nav-card.disabled {
+  visibility: hidden;
+}
+
 .topic-nav-label {
   display: flex;
   align-items: center;
@@ -1274,8 +1294,15 @@ table.sec-table {
   font-weight: 600;
   color: var(--text-tertiary);
 }
-.topic-nav-card.next .topic-nav-label { justify-content: flex-end; }
-.topic-nav-label .material-symbols-rounded { font-size: 1rem; }
+
+.topic-nav-card.next .topic-nav-label {
+  justify-content: flex-end;
+}
+
+.topic-nav-label .material-symbols-rounded {
+  font-size: 1rem;
+}
+
 .topic-nav-title {
   font-size: 0.92rem;
   font-weight: 700;
@@ -1295,6 +1322,7 @@ table.sec-table {
   --m3e-tree-item-selected-text-color: var(--text-secondary);
   --m3e-tree-item-selected-icon-color: var(--text-tertiary);
 }
+
 #tree m3e-tree-item[selected] {
   border: none;
 }
@@ -1308,12 +1336,15 @@ table.sec-table {
   color: var(--text-secondary);
   white-space: nowrap;
 }
+
 /* hidden 属性需显式覆盖（display:inline-flex 会压过 UA 的 [hidden] 规则） */
 .py-download-status[hidden] {
   display: none;
 }
+
 .py-download-spinner {
-  --m3e-loading-indicator-size: 24px; /* 组件默认 38px，经变量缩放 */
+  --m3e-loading-indicator-size: 24px;
+  /* 组件默认 38px，经变量缩放 */
   width: 24px;
   height: 24px;
   flex-shrink: 0;
