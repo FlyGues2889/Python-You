@@ -102,14 +102,15 @@ const translations = {
     pkgSearchPlaceholder: '输入 PyPI / Pyodide 包名称 (如: pillow)...',
     installPkg: '安装',
     installing: '正在安装...',
-    loadPkg: '一键加载包',
+    loadPkg: '安装',
     uninstall: '卸载',
     installedSectionTitle: '已安装拓展包',
-    availableSectionTitle: '可载入拓展包',
+    availableSectionTitle: '可安装拓展包',
 
     // Dialogs & Toasts
     confirmDeleteTitle: '确认删除',
     confirmDeleteMsg: '确定要删除 "{name}" 吗？此操作无法撤销。',
+    confirmDeleteFolderMsg: '确定要删除文件夹 "{name}" 及其全部内容吗？此操作无法撤销。',
     unsavedChangesTitle: '未保存的更改',
     unsavedChangesMsg: '文件 "{name}" 存在未保存的更改。是否在关闭前保存？',
     dontSave: '不保存',
@@ -147,7 +148,7 @@ const translations = {
     toastOpenQuizCode: '请先打开测验代码',
     toastRunError: '运行出错，请查看终端中的错误信息',
     toastQuizPassed: '测验通过，输出完全正确！',
-    toastOutputMismatch: '输出与预期不符：预期「{expected}」，实际「{actual}」',
+    toastQuizFailed: '输出与预期不符，请查看对比详情',
     correspondingTutorial: '对应教程',
     quizSuffix: '（测验）',
 
@@ -263,9 +264,6 @@ const translations = {
     tutorialPrevious: '上一页',
     tutorialNext: '下一页',
 
-    // MD3 Component Defaults
-    openingFolder: '正在打开...',
-
     // Python Engine Status & Messages（面向用户的提示）
     engineLocal: 'Python {version}',
     runLocalPython: '▶ 使用本机 Python {version} 执行...',
@@ -281,14 +279,42 @@ const translations = {
     pyodideTimeout: 'Pyodide WASM 引擎加载超时',
     pyodideCdnUnavailable: 'Pyodide 引擎加载失败',
     pyodideInitTimeout: 'Pyodide WASM 引擎初始化超时，检查你的网络',
-    demoModeRunning: '[INFO] 正在以演示模式启动...',
-    demoExecuted: '[INFO] 代码在演示模式下成功执行。',
+    demoModeRunning: '[演示模式] 正在以演示引擎执行（非真实 Python 运行）...',
+    demoExecuted: '[演示模式] 演示引擎执行结束（非真实 Python 运行，结果仅供演示）。',
+    demoUnsupportedWarning: '[演示模式] 警告：代码中有 {count} 处语句无法由演示引擎执行（第 {lines} 行），这些语句未运行，结果不完整。',
     replErrorMsg: '[REPL Error] {err}',
     pyodideInstallingPkg: '[INFO] 正在通过 Pyodide micropip 安装包\'{name}\'',
     pyodideInstalledPkg: '[INFO] 成功安装包 \'{name}\'',
     pyodideInstallFail: '[ERROR] 安装包 \'{name}\'失败。错误: {err}',
-    demoPkgRegistered: '[INFO] 包 \'{name}\' 已在演示模式中成功注册。',
-    processFinishedCode: '[INFO] 进程已完成并退出，代码 0 ，完成时间 {duration}ms'
+    demoPkgRegistered: '[演示模式] 包 \'{name}\' 仅登记记录，未真实安装；代码中 import 该包仍会失败。',
+    processFinishedCode: '[INFO] 进程已完成并退出，代码 0 ，完成时间 {duration}ms',
+    invalidFileName: '文件名不能包含 \\ / : * ? " < > | 或 .. 等字符',
+    pkgInstallFailedMsg: '安装 {name} 失败，详情见终端输出',
+
+    // REPL 欢迎语（按真实引擎动态生成）
+    replWelcomeDemo: '[演示模式] Python 3.11 演示引擎（非真实运行，仅支持 print/赋值/表达式）\nType "help" for more information.',
+    replWelcomePyodide: 'Python 3.11.0 (Pyodide WASM Runtime)\nType "help", "copyright", "credits" or "license" for more information.',
+    replWelcomeLocal: '{label} — Type "help", "copyright", "credits" or "license" for more information.',
+
+    // 测验输出对比弹窗
+    quizCompareTitle: '输出对比',
+    quizExpectedTitle: '期望输出',
+    quizActualTitle: '你的输出',
+
+    // 首次启动欢迎引导
+    welcomeDialogTitle: '欢迎使用 Python You',
+    welcomeDialogText: '无需安装 Python 即可开始学习与运行代码。\n\n建议从「教程」页开始：内置 7 大阶段系统课程与课后测验，教程中的代码可一键导入编辑器实时运行。',
+    enterWorkspace: '直接进入工作区',
+    startLearning: '开始学习教程',
+
+    // 网页端环境提示条
+    webEnvBanner: '网页版：工作区与学习进度仅保存在本浏览器（清除缓存或更换浏览器将丢失），代码在本机浏览器内执行',
+
+    // 工作区内容搜索
+    workspaceSearch: '搜索工作区内容',
+    workspaceSearchPlaceholder: '搜索文件内容（.py / .txt / .md / .json / .js / .ts）...',
+    searchResultCount: '找到 {count} 处匹配',
+    workspaceSearchEmpty: '未找到匹配内容'
   },
 };
 

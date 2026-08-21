@@ -73,6 +73,10 @@ export const nativeApi = {
   ensureDefaultWorkspace(): Promise<string> {
     return invoke('ensure_default_workspace');
   },
+  // 告知 Rust 当前工作区根目录：所有 fs_* 命令将校验路径必须在根目录之内（NFR-5.2）
+  setWorkspaceRoot(path: string): Promise<void> {
+    return invoke('set_workspace_root', { path });
+  },
 
   // ---------- Python 子进程 ----------
   detectPython(): Promise<PythonInfo> {

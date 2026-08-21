@@ -21,6 +21,7 @@ import { copyToClipboard } from './utils/clipboard';
 import { revealItemInDir, openPath } from '@tauri-apps/plugin-opener';
 
 import { syncWorkspacePackages } from './utils/packageUtils';
+import { gradeOutput } from './utils/quizGrader';
 import { uid } from './utils/id';
 import { resolveCodeTheme } from './utils/theme';
 import { setQuizQuestionResult, syncQuizCompletion, getQuizQuestionResult } from './components/tutor/quizData';
@@ -290,6 +291,14 @@ const handleRevealInExplorer = async (item: FSItem) => {
 // Delete confirmation dialog state
 const isDeleteDialogOpen = ref(false);
 const deleteTargetItem = ref<FSItem | null>(null);
+// 删除确认文案：文件夹删除附加“包含全部内容”警示（NFR-5.4）
+const deleteConfirmMsg = computed(() => {
+  const item = deleteTargetItem.value;
+  if (!item) return '';
+  return item.isFolder
+    ? tf('confirmDeleteFolderMsg', { name: item.name })
+    : tf('confirmDeleteMsg', { name: item.name });
+});
 
 const requestDeleteItem = (item: FSItem) => {
   deleteTargetItem.value = item;
@@ -368,6 +377,8 @@ const handleMenuOpenFolder = async () => {
 // 从本地磁盘目录构建工作区（替换虚拟文件树）
 const loadWorkspaceFromDisk = async (root: string) => {
   try {
+    // 先告知 Rust 工作区根目录：fs 命令将校验路径在根目录之内（NFR-5.2）
+    await nativeApi.setWorkspaceRoot(root);
     const entries = await nativeApi.readDirectory(root);
     // 先设置 root 再赋值树，避免深监听把整棵树写回 localStorage
     workspaceRootPath.value = root;
@@ -435,26 +446,12 @@ const showToast = (msg: string) => {
   // 自动关闭由 m3e-snackbar 的 duration 计时控制
 };
 
-// 配置文件导出成功的提示：延长显示时长，并提供“打开文件夹”操作
-const isExportToast = computed(() =>
-  !!toastMessage.value && (
-    toastMessage.value.includes('配置文件已成功导出') ||
-    toastMessage.value.includes('successfully exported to path')
-  )
-);
-const snackbarDuration = computed(() => (isExportToast.value ? 7000 : 5000));
+// 配置导出功能已于 v0.3.2 移除：isExportToast / handleOpenExportFolder 死代码已清理（L-10）
+const snackbarDuration = 5000;
 const handleSnackbarToggle = (e: Event) => {
   if ((e as any).newState === 'closed') {
     toastMessage.value = null;
   }
-};
-const isOpeningFolder = ref(false);
-const handleOpenExportFolder = () => {
-  isOpeningFolder.value = true;
-  setTimeout(() => {
-    isOpeningFolder.value = false;
-    toastMessage.value = null;
-  }, 1000);
 };
 
 
@@ -469,6 +466,9 @@ const replLogs = ref<ConsoleOutput[]>([]);
 // 本地工作区根目录（Tauri 原生文件系统模式），null 表示纯虚拟工作区
 const workspaceRootPath = ref<string | null>(null);
 const engineLabel = computed(() => nativePython.statusLabel.value);
+
+// 网页端环境（非 Tauri）：显示环境提示条（FR-6.8：数据仅存本浏览器）
+const isWebEnv = computed(() => !nativeApi.available());
 
 // 切换解释器（设置页 / 编辑器版本管理器弹窗）：写入配置并应用
 const selectInterpreter = async (id: string) => {
@@ -583,6 +583,8 @@ onMounted(async () => {
     let loadedFromDisk = false;
     if (savedRoot) {
       try {
+        // 先告知 Rust 工作区根目录：fs 命令将校验路径在根目录之内（NFR-5.2）
+        await nativeApi.setWorkspaceRoot(savedRoot);
         loadingStatus.value = t('loadingScanningWorkspace');
         const entries = await nativeApi.readDirectory(savedRoot);
         workspaceRootPath.value = savedRoot;
@@ -599,6 +601,8 @@ onMounted(async () => {
         // 仅当文件夹不存在（或上次根目录失效）时才创建
         loadingStatus.value = t('loadingCreatingWorkspace');
         const defaultRoot = await nativeApi.ensureDefaultWorkspace();
+        // 先告知 Rust 工作区根目录：fs 命令将校验路径在根目录之内（NFR-5.2）
+        await nativeApi.setWorkspaceRoot(defaultRoot);
         loadingStatus.value = t('loadingScanningWorkspace');
         const entries = await nativeApi.readDirectory(defaultRoot);
         workspaceRootPath.value = defaultRoot;
@@ -639,14 +643,18 @@ onMounted(async () => {
   // 关闭/刷新前确保会话（标签页 + 光标）落盘
   window.addEventListener('beforeunload', saveSession);
 
-  // Initialize in Presentation / Demo Mode instantly
-  consoleOutputs.value.push({
-    id: uid(),
-    type: 'system',
-    text: '[INFO] Python You Presentation Engine Ready (Demo Mode Active)',
-    timestamp: new Date().toLocaleTimeString()
-  });
+  // 不再无条件输出 "Demo Mode Active" 横幅（FR-4.6 演示模式诚实性）：
+  // 实际引擎状态由运行时真实输出（本机 Python / Pyodide / 演示模式各有独立提示）
   isInitializing.value = false;
+
+  // 首次启动引导（FR-1.4）：弹窗无论何种情况只展示一次，随后永不开启——
+  // 弹出时立即写入标记，用户以任何方式关闭（点按钮/取消/ESC）都不会再次出现
+  const welcomeShown = safeStorage.getItem('python_you_welcome_shown');
+  if (!welcomeShown) {
+    isWelcomeOpen.value = true;
+    safeStorage.setItem('python_you_welcome_shown', '1');
+  }
+
   // 应用已保存的解释器选择（Rust 侧同步；detect 异步完成，不阻塞初始化）
   nativePython.applyInterpreter(config.value.interpreter);
 });
@@ -669,6 +677,69 @@ watch(config, (newVal) => {
 const changeFontSize = (delta: number) => {
   const cur = config.value.fontSize || 15;
   config.value.fontSize = Math.min(24, Math.max(10, cur + delta));
+};
+
+// ---- 工作区级内容搜索（B-6）：搜索全部 .py/.txt/.md/.json/.js/.ts 文件内容 ----
+const isSearchOpen = ref(false);
+const searchQueryText = ref('');
+const searchResults = ref<{ file: FSItem; line: number; text: string }[]>([]);
+// 内容缓存：原生工作区文件按需读盘后缓存，避免重复 IPC
+const searchContentCache = new Map<string, string>();
+let searchTimer: number | undefined;
+
+const runWorkspaceSearch = async () => {
+  const q = searchQueryText.value.trim().toLowerCase();
+  if (!q) {
+    searchResults.value = [];
+    return;
+  }
+  const results: { file: FSItem; line: number; text: string }[] = [];
+  const walk = async (items: FSItem[]) => {
+    for (const item of items) {
+      if (item.isFolder) {
+        if (item.children) await walk(item.children);
+        continue;
+      }
+      if (!/\.(py|txt|md|json|js|ts)$/i.test(item.name)) continue;
+      let content = item.content || '';
+      if (!content && workspaceRootPath.value) {
+        const key = absPath(workspaceRootPath.value, item.path);
+        if (!searchContentCache.has(key)) {
+          try {
+            searchContentCache.set(key, await nativeApi.readFile(key));
+          } catch {
+            searchContentCache.set(key, '');
+          }
+        }
+        content = searchContentCache.get(key) || '';
+      }
+      if (!content) continue;
+      content.split('\n').forEach((line, i) => {
+        if (line.toLowerCase().includes(q)) {
+          results.push({ file: item, line: i + 1, text: line.trim().slice(0, 120) });
+        }
+      });
+    }
+  };
+  await walk(workspaceItems.value);
+  searchResults.value = results.slice(0, 200);
+};
+
+const onSearchInput = () => {
+  window.clearTimeout(searchTimer);
+  searchTimer = window.setTimeout(runWorkspaceSearch, 250);
+};
+
+const handleSearchResultClick = (r: { file: FSItem }) => {
+  handleSelectFile(r.file);
+  isSearchOpen.value = false;
+};
+
+// 首次启动欢迎引导弹窗（FR-1.4）：无教程完成记录时打开
+const isWelcomeOpen = ref(false);
+const startTutorial = () => {
+  isWelcomeOpen.value = false;
+  activeNavTab.value = 'tutorial';
 };
 
 // 使用帮助弹窗
@@ -1158,6 +1229,26 @@ const handleReturnToQuiz = (topicId: string) => {
   });
 };
 
+// 测验判分失败时的输出对比弹窗状态（FR-6.5：完整期望 vs 实际，逐行高亮差异，不截断）
+const quizCompareDialog = ref<{ isOpen: boolean; expected: string; actual: string }>({
+  isOpen: false,
+  expected: '',
+  actual: ''
+});
+// 逐行对比行对：行号对齐、不同行标记 diff（供弹窗渲染）
+const quizCompareRows = computed(() => {
+  const d = quizCompareDialog.value;
+  const exp = d.expected.split('\n');
+  const act = d.actual.split('\n');
+  const len = Math.max(exp.length, act.length);
+  return Array.from({ length: len }, (_, i) => ({
+    i,
+    expected: exp[i] || '',
+    actual: act[i] || '',
+    diff: (exp[i] || '') !== (act[i] || '')
+  }));
+});
+
 const handleQuizSubmit = async () => {
   const src = activeTutorialSource.value;
   if (!src?.isQuiz) {
@@ -1179,32 +1270,21 @@ const handleQuizSubmit = async () => {
     showToast(t('toastRunError'));
     return;
   }
-  // 按“行序列”规范化比较：两种运行引擎（Pyodide / 演示模式）输出格式不同，
-  // 拆行、去空行、去首尾空格后逐行比对，不考察 \n 转义写法
-  const normalizeLines = (chunks: string[]): string[] => {
-    const lines: string[] = [];
-    for (const chunk of chunks) {
-      const parts = chunk.replace(/\r\n/g, '\n').split('\n');
-      for (const part of parts) {
-        const trimmed = part.trim();
-        if (trimmed.length > 0) lines.push(trimmed);
-      }
-    }
-    return lines;
-  };
-  const actualLines = normalizeLines(stdoutParts);
-  const expectedLines = normalizeLines([src.expectedOutput || '']);
-  const passed =
-    actualLines.length === expectedLines.length &&
-    actualLines.every((line, i) => line === expectedLines[i]);
+  // 判分逻辑在独立判分器（utils/quizGrader）中：行序列规范化 + 逐行比对
+  const { passed, expectedLines, actualLines } = gradeOutput(stdoutParts, src.expectedOutput || '');
   activeQuizPassed.value = passed;
   setQuizQuestionResult(src.id, src.questionId || '', passed ? 'pass' : 'fail');
   if (passed) {
     syncQuizCompletion(src.id);
     showToast(t('toastQuizPassed'));
   } else {
-    const truncate = (v: string) => (v.length > 40 ? v.slice(0, 40) + '...' : v);
-    showToast(tf('toastOutputMismatch', { expected: truncate(expectedLines.join('\n')), actual: truncate(actualLines.join('\n')) }));
+    // 判分失败：打开持久对比弹窗（完整输出、逐行标红），Toast 仅作入口摘要
+    quizCompareDialog.value = {
+      isOpen: true,
+      expected: expectedLines.join('\n'),
+      actual: actualLines.join('\n')
+    };
+    showToast(t('toastQuizFailed'));
   }
 };
 
@@ -1400,6 +1480,11 @@ onMounted(() => {
 
       <!-- Main Layout Workspace -->
       <div class="app-layout-wrapper">
+        <!-- 网页端环境提示条（FR-6.8）：非 Tauri 环境明示数据仅存本浏览器 -->
+        <div v-if="isWebEnv" class="web-env-banner">
+          <span class="material-symbols-rounded web-env-icon">info</span>
+          <span>{{ t('webEnvBanner') }}</span>
+        </div>
         <!-- Editor Action Toolbar：编辑器视图下始终可见；未打开文件时各按钮禁用 -->
         <div v-if="activeNavTab === 'explorer'" class="editor-toolbar">
           <div class="left-toolbar-group">
@@ -1463,6 +1548,11 @@ onMounted(() => {
               @click="codeEditorRef?.openReplaceBar()">
               <span class="material-symbols-rounded">find_replace</span>
             </m3e-icon-button>
+            <!-- 工作区内容搜索（不依赖已打开文件） -->
+            <m3e-icon-button class="marginBtn" size="extra-small" :title="t('workspaceSearch')"
+              @click="isSearchOpen = true">
+              <span class="material-symbols-rounded">manage_search</span>
+            </m3e-icon-button>
           </div>
 
           <!-- 检查答案 / 返回教程：始终显示，无教程上下文时禁用（原为 v-if 隐藏） -->
@@ -1508,7 +1598,7 @@ onMounted(() => {
                 :active-file-id="activeTabObject?.fileId || null" :workspace-root="workspaceRootPath"
                 @select-file="handleSelectFile" @toggle-folder="handleToggleFolder" @create-file="handleCreateFile"
                 @create-folder="handleCreateFolder" @rename-item="handleRenameItem" @delete-item="requestDeleteItem"
-                @run-file="handleRunFile" @download-file="handleDownloadFile"
+                @run-file="handleRunFile" @download-file="handleDownloadFile" @show-toast="showToast"
                 @contextmenu-filetree="(e, item) => openContextMenu(e, 'filetree', item)" />
             </m3e-card>
 
@@ -1550,7 +1640,7 @@ onMounted(() => {
 
           <!-- Package Manager View -->
           <PackageManager v-else-if="activeNavTab === 'packages'" :workspace-files="workspaceItems"
-            @add-console-output="out => consoleOutputs.push(out)" />
+            @add-console-output="out => consoleOutputs.push(out)" @show-toast="showToast" />
 
           <!-- Settings View -->
           <SettingsView v-else-if="activeNavTab === 'settings'" :config="config" />
@@ -1563,14 +1653,7 @@ onMounted(() => {
 
     <!-- Snackbar Notification Toast -->
     <m3e-snackbar :open="!!toastMessage" :duration="snackbarDuration" @toggle="handleSnackbarToggle">
-      <template v-if="isExportToast">
-        <span class="snack-message">{{ toastMessage }}</span>
-        <m3e-button class="snack-action-btn" variant="text" size="extra-small" :disabled="isOpeningFolder"
-          @click="handleOpenExportFolder">
-          {{ isOpeningFolder ? t('openingFolder') : t('openFolder') }}
-        </m3e-button>
-      </template>
-      <template v-else>{{ toastMessage }}</template>
+      {{ toastMessage }}
     </m3e-snackbar>
 
     <!-- Delete Confirmation Dialog -->
@@ -1579,7 +1662,7 @@ onMounted(() => {
         <span class="material-symbols-rounded m3e-dialog-icon is-danger">warning</span>
         <span class="m3e-dialog-title">{{ t('confirmDeleteTitle') }}</span>
       </span>
-      <p class="m3e-dialog-desc">{{ t('confirmDeleteMsg').replace('{name}', deleteTargetItem?.name || '') }}</p>
+      <p class="m3e-dialog-desc">{{ deleteConfirmMsg }}</p>
       <div slot="actions" class="m3e-dialog-actions">
         <m3e-button variant="text" size="small" @click="isDeleteDialogOpen = false">{{ t('cancel') }}</m3e-button>
         <m3e-button class="dialog-danger-btn" variant="filled" size="small" @click="confirmDelete">{{ t('delete')
@@ -1628,6 +1711,86 @@ onMounted(() => {
       </div>
       <div slot="actions" class="m3e-dialog-actions">
         <m3e-button variant="filled" size="small" @click="isInterpreterOpen = false">{{ t('helpGotIt') }}</m3e-button>
+      </div>
+    </m3e-dialog>
+
+    <!-- 测验输出对比 Dialog（FR-6.5：完整期望 vs 实际，逐行高亮差异） -->
+    <m3e-dialog :open="quizCompareDialog.isOpen" @cancel="quizCompareDialog.isOpen = false"
+      @closed="quizCompareDialog.isOpen = false">
+      <span slot="header" class="m3e-dialog-title-row">
+        <span class="material-symbols-rounded m3e-dialog-icon">task_alt</span>
+        <span class="m3e-dialog-title">{{ t('quizCompareTitle') }}</span>
+      </span>
+      <div class="quiz-compare-body">
+        <div class="quiz-compare-col">
+          <p class="quiz-compare-col-title">{{ t('quizExpectedTitle') }}</p>
+          <div class="quiz-compare-lines">
+            <div v-for="row in quizCompareRows" :key="row.i" :class="['quiz-compare-line', { diff: row.diff }]">
+              <span class="quiz-compare-ln">{{ row.i + 1 }}</span>
+              <span class="quiz-compare-txt">{{ row.expected }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="quiz-compare-col">
+          <p class="quiz-compare-col-title">{{ t('quizActualTitle') }}</p>
+          <div class="quiz-compare-lines">
+            <div v-for="row in quizCompareRows" :key="row.i" :class="['quiz-compare-line', { diff: row.diff }]">
+              <span class="quiz-compare-ln">{{ row.i + 1 }}</span>
+              <span class="quiz-compare-txt">{{ row.actual }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div slot="actions" class="m3e-dialog-actions">
+        <m3e-button variant="filled" size="small" @click="quizCompareDialog.isOpen = false">{{ t('helpGotIt')
+        }}</m3e-button>
+      </div>
+    </m3e-dialog>
+
+    <!-- 工作区内容搜索 Dialog（B-6） -->
+    <m3e-dialog :open="isSearchOpen" @cancel="isSearchOpen = false" @closed="isSearchOpen = false">
+      <span slot="header" class="m3e-dialog-title-row">
+        <span class="material-symbols-rounded m3e-dialog-icon">manage_search</span>
+        <span class="m3e-dialog-title">{{ t('workspaceSearch') }}</span>
+      </span>
+      <div class="workspace-search-body">
+        <input v-model="searchQueryText" class="workspace-search-input" :placeholder="t('workspaceSearchPlaceholder')"
+          @keyup.enter="runWorkspaceSearch" @input="onSearchInput" />
+        <div v-if="searchQueryText.trim()" class="workspace-search-count">
+          {{ tf('searchResultCount', { count: searchResults.length }) }}
+        </div>
+        <div v-if="searchResults.length > 0" class="workspace-search-results">
+          <button v-for="(r, i) in searchResults" :key="i" class="workspace-search-item"
+            @click="handleSearchResultClick(r)">
+            <span class="ws-item-name">{{ r.file.name }}</span>
+            <span class="ws-item-line">{{ r.line }}</span>
+            <span class="ws-item-text">{{ r.text }}</span>
+          </button>
+        </div>
+        <div v-else-if="searchQueryText.trim()" class="workspace-search-empty">
+          {{ t('workspaceSearchEmpty') }}
+        </div>
+      </div>
+      <div slot="actions" class="m3e-dialog-actions">
+        <m3e-button variant="filled" size="small" @click="isSearchOpen = false">{{ t('closeTitle') }}</m3e-button>
+      </div>
+    </m3e-dialog>
+
+    <!-- 首次启动欢迎引导 Dialog（FR-1.4） -->
+    <m3e-dialog :open="isWelcomeOpen" @cancel="isWelcomeOpen = false" @closed="isWelcomeOpen = false">
+      <span slot="header" class="m3e-dialog-title-row">
+        <span class="material-symbols-rounded m3e-dialog-icon">school</span>
+        <span class="m3e-dialog-title">{{ t('welcomeDialogTitle') }}</span>
+      </span>
+      <m3e-content-pane class="help-dialog-body">
+        <div class="help-dialog-inner">
+          <p class="m3e-dialog-desc">{{ t('welcomeDialogText') }}</p>
+        </div>
+      </m3e-content-pane>
+      <div slot="actions" class="m3e-dialog-actions">
+        <m3e-button variant="text" size="small" @click="isWelcomeOpen = false">{{ t('enterWorkspace')
+        }}</m3e-button>
+        <m3e-button variant="filled" size="small" @click="startTutorial">{{ t('startLearning') }}</m3e-button>
       </div>
     </m3e-dialog>
 
@@ -1795,6 +1958,26 @@ m3e-nav-rail {
   overflow: hidden;
 }
 
+/* 网页端环境提示条：琥珀色信息条，不遮挡操作 */
+.web-env-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0.4rem 0.4rem 0;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background-color: color-mix(in srgb, var(--accent-amber, #f5b400) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-amber, #f5b400) 35%, transparent);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.web-env-icon {
+  font-size: 1rem;
+  color: var(--accent-amber, #f5b400);
+}
+
 /* ---- 编辑器操作工具栏：位于三面栏 Split Pane 上方，横贯整个工作区宽度 ---- */
 .editor-toolbar {
   height: 2.4rem;
@@ -1873,15 +2056,6 @@ m3e-nav-rail {
   --m3e-button-label-text-color: var(--text-color);
   --m3e-button-focus-icon-color: var(--text-color);
   --m3e-button-focus-label-text-color: var(--text-color);
-}
-
-/* m3e-snackbar（含导出成功时的”打开文件夹”操作按钮） */
-.snack-message {
-  margin-right: 8px;
-}
-
-.snack-action-btn {
-  vertical-align: middle;
 }
 
 /* 解释器版本管理器弹窗：select 撑满、底部显示当前引擎状态 */
@@ -1977,6 +2151,150 @@ m3e-nav-rail {
   --m3e-button-icon-color: var(--on-error);
   --m3e-button-pressed-state-layer-color: var(--on-error);
   --m3e-button-focus-state-layer-color: var(--on-error);
+}
+
+/* 测验输出对比弹窗：上下两段（期望 / 实际）、行号对齐、差异行标红 */
+.quiz-compare-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: min(100%, 64rem);
+}
+
+.quiz-compare-col {
+  min-width: 0;
+}
+
+.quiz-compare-col-title {
+  margin: 0 0 6px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.quiz-compare-lines {
+  max-height: 26vh;
+  overflow-y: auto;
+  border: 1px solid var(--border-color-muted);
+  border-radius: 8px;
+  padding: 6px 0;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.quiz-compare-line {
+  display: flex;
+  gap: 8px;
+  padding: 0 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.quiz-compare-line.diff {
+  background-color: color-mix(in srgb, var(--error) 14%, transparent);
+  color: var(--error);
+}
+
+.quiz-compare-ln {
+  flex-shrink: 0;
+  min-width: 2ch;
+  text-align: right;
+  color: var(--text-tertiary);
+  user-select: none;
+}
+
+/* 工作区内容搜索弹窗 */
+.workspace-search-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 32rem;
+  max-width: 44rem;
+}
+
+.workspace-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 12px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  border: 1px solid var(--border-color-muted);
+  border-radius: 8px;
+  background-color: var(--surface-variant);
+  color: var(--text-color);
+  outline: none;
+}
+
+.workspace-search-input:focus {
+  border: 2px solid var(--primary);
+  padding: 0 11px;
+  background-color: var(--surface-color);
+}
+
+.workspace-search-count {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.workspace-search-results {
+  max-height: 45vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.workspace-search-item {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-family: inherit;
+}
+
+.workspace-search-item:hover {
+  background-color: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+.ws-item-name {
+  font-weight: 700;
+  color: var(--primary);
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-item-line {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  min-width: 3ch;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.ws-item-text {
+  color: var(--text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-search-empty {
+  padding: 1rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--text-tertiary);
 }
 
 m3e-card {

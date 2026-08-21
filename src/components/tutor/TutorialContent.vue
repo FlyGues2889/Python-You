@@ -6,7 +6,7 @@ import { safeStorage } from '../../utils/storage';
 import { copyToClipboard } from '../../utils/clipboard';
 import { paneScroller, watchPaneScroll } from '../../utils/contentPane';
 import { useI18n } from '../../utils/i18n';
-import hljs from 'highlight.js';
+import { hljs } from '../../utils/highlightSetup';
 import 'highlight.js/styles/github-dark.css';
 import TutorialFormattedText from './TutorialFormattedText.vue';
 

@@ -38,3 +38,6 @@ src-tauri/gen/schemas
 *.cjs
 *.ps1
 *.mjs
+
+# Docs
+REQUIREMENTS.md

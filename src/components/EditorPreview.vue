@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { AppConfig } from '../types';
-import hljs from 'highlight.js';
+import { hljs } from '../utils/highlightSetup';
 
 const props = defineProps<{
   config: AppConfig;

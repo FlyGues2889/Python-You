@@ -12,9 +12,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'add-console-output', output: ConsoleOutput): void;
+  (e: 'show-toast', msg: string): void;
 }>();
 
-const { t } = useI18n();
+const { t, tf } = useI18n();
 const customPackageName = ref('');
 const filterQuery = ref('');
 const installingSet = ref<Set<string>>(new Set());
@@ -115,10 +116,14 @@ const availablePackages = computed(() => {
   return allPackages.value.filter((pkg) => !pkg.installed && matchesQuery(pkg));
 });
 
+// 安装失败提示（FR-5.3：页面内联错误 + Toast，不静默无声）
+const installError = ref('');
+
 const handleInstall = async (pkgName: string) => {
   const cleanName = pkgName.trim().toLowerCase();
   if (!cleanName || installingSet.value.has(cleanName)) return;
 
+  installError.value = '';
   installingSet.value.add(cleanName);
   const ok = await pythonRunner.loadPackage(cleanName, (out) => {
     emit('add-console-output', out);
@@ -127,9 +132,15 @@ const handleInstall = async (pkgName: string) => {
   if (ok) {
     installedSet.value.add(cleanName);
     saveInstalledPackages(Array.from(installedSet.value));
+    customPackageName.value = '';
+  } else {
+    // 失败：错误详情已进终端面板，页面内联摘要 + Toast 双重反馈
+    const msg = tf('pkgInstallFailedMsg', { name: cleanName });
+    installError.value = msg;
+    emit('show-toast', msg);
+    customPackageName.value = '';
   }
   installingSet.value.delete(cleanName);
-  customPackageName.value = '';
 };
 
 const handleUninstall = (pkgName: string) => {
@@ -166,6 +177,7 @@ const handleUninstall = (pkgName: string) => {
           {{ installingSet.has(customPackageName.trim().toLowerCase()) ? t('installing') : t('installPkg') }}
         </m3e-button>
       </div>
+      <p v-if="installError" class="install-error">{{ installError }}</p>
     </div>
 
     <!-- Package List View with Categorized Sections（与设置界面一致的卡片分组） -->
@@ -254,6 +266,12 @@ const handleUninstall = (pkgName: string) => {
 .input-flex-grow {
   flex: 1;
   min-width: 0;
+}
+
+.install-error {
+  margin: 6px 0 0;
+  font-size: 0.8125rem;
+  color: var(--error);
 }
 
 .pkg-list-container {

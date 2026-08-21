@@ -2,6 +2,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { ConsoleOutput, AppConfig } from '../types';
 import { pythonRunner } from '../utils/pythonRunner';
+import { nativePython } from '../utils/nativePython';
 import { paneScroller, watchPaneScroll } from '../utils/contentPane';
 import { useI18n } from '../utils/i18n';
 
@@ -18,7 +19,20 @@ const emit = defineEmits<{
   (e: 'contextmenu-terminal', event: MouseEvent): void;
 }>();
 
-const { t } = useI18n();
+const { t, tf } = useI18n();
+
+// 欢迎语按真实引擎动态生成（L-11 修复）：演示模式 / 本机 Python / Pyodide 各有对应文案
+const replWelcome = computed(() => {
+  if (props.config?.demoMode) {
+    return t('replWelcomeDemo');
+  }
+  const label = nativePython.statusLabel.value;
+  if (label && label !== 'Pyodide') {
+    return tf('replWelcomeLocal', { label });
+  }
+  return t('replWelcomePyodide');
+});
+
 const inputCommand = ref('');
 const commandHistory = ref<string[]>([]);
 const historyIndex = ref(-1);
@@ -145,8 +159,7 @@ const clearLogs = () => {
       <m3e-content-pane ref="consoleContainerRef" class="repl-body"
         :class="`theme-${codeTheme || config?.codeTheme || 'github-dark'}`" @click="onBodyClick">
         <div v-if="logs.length === 0" class="repl-welcome">
-          Python 3.11.0 (main, Pyodide WASM Runtime)
-          Type "help", "copyright", "credits" or "license" for more information.
+          <pre>{{ replWelcome }}</pre>
         </div>
 
         <div v-for="log in logs" :key="log.id" class="repl-log-line" :class="`log-${log.type}`">
@@ -245,6 +258,13 @@ const clearLogs = () => {
 .repl-welcome {
   color: var(--text-tertiary);
   margin-bottom: 1rem;
+}
+
+.repl-welcome pre {
+  margin: 0;
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .repl-log-line pre {

@@ -6,7 +6,7 @@ import { useI18n } from '../utils/i18n';
 import { copyToClipboard, readClipboard } from '../utils/clipboard';
 import { uid } from '../utils/id';
 import { getCompletions, getWordAt, collectWorkspaceIdentifiers, isInsideString, type CompletionItem } from '../utils/pythonCompletions';
-import hljs from 'highlight.js';
+import { hljs } from '../utils/highlightSetup';
 import 'highlight.js/styles/github-dark.css';
 
 const { t } = useI18n();

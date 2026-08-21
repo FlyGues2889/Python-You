@@ -316,6 +316,9 @@ builtins.help = _py_help
     });
 
     const logs: string[] = [];
+    // 演示引擎不支持的语句行号（循环/条件/函数定义等）：不再静默跳过，
+    // 必须向用户明示「未真实执行」，且不伪造 exit code 0 / 成功（FR-4.6 演示模式诚实性）
+    const unsupportedLines: number[] = [];
     const scope: Record<string, any> = {
       math: { pi: Math.PI, e: Math.E, sqrt: Math.sqrt, sin: Math.sin, cos: Math.cos, factorial: (n: number) => { let r=1; for(let i=2;i<=n;i++) r*=i; return r; }, gcd: (a: number, b: number) => { return b === 0 ? a : scope.math.gcd(b, a % b); } },
       sys: { version: '3.11.0 (Demo Mode)', platform: 'browser' },
@@ -359,6 +362,9 @@ builtins.help = _py_help
             continue;
           }
         }
+
+        // 未支持的语句：记录行号，稍后以警告形式明示，不再静默跳过
+        unsupportedLines.push(i + 1);
       }
 
       onOutput({
@@ -377,16 +383,24 @@ builtins.help = _py_help
             timestamp: new Date().toLocaleTimeString()
           });
         });
-      } else {
-        onOutput({
-          id: uid(),
-          type: 'stdout',
-          text: t('demoExecuted'),
-          timestamp: new Date().toLocaleTimeString()
-        });
       }
 
       const durationMs = Math.round(performance.now() - startTime);
+
+      // 有未支持的语句：明示未真实执行，并返回失败（不伪造成功/exit code 0，
+      // 测验判分等依赖 success 的门不会因此误判通过）
+      if (unsupportedLines.length > 0) {
+        onOutput({
+          id: uid(),
+          type: 'warning',
+          text: tf('demoUnsupportedWarning', {
+            count: unsupportedLines.length,
+            lines: unsupportedLines.join(', ')
+          }),
+          timestamp: new Date().toLocaleTimeString()
+        });
+        return { success: false, durationMs };
+      }
 
       onOutput({
         id: uid(),
@@ -398,7 +412,7 @@ builtins.help = _py_help
       onOutput({
         id: uid(),
         type: 'system',
-        text: `[INFO] Process finished with code 0 in ${durationMs}ms`,
+        text: t('demoExecuted'),
         timestamp: new Date().toLocaleTimeString()
       });
 

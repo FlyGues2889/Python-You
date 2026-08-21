@@ -20,6 +20,7 @@ const emit = defineEmits<{
   (e: 'run-file', item: FSItem): void;
   (e: 'download-file', item: FSItem): void;
   (e: 'contextmenu-filetree', event: MouseEvent, item: FSItem | null): void;
+  (e: 'show-toast', msg: string): void;
 }>();
 
 const { t } = useI18n();
@@ -86,6 +87,22 @@ const startRename = (item: FSItem) => {
   editingItemId.value = item.id;
 };
 
+// 文件名合法性校验（安全需求 FR-2.3 / NFR-5.2）：
+// 拒绝路径分隔符、Windows 保留字符、控制字符与 ..（防止逃逸工作区根目录）
+const INVALID_NAME_RE = /[/\\:*?"<>|]/;
+const hasControlChar = (name: string) => [...name].some((ch) => ch.charCodeAt(0) < 32);
+const isValidName = (name: string) => {
+  const trimmed = name.trim();
+  return (
+    trimmed !== '' &&
+    trimmed !== '.' &&
+    trimmed !== '..' &&
+    !trimmed.includes('..') &&
+    !hasControlChar(trimmed) &&
+    !INVALID_NAME_RE.test(trimmed)
+  );
+};
+
 const handleConfirmCreate = (parentId: string | null, name: string, isFolder: boolean) => {
   let finalName = name.trim();
   if (!finalName) {
@@ -94,6 +111,11 @@ const handleConfirmCreate = (parentId: string | null, name: string, isFolder: bo
   }
   if (!isFolder && !finalName.includes('.')) {
     finalName += '.py';
+  }
+  if (!isValidName(finalName)) {
+    // 校验失败：保持内联输入框，提示用户修改，不提交、不静默通过
+    emit('show-toast', t('invalidFileName'));
+    return;
   }
   if (isFolder) {
     emit('create-folder', parentId, finalName);
@@ -110,9 +132,20 @@ const handleConfirmCreateRoot = () => {
 
 const handleConfirmRename = (item: FSItem, newName: string) => {
   const finalName = newName.trim();
-  if (finalName && finalName !== item.name) {
-    emit('rename-item', item, finalName);
+  if (finalName === item.name) {
+    editingItemId.value = null;
+    return;
   }
+  if (!finalName) {
+    editingItemId.value = null;
+    return;
+  }
+  if (!isValidName(finalName)) {
+    // 校验失败：保持重命名编辑状态，提示用户修改
+    emit('show-toast', t('invalidFileName'));
+    return;
+  }
+  emit('rename-item', item, finalName);
   editingItemId.value = null;
 };
 
