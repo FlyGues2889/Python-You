@@ -470,10 +470,50 @@ const engineLabel = computed(() => nativePython.statusLabel.value);
 // 网页端环境（非 Tauri）：显示环境提示条（FR-6.8：数据仅存本浏览器）
 const isWebEnv = computed(() => !nativeApi.available());
 
+// ---- 标题栏后台任务：指示器按钮 + rich-tooltip 任务列表 ----
+interface BackendTask {
+  id: string;
+  label: string;
+  status: 'running' | 'done' | 'failed';
+}
+const backendTasks = ref<BackendTask[]>([]);
+const isBackendTooltipOpen = ref(false);
+
+const addBackendTask = (id: string, label: string) => {
+  const existing = backendTasks.value.find((task) => task.id === id);
+  if (existing) {
+    existing.status = 'running';
+    existing.label = label;
+  } else {
+    backendTasks.value.push({ id, label, status: 'running' });
+  }
+};
+const finishBackendTask = (id: string, status: 'done' | 'failed' = 'done') => {
+  const task = backendTasks.value.find((t) => t.id === id);
+  if (task) task.status = status;
+};
+
+// 指示器主显示：由任务列表派生（有运行中任务 → 转圈 + 任务文字；无 → 后台无内容）
+const activeBackendTask = computed(() => backendTasks.value.find((t) => t.status === 'running'));
+// 列表只显示未完成任务（进行中 / 失败），已完成的不再展示（数据仍保留供状态复用）
+const visibleBackendTasks = computed(() => backendTasks.value.filter((t) => t.status !== 'done'));
+const backendBusy = computed(() => !!activeBackendTask.value);
+const backendStatus = computed(() => activeBackendTask.value?.label || '');
+const backendTaskStatusText = (s: BackendTask['status']) =>
+  s === 'running' ? t('backendTaskRunning') : s === 'done' ? t('backendTaskDone') : t('backendTaskFailed');
+const toggleBackendTooltip = () => {
+  isBackendTooltipOpen.value = !isBackendTooltipOpen.value;
+};
+
 // 切换解释器（设置页 / 编辑器版本管理器弹窗）：写入配置并应用
 const selectInterpreter = async (id: string) => {
   config.value.interpreter = id;
-  await nativePython.applyInterpreter(id);
+  addBackendTask('apply-interpreter', t('statusApplyingInterpreter'));
+  try {
+    await nativePython.applyInterpreter(id);
+  } finally {
+    finishBackendTask('apply-interpreter');
+  }
 };
 
 // 版本管理器弹窗
@@ -557,10 +597,23 @@ const restoreSession = async () => {
 
 // Initialize Workspace from LocalStorage / 本地工作区
 onMounted(async () => {
-  // 检测本机 Python，用于引擎徽标展示（异步，不阻塞初始化）
+  // 检测本机 Python，用于引擎徽标展示（异步，不阻塞初始化）；
+  // 标题栏后台任务列表同步记录检测任务
   if (nativeApi.available()) {
-    nativePython.detect();
+    addBackendTask('detect-python', t('statusDetectingPython'));
+    nativePython.detect().finally(() => {
+      finishBackendTask('detect-python');
+    });
   }
+  // Pyodide 引擎加载状态（首次运行代码时在后台加载）：
+  // 开始加载登记任务，完成/失败后标记结束
+  pythonRunner.onEngineLoading = (loading) => {
+    if (loading) {
+      addBackendTask('load-pyodide', t('statusLoadingPyodide'));
+    } else {
+      finishBackendTask('load-pyodide');
+    }
+  };
 
   // 恢复/初始化工作区：
   // - Tauri 环境：由 Rust 在应用数据目录确保 WorkSpace 示例工作区存在（首次启动才写入），
@@ -1465,6 +1518,26 @@ onMounted(() => {
         <div v-else class="title-bar-brand">
           <span>Python You</span>
         </div>
+        <!-- 后台任务指示器按钮：位于三操作按钮左侧 3.2rem，常驻显示；
+             点击弹出 rich-tooltip 展示后台任务列表 -->
+        <button id="backend-status-trigger" class="titlebar-backend-status" type="button"
+          :title="t('backendTasksTitle')" @click="toggleBackendTooltip">
+          <span class="titlebar-spinner" :class="{ 'is-idle': !backendBusy }"></span>
+          <span class="titlebar-status-text">{{ backendStatus || t('statusIdle') }}</span>
+        </button>
+        <m3e-rich-tooltip for="backend-status-trigger" :open="isBackendTooltipOpen"
+          @close="isBackendTooltipOpen = false">
+          <div class="backend-task-panel">
+            <p class="backend-task-panel-title">{{ t('backendTasksTitle') }}</p>
+            <div v-if="visibleBackendTasks.length === 0" class="backend-task-empty">{{ t('backendTasksEmpty') }}</div>
+            <div v-for="task in visibleBackendTasks" :key="task.id" class="backend-task-item">
+              <span class="backend-task-dot" :class="`is-${task.status}`"></span>
+              <span class="backend-task-label">{{ task.label }}</span>
+              <span class="backend-task-status">{{ backendTaskStatusText(task.status) }}</span>
+            </div>
+          </div>
+        </m3e-rich-tooltip>
+
         <div class="windows-controls">
           <m3e-icon-button id="titlebar-minimize" size="extra-small" :title="t('minimize')" @click="minimizeWindow">
             <span class="material-symbols-rounded">minimize</span>
@@ -1560,7 +1633,7 @@ onMounted(() => {
             <m3e-button size="extra-small" variant="text" class="answerBtn" :disabled="!isTutorialQuizMode"
               @click="handleCheckAnswerClick">
               <span slot="icon" class="material-symbols-rounded">{{ activeQuizPassed ? 'check_circle' : 'task_alt'
-                }}</span>
+              }}</span>
               {{ activeQuizPassed ? t('quizAnswerCorrectDesc') : t('checkAnswer') }}
             </m3e-button>
             <m3e-button size="extra-small" variant="text" class="tutorBtn" :disabled="!isTutorialQuizMode"
@@ -1633,8 +1706,7 @@ onMounted(() => {
 
           <!-- Interactive Python REPL Console View -->
           <REPLConsole v-else-if="activeNavTab === 'console'" :config="config" :logs="replLogs"
-            :code-theme="resolvedCodeTheme"
-            @add-log="out => replLogs.push(out)" @clear-logs="replLogs = []"
+            :code-theme="resolvedCodeTheme" @add-log="out => replLogs.push(out)" @clear-logs="replLogs = []"
             @add-console-output="out => consoleOutputs.push(out)"
             @contextmenu-terminal="e => openContextMenu(e, 'terminal', null, 'repl')" />
 
@@ -1666,7 +1738,7 @@ onMounted(() => {
       <div slot="actions" class="m3e-dialog-actions">
         <m3e-button variant="text" size="small" @click="isDeleteDialogOpen = false">{{ t('cancel') }}</m3e-button>
         <m3e-button class="dialog-danger-btn" variant="filled" size="small" @click="confirmDelete">{{ t('delete')
-        }}</m3e-button>
+          }}</m3e-button>
       </div>
     </m3e-dialog>
 
@@ -1743,7 +1815,7 @@ onMounted(() => {
       </div>
       <div slot="actions" class="m3e-dialog-actions">
         <m3e-button variant="filled" size="small" @click="quizCompareDialog.isOpen = false">{{ t('helpGotIt')
-        }}</m3e-button>
+          }}</m3e-button>
       </div>
     </m3e-dialog>
 
@@ -1789,7 +1861,7 @@ onMounted(() => {
       </m3e-content-pane>
       <div slot="actions" class="m3e-dialog-actions">
         <m3e-button variant="text" size="small" @click="isWelcomeOpen = false">{{ t('enterWorkspace')
-        }}</m3e-button>
+          }}</m3e-button>
         <m3e-button variant="filled" size="small" @click="startTutorial">{{ t('startLearning') }}</m3e-button>
       </div>
     </m3e-dialog>
@@ -1915,6 +1987,133 @@ m3e-nav-rail {
   right: 0;
   height: 36px;
   z-index: 35000;
+}
+
+/* 后台服务状态指示器：三操作按钮左侧 3.2rem，自绘小加载器 + 状态小字 */
+.titlebar-backend-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.6875rem;
+  color: var(--text-tertiary);
+  user-select: none;
+  white-space: nowrap;
+
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+
+  /* 按钮样式：可点击弹出后台任务列表；标题栏是拖拽区，须 no-drag 才能接收点击 */
+  padding: 2px 8px;
+  font-family: inherit;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-backend-status:hover {
+  background-color: var(--surface-variant);
+}
+
+.titlebar-backend-status:active {
+  background-color: color-mix(in srgb, var(--surface-variant) 70%, transparent);
+}
+
+/* rich-tooltip 内后台任务列表 */
+.backend-task-panel {
+  min-width: 15rem;
+  padding: 2px 0;
+}
+
+.backend-task-panel-title {
+  margin: 0 0 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.backend-task-empty {
+  padding: 8px 0;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.backend-task-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 0.75rem;
+  color: var(--text-color);
+}
+
+.backend-task-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.backend-task-dot.is-running {
+  background-color: var(--primary);
+  animation: backend-dot-pulse 1s ease-in-out infinite;
+}
+
+.backend-task-dot.is-done {
+  background-color: var(--success);
+}
+
+.backend-task-dot.is-failed {
+  background-color: var(--error);
+}
+
+@keyframes backend-dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.backend-task-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backend-task-status {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  color: var(--text-tertiary);
+}
+
+.titlebar-spinner {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--border-color-muted);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: titlebar-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+/* 空闲态：停止转动，静置为灰色圆环 */
+.titlebar-spinner.is-idle {
+  animation: none;
+  border-color: var(--border-color-muted);
+}
+
+@keyframes titlebar-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.titlebar-status-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 18rem;
 }
 
 

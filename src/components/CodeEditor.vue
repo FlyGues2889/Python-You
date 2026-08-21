@@ -5,7 +5,7 @@ import { pythonRunner } from '../utils/pythonRunner';
 import { useI18n } from '../utils/i18n';
 import { copyToClipboard, readClipboard } from '../utils/clipboard';
 import { uid } from '../utils/id';
-import { getCompletions, getWordAt, collectWorkspaceIdentifiers, isInsideString, type CompletionItem } from '../utils/pythonCompletions';
+import { getCompletions, getWordAt, getUsage, collectWorkspaceIdentifiers, isInsideString, type CompletionItem } from '../utils/pythonCompletions';
 import { hljs } from '../utils/highlightSetup';
 import 'highlight.js/styles/github-dark.css';
 
@@ -210,6 +210,7 @@ const startScrollDrag = (e: PointerEvent, axis: 'vertical' | 'horizontal') => {
 
 // Sync scrolling between textarea, line numbers, and highlight layer
 const handleScroll = () => {
+  hideHoverTooltip(); // 滚动时悬停提示位置失效，直接隐藏
   if (textareaRef.value) {
     if (lineNumbersRef.value) {
       lineNumbersRef.value.scrollTop = textareaRef.value.scrollTop;
@@ -548,6 +549,78 @@ const acceptCompletion = () => {
     el.setSelectionRange(caret, caret);
     updateCursorPosition();
   });
+};
+
+/* ==================== 代码悬停用法提示（VS Code hover 风格） ====================
+   鼠标悬停在已输入代码中的关键字/内置函数/模块/片段名上时，浮出简略语法用法。
+   坐标计算：相对 textarea 的偏移 → 行/列（canvas 逐字符测宽）→ getWordAt → getUsage。 */
+const hoverTooltip = ref<{ visible: boolean; text: string; x: number; y: number }>({
+  visible: false,
+  text: '',
+  x: 0,
+  y: 0
+});
+let hoverRafId = 0;
+
+const hideHoverTooltip = () => {
+  if (hoverTooltip.value.visible) hoverTooltip.value.visible = false;
+};
+
+const handleTextareaMousemove = (e: MouseEvent) => {
+  cancelAnimationFrame(hoverRafId);
+  hoverRafId = requestAnimationFrame(() => computeHoverTooltip(e));
+};
+
+const computeHoverTooltip = (e: MouseEvent) => {
+  const el = textareaRef.value;
+  const wrapper = el?.parentElement;
+  if (!el || !wrapper || !activeTab.value) { hideHoverTooltip(); return; }
+  // 补全弹层打开时不显示悬停提示，避免互相干扰
+  if (completionVisible.value) { hideHoverTooltip(); return; }
+
+  const style = getComputedStyle(el);
+  const fontSize = parseFloat(style.fontSize) || 15;
+  const lineHeight = fontSize * 1.5;
+  const paddingTop = parseFloat(style.paddingTop) || 12;
+  const paddingLeft = parseFloat(style.paddingLeft) || 12;
+
+  const wrapperRect = wrapper.getBoundingClientRect();
+  const yInText = e.clientY - wrapperRect.top - paddingTop + el.scrollTop;
+  const xInText = e.clientX - wrapperRect.left - paddingLeft + el.scrollLeft;
+
+  const row = Math.floor(yInText / lineHeight);
+  const lines = el.value.split('\n');
+  if (row < 0 || row >= lines.length) { hideHoverTooltip(); return; }
+  const line = lines[row];
+  if (!line) { hideHoverTooltip(); return; }
+
+  // 逐字符 canvas 测宽 → 鼠标覆盖的列（tab 按 tabSize 展开宽度）
+  // measureCanvas 惰性创建：首次悬停时可能尚不存在（未触发过补全弹层），必须先初始化
+  if (!measureCanvas) measureCanvas = document.createElement('canvas');
+  const ctx = measureCanvas.getContext('2d');
+  if (!ctx) { hideHoverTooltip(); return; }
+  ctx.font = style.font;
+  const tabWidth = ctx.measureText(' ').width * (props.config.tabSize || 4);
+  let col = 0;
+  let acc = 0;
+  for (let i = 0; i < line.length; i++) {
+    const w = line[i] === '\t' ? tabWidth : ctx.measureText(line[i]).width;
+    if (xInText < acc + w / 2) { col = i; break; }
+    acc += w;
+    col = i + 1;
+  }
+  if (col >= line.length) { hideHoverTooltip(); return; }
+
+  const { word } = getWordAt(line, col);
+  const usage = word ? getUsage(word) : null;
+  if (!usage) { hideHoverTooltip(); return; }
+
+  hoverTooltip.value = {
+    visible: true,
+    text: usage,
+    x: e.clientX - wrapperRect.left,
+    y: e.clientY - wrapperRect.top
+  };
 };
 
 /* 自动配对引号：无选区时插入一对并把光标放中间；有选区时用引号包裹选中的文本 */
@@ -1091,7 +1164,11 @@ onBeforeUnmount(() => {
             :style="{ fontSize: `${config.fontSize || 15}px`, tabSize: config.tabSize || 4 }" spellcheck="false"
             autocomplete="off" autocorrect="off" autocapitalize="off" @input="handleInput" @keydown="handleKeyDown"
             @scroll="handleScroll" @wheel="handleWheelZoom" @click="updateCursorPosition" @keyup="updateCursorPosition"
-            @blur="closeCompletions"></textarea>
+            @blur="closeCompletions" @mousemove="handleTextareaMousemove" @mouseleave="hideHoverTooltip"></textarea>
+
+          <!-- 代码悬停用法提示（VS Code hover 风格）：悬停关键字/函数/模块名显示简略用法 -->
+          <div v-if="hoverTooltip.visible" class="code-hover-tooltip"
+            :style="{ left: `${hoverTooltip.x + 12}px`, top: hoverTooltip.y > 44 ? `${hoverTooltip.y - 34}px` : `${hoverTooltip.y + 16}px` }">{{ hoverTooltip.text }}</div>
 
           <!-- Code Completion Popup -->
           <div v-if="completionVisible && completionItems.length > 0" class="completion-popup"
@@ -1099,7 +1176,8 @@ onBeforeUnmount(() => {
             <div ref="completionListRef" class="completion-list">
               <div v-for="(item, idx) in completionItems" :key="item.label + idx" class="completion-item"
                 :class="{ 'is-active': idx === completionIndex }" :ref="(el) => setActiveItemRef(el, idx)"
-                @mouseenter="completionIndex = idx" @mousedown.prevent.stop="completionIndex = idx; acceptCompletion()">
+                @mouseenter="completionIndex = idx" @mousedown.prevent.stop="completionIndex = idx; acceptCompletion()"
+                :title="item.usage || item.detail">
                 <span class="completion-kind">{{ kindLabel(item.kind) }}</span>
                 <span class="completion-label">{{ item.label }}</span>
                 <span class="completion-detail">{{ item.detail }}</span>
@@ -1513,6 +1591,25 @@ kbd {
 }
 
 /* Code Completion Popup */
+.code-hover-tooltip {
+  position: absolute;
+  z-index: 65;
+  max-width: 380px;
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--text-color);
+  background-color: var(--surface-container-high);
+  border: 1px solid var(--border-color-muted);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+  /* 两行结构：第一行用法（中文参数名），第二行一句话说明 */
+  white-space: pre-line;
+  overflow-wrap: break-word;
+}
+
 .completion-popup {
   position: absolute;
   z-index: 60;

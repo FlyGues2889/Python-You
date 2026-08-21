@@ -231,7 +231,7 @@ const onDemoModeChange = (e: Event) => onSwitchChange(e, 'demoMode');
             {{ t('aboutApp') }}
             <span slot="supporting-text">{{ t('aboutAppDesc') }}</span>
             <div slot="trailing" class="settings-trailing">
-              v0.3.4
+              v0.3.5
             </div>
           </m3e-list-item>
 

@@ -310,6 +310,17 @@ const translations = {
     // 网页端环境提示条
     webEnvBanner: '网页版：工作区与学习进度仅保存在本浏览器（清除缓存或更换浏览器将丢失），代码在本机浏览器内执行',
 
+    // 标题栏后台任务指示器
+    statusIdle: '后台无内容',
+    statusDetectingPython: '正在检测本机 Python…',
+    statusLoadingPyodide: '正在加载 Pyodide 引擎…',
+    statusApplyingInterpreter: '正在应用解释器设置…',
+    backendTasksTitle: '后台任务',
+    backendTasksEmpty: '无任务',
+    backendTaskRunning: '进行中',
+    backendTaskDone: '完成',
+    backendTaskFailed: '失败',
+
     // 工作区内容搜索
     workspaceSearch: '搜索工作区内容',
     workspaceSearchPlaceholder: '搜索文件内容（.py / .txt / .md / .json / .js / .ts）...',

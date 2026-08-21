@@ -24,6 +24,9 @@ class PythonRunnerService {
   // 当前原生工作区根目录（由 App 在打开本地文件夹时设置），用于给本机 Python 指定 cwd
   public workspaceRoot: string | null = null;
 
+  // 引擎加载状态回调（标题栏状态指示器用）：Pyodide 开始加载时 true，完成/失败后 false
+  public onEngineLoading?: (loading: boolean) => void;
+
   // 加载本地 Pyodide 脚本，带超时（script 既不打 onload 也不打 onerror 时会一直挂着）
   private loadPyodideScript(timeoutMs = PythonRunnerService.PYODIDE_TIMEOUT_MS): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -71,6 +74,7 @@ class PythonRunnerService {
     if (this.isLoading) return false;
 
     this.isLoading = true;
+    this.onEngineLoading?.(true);
     try {
       // Tauri WebView 恒有 window，直接检查脚本是否已注入
       if (!window.loadPyodide) {
@@ -108,6 +112,7 @@ builtins.help = _py_help
 
         this.isReady = true;
         this.isLoading = false;
+        this.onEngineLoading?.(false);
 
         onOutput?.({
           id: uid(),
@@ -121,6 +126,7 @@ builtins.help = _py_help
     } catch (err: any) {
       this.isLoading = false;
       this.isReady = false;
+      this.onEngineLoading?.(false);
       onOutput?.({
         id: uid(),
         type: 'system',
