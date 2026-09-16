@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { AppConfig } from '../types';
 import { useI18n } from '../utils/i18n';
 import { resolveCodeTheme } from '../utils/theme';
@@ -58,6 +58,17 @@ const onSwitchChange = (e: Event, key: 'enableWheelZoom' | 'autoPairQuotes' | 'd
 const onWheelZoomChange = (e: Event) => onSwitchChange(e, 'enableWheelZoom');
 const onAutoPairChange = (e: Event) => onSwitchChange(e, 'autoPairQuotes');
 const onDemoModeChange = (e: Event) => onSwitchChange(e, 'demoMode');
+
+// 清除本地数据（FR-8.2）：删除全部 python_you_* 键（工作区/配置/会话/教程进度）后重置
+const isClearDataDialogOpen = ref(false);
+const clearLocalData = () => {
+  for (const key of Object.keys(localStorage)) {
+    if (key.startsWith('python_you_')) localStorage.removeItem(key);
+  }
+  isClearDataDialogOpen.value = false;
+  // 重置为首次启动状态（工作区、欢迎引导、教程进度均会重新初始化）
+  window.location.reload();
+};
 </script>
 
 <template>
@@ -210,7 +221,7 @@ const onDemoModeChange = (e: Event) => onSwitchChange(e, 'demoMode');
                   {{ t('interpreterPyodide') }}
                 </m3e-option>
                 <m3e-optgroup>
-                  <span slot="label">{{ t('themeDark') }}</span>
+                  <span slot="label">{{ t('interpreterLocal') }}</span>
                   <m3e-option v-for="v in nativePython.versions.value" :key="v.id" :value="v.id"
                     :selected="config.interpreter === v.id">{{ v.label }}</m3e-option>
                 </m3e-optgroup>
@@ -231,7 +242,7 @@ const onDemoModeChange = (e: Event) => onSwitchChange(e, 'demoMode');
             {{ t('aboutApp') }}
             <span slot="supporting-text">{{ t('aboutAppDesc') }}</span>
             <div slot="trailing" class="settings-trailing">
-              v0.3.5
+              v0.3.51
             </div>
           </m3e-list-item>
 
@@ -242,7 +253,44 @@ const onDemoModeChange = (e: Event) => onSwitchChange(e, 'demoMode');
           </m3e-list-item>
         </m3e-list>
       </m3e-card>
+
+      <!-- Data Management（FR-8.2：清除本地数据） -->
+      <m3e-card variant="outlined">
+        <div slot="header" class="settings-card-header">
+          <h4 class="settings-card-title">{{ t('dataSettings') }}</h4>
+        </div>
+        <m3e-list slot="content">
+          <m3e-list-item>
+            <span slot="leading" class="material-symbols-rounded">delete_forever</span>
+            {{ t('clearData') }}
+            <span slot="supporting-text">{{ t('clearDataSubtitle') }}</span>
+            <div slot="trailing" class="settings-trailing">
+              <m3e-button variant="outlined" size="small" @click="isClearDataDialogOpen = true">
+                <span slot="icon" class="material-symbols-rounded">delete</span>
+                {{ t('clearData') }}
+              </m3e-button>
+            </div>
+          </m3e-list-item>
+        </m3e-list>
+      </m3e-card>
     </div>
+
+    <!-- 清除本地数据确认 Dialog -->
+    <m3e-dialog :open="isClearDataDialogOpen" @cancel="isClearDataDialogOpen = false"
+      @closed="isClearDataDialogOpen = false">
+      <span slot="header" class="settings-dialog-title-row">
+        <span class="material-symbols-rounded settings-dialog-icon is-danger">delete_forever</span>
+        <span class="settings-dialog-title">{{ t('clearDataConfirmTitle') }}</span>
+      </span>
+      <p class="settings-dialog-desc">{{ t('clearDataConfirmMsg') }}</p>
+      <div slot="actions" class="settings-dialog-actions">
+        <m3e-button variant="text" size="small" @click="isClearDataDialogOpen = false">{{ t('cancel')
+        }}</m3e-button>
+        <m3e-button class="settings-danger-btn" variant="filled" size="small" @click="clearLocalData">
+          {{ t('clearDataConfirm') }}
+        </m3e-button>
+      </div>
+    </m3e-dialog>
   </m3e-content-pane>
 </template>
 
@@ -269,10 +317,6 @@ const onDemoModeChange = (e: Event) => onSwitchChange(e, 'demoMode');
   width: 100%;
 }
 
-.settings-grid m3e-card {
-  --m3e-card-shape: 20px;
-}
-
 .settings-card-header {
   h4 {
     line-height: 2.4rem;
@@ -281,6 +325,51 @@ const onDemoModeChange = (e: Event) => onSwitchChange(e, 'demoMode');
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+/* 清除数据确认 Dialog 样式（与 App.vue 对话框风格一致） */
+.settings-dialog-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-dialog-icon {
+  font-size: 1.25rem;
+  color: var(--primary);
+}
+
+.settings-dialog-icon.is-danger {
+  color: var(--error);
+}
+
+.settings-dialog-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.settings-dialog-desc {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.settings-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.settings-danger-btn {
+  --m3e-button-container-color: var(--error);
+  --m3e-button-label-text-color: var(--on-error);
+  --m3e-button-icon-color: var(--on-error);
+  --m3e-button-pressed-state-layer-color: var(--on-error);
+  --m3e-button-focus-state-layer-color: var(--on-error);
 }
 
 /* 小标题行距收紧 */

@@ -32,6 +32,13 @@ const getScore = (topicId: string): QuizScore => {
   return getTopicQuizScore(topicId);
 };
 
+// 键盘可达（无障碍）：Enter/Space 激活与点击相同的操作（无成绩的行保持禁用）
+const onRowKeydown = (e: KeyboardEvent, topicId: string) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  e.preventDefault();
+  if (getScore(topicId).total > 0) emit('open-quiz', topicId);
+};
+
 const topicRows = (stage: TutorialStage): TutorialTopic[] => {
   const rows: TutorialTopic[] = [];
   if (stage.topics) rows.push(...stage.topics);
@@ -68,8 +75,11 @@ const topicRows = (stage: TutorialStage): TutorialTopic[] => {
             v-for="topic in topicRows(stage)"
             :key="topic.id"
             class="dir-topic-row"
+            role="button"
+            tabindex="0"
             :class="{ 'is-active': activeTopicId === topic.id, 'is-disabled': getScore(topic.id).total === 0 }"
             @click="getScore(topic.id).total > 0 && emit('open-quiz', topic.id)"
+            @keydown="onRowKeydown($event, topic.id)"
           >
             <span class="material-symbols-rounded dir-topic-icon">fact_check</span>
             <span class="dir-topic-title">
@@ -168,7 +178,7 @@ const topicRows = (stage: TutorialStage): TutorialTopic[] => {
   gap: 10px;
   margin-left: 1.6rem;
   padding: 10px 14px;
-  border-radius: 999px;
+  border-radius: 8px;
   cursor: pointer;
   transition: background-color 0.15s;
   margin-bottom: 4px;
@@ -179,7 +189,11 @@ const topicRows = (stage: TutorialStage): TutorialTopic[] => {
 }
 
 .dir-topic-row.is-active {
-  background-color: var(--primary-container);
+  background-color: var(--secondary-container);
+}
+
+.dir-topic-row.is-active .dir-topic-title {
+  color: var(--on-secondary-container);
 }
 
 .dir-topic-row.is-disabled {
@@ -198,7 +212,7 @@ const topicRows = (stage: TutorialStage): TutorialTopic[] => {
 }
 
 .dir-topic-row.is-active .dir-topic-icon {
-  color: var(--primary);
+  color: var(--on-secondary-container);
 }
 
 .dir-topic-title {

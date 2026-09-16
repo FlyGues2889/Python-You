@@ -24,6 +24,7 @@ import { syncWorkspacePackages } from './utils/packageUtils';
 import { gradeOutput } from './utils/quizGrader';
 import { uid } from './utils/id';
 import { resolveCodeTheme } from './utils/theme';
+import { backendTasks, addBackendTask, finishBackendTask, type BackendTask } from './utils/backendTasks';
 import { setQuizQuestionResult, syncQuizCompletion, getQuizQuestionResult } from './components/tutor/quizData';
 
 const { t, tf } = useI18n();
@@ -471,27 +472,8 @@ const engineLabel = computed(() => nativePython.statusLabel.value);
 const isWebEnv = computed(() => !nativeApi.available());
 
 // ---- 标题栏后台任务：指示器按钮 + rich-tooltip 任务列表 ----
-interface BackendTask {
-  id: string;
-  label: string;
-  status: 'running' | 'done' | 'failed';
-}
-const backendTasks = ref<BackendTask[]>([]);
+// 任务状态集中在 utils/backendTasks 单例：包安装等子组件可直接登记并更新进度（FR-5.6）
 const isBackendTooltipOpen = ref(false);
-
-const addBackendTask = (id: string, label: string) => {
-  const existing = backendTasks.value.find((task) => task.id === id);
-  if (existing) {
-    existing.status = 'running';
-    existing.label = label;
-  } else {
-    backendTasks.value.push({ id, label, status: 'running' });
-  }
-};
-const finishBackendTask = (id: string, status: 'done' | 'failed' = 'done') => {
-  const task = backendTasks.value.find((t) => t.id === id);
-  if (task) task.status = status;
-};
 
 // 指示器主显示：由任务列表派生（有运行中任务 → 转圈 + 任务文字；无 → 后台无内容）
 const activeBackendTask = computed(() => backendTasks.value.find((t) => t.status === 'running'));
@@ -499,6 +481,11 @@ const activeBackendTask = computed(() => backendTasks.value.find((t) => t.status
 const visibleBackendTasks = computed(() => backendTasks.value.filter((t) => t.status !== 'done'));
 const backendBusy = computed(() => !!activeBackendTask.value);
 const backendStatus = computed(() => activeBackendTask.value?.label || '');
+// 有真实进度时在状态文字后追加百分比（无进度数据不显示，保持不确定态）
+const backendProgressSuffix = computed(() => {
+  const p = activeBackendTask.value?.progress;
+  return typeof p === 'number' ? ` ${p}%` : '';
+});
 const backendTaskStatusText = (s: BackendTask['status']) =>
   s === 'running' ? t('backendTaskRunning') : s === 'done' ? t('backendTaskDone') : t('backendTaskFailed');
 const toggleBackendTooltip = () => {
@@ -677,6 +664,8 @@ onMounted(async () => {
       config.value = { ...config.value, ...JSON.parse(savedConfig) };
     } catch (e) { }
   }
+  // FR-3.7：字号三入口统一为 12-24，历史配置可能存有区间外的旧值，启动时归一到区间内
+  config.value.fontSize = Math.min(24, Math.max(12, Number(config.value.fontSize) || 15));
 
   // Open default main.py tab
   const mainFile = findFileByPath(workspaceItems.value, '/main.py');
@@ -726,10 +715,11 @@ watch(config, (newVal) => {
   updateTheme();
 }, { deep: true });
 
-// 工具栏字号加减：更新 config.fontSize，由上方 deep watch 自动持久化；范围 10-24px
+// 工具栏字号加减：更新 config.fontSize，由上方 deep watch 自动持久化；
+// 范围 12-24px（FR-3.7：与 Ctrl+滚轮缩放、设置页滑块三入口统一）
 const changeFontSize = (delta: number) => {
   const cur = config.value.fontSize || 15;
-  config.value.fontSize = Math.min(24, Math.max(10, cur + delta));
+  config.value.fontSize = Math.min(24, Math.max(12, cur + delta));
 };
 
 // ---- 工作区级内容搜索（B-6）：搜索全部 .py/.txt/.md/.json/.js/.ts 文件内容 ----
@@ -828,13 +818,25 @@ function findFileByPath(items: FSItem[], path: string): FSItem | null {
   return null;
 }
 
+// 写盘并记录 mtime（保存前外部修改检测用）
+const writeDiskFile = async (item: FSItem, abs: string, content: string) => {
+  try {
+    await nativeApi.writeFile(abs, content);
+    item.mtime = await nativeApi.statMtime(abs);
+  } catch (e) { }
+};
+
 // 按需加载文件内容（目录扫描时不预读，打开/运行/下载时才从磁盘读取）
 const ensureFileContent = async (file: FSItem): Promise<void> => {
   if (!workspaceRootPath.value || file.isFolder) return;
   if (file.content && file.content.length > 0) return;
   try {
-    const content = await nativeApi.readFile(absPath(workspaceRootPath.value, file.path));
+    const abs = absPath(workspaceRootPath.value, file.path);
+    const content = await nativeApi.readFile(abs);
     file.content = content;
+    try {
+      file.mtime = await nativeApi.statMtime(abs);
+    } catch (e) { /* 拿不到 mtime 就不做事前比对 */ }
     // 若该文件已有打开的标签页，同步其内容
     const tab = openTabs.value.find((t) => t.fileId === file.id);
     if (tab) {
@@ -914,7 +916,7 @@ const handleCreateFile = (parentId: string | null, name: string) => {
     const parentAbs = parentId
       ? absPath(workspaceRootPath.value, getParentPath(parentId))
       : workspaceRootPath.value;
-    nativeApi.writeFile(absPath(parentAbs, `/${name}`), newFile.content).catch(() => { });
+    writeDiskFile(newFile, absPath(parentAbs, `/${name}`), newFile.content || '');
   }
 
   showToast(t('toastFileCreated').replace('{name}', name));
@@ -1099,12 +1101,13 @@ const forceCloseTab = (tabId: string) => {
   }
 };
 
-const handleUnsavedSave = () => {
-  if (unsavedDialogState.value.tabId) {
-    handleSaveTab(unsavedDialogState.value.tabId);
-    forceCloseTab(unsavedDialogState.value.tabId);
-  }
+const handleUnsavedSave = async () => {
+  const tabId = unsavedDialogState.value.tabId;
   unsavedDialogState.value.isOpen = false;
+  if (!tabId) return;
+  await handleSaveTab(tabId);
+  // 出现保存冲突时保持标签页打开，交给冲突对话框决定
+  if (!conflictState.value) forceCloseTab(tabId);
 };
 
 const handleUnsavedDontSave = () => {
@@ -1128,24 +1131,55 @@ const handleContentChange = (tabId: string, newContent: string) => {
   }
 };
 
-const handleSaveTab = (tabId: string) => {
-  const tab = openTabs.value.find((t) => t.id === tabId);
-  if (tab) {
-    tab.savedContent = tab.content;
-    tab.isDirty = false;
+const commitSave = async (tab: EditorTab) => {
+  tab.savedContent = tab.content;
+  tab.isDirty = false;
 
-    // Only update workspace file item content on explicit save
-    const file = findItemById(workspaceItems.value, tab.fileId);
-    if (file) {
-      file.content = tab.content;
-    }
-    // 原生工作区：同时写回磁盘
-    if (workspaceRootPath.value) {
-      nativeApi.writeFile(absPath(workspaceRootPath.value, tab.path), tab.content).catch(() => { });
-    }
-    syncWorkspacePackages(workspaceItems.value);
-    showToast(t('toastFileSaved').replace('{name}', tab.name));
+  // Only update workspace file item content on explicit save
+  const file = findItemById(workspaceItems.value, tab.fileId);
+  if (file) {
+    file.content = tab.content;
   }
+  // 原生工作区：同时写回磁盘
+  if (workspaceRootPath.value) {
+    const abs = absPath(workspaceRootPath.value, tab.path);
+    if (file) await writeDiskFile(file, abs, tab.content);
+    else nativeApi.writeFile(abs, tab.content).catch(() => { });
+  }
+  syncWorkspacePackages(workspaceItems.value);
+  showToast(t('toastFileSaved').replace('{name}', tab.name));
+};
+
+// NFR-5.4：保存前比对 mtime，磁盘被外部修改时挂起保存等用户确认，不静默覆盖
+const conflictState = ref<{ tabId: string; name: string } | null>(null);
+
+const handleSaveTab = async (tabId: string) => {
+  const tab = openTabs.value.find((t) => t.id === tabId);
+  if (!tab) return;
+  const file = findItemById(workspaceItems.value, tab.fileId);
+  if (workspaceRootPath.value && file?.mtime !== undefined) {
+    const abs = absPath(workspaceRootPath.value, tab.path);
+    try {
+      const current = await nativeApi.statMtime(abs);
+      if (current !== file.mtime) {
+        conflictState.value = { tabId, name: tab.name };
+        return;
+      }
+    } catch (e) { /* 文件已不存在等情况按正常保存处理 */ }
+  }
+  await commitSave(tab);
+};
+
+const handleConflictOverwrite = async () => {
+  const pending = conflictState.value;
+  conflictState.value = null;
+  if (!pending) return;
+  const tab = openTabs.value.find((t) => t.id === pending.tabId);
+  if (tab) await commitSave(tab);
+};
+
+const handleConflictCancel = () => {
+  conflictState.value = null;
 };
 
 // Tree Helper Utilities
@@ -1246,7 +1280,7 @@ const handleLoadTutorialCodeToEditor = (payload: { code: string; topicId: string
   }
   // 本地工作区：首次（及每次）加载时把 tutorial_demo.py 落盘，保证重启后仍在工作区里
   if (workspaceRootPath.value) {
-    nativeApi.writeFile(absPath(workspaceRootPath.value, '/tutorial_demo.py'), code).catch(() => { });
+    writeDiskFile(demoFile, absPath(workspaceRootPath.value, '/tutorial_demo.py'), code);
   }
   // Sync content to already-open tab so editor shows latest code immediately
   const existingTab = openTabs.value.find((t) => t.fileId === demoFile.id);
@@ -1355,6 +1389,8 @@ const handleCheckAnswerClick = () => {
   const src = activeTutorialSource.value;
   if (!src || !isTutorialQuizMode.value) return;
   if (activeQuizPassed.value) {
+    // 已通过后再点击：返回测验页，同时再次给出通过反馈（snackbar）
+    showToast(t('toastQuizPassed'));
     handleReturnToQuiz(src.id);
   } else {
     handleQuizSubmit();
@@ -1523,17 +1559,25 @@ onMounted(() => {
         <button id="backend-status-trigger" class="titlebar-backend-status" type="button"
           :title="t('backendTasksTitle')" @click="toggleBackendTooltip">
           <span class="titlebar-spinner" :class="{ 'is-idle': !backendBusy }"></span>
-          <span class="titlebar-status-text">{{ backendStatus || t('statusIdle') }}</span>
+          <span class="titlebar-status-text">{{ backendStatus || t('statusIdle') }}{{ backendProgressSuffix }}</span>
         </button>
         <m3e-rich-tooltip for="backend-status-trigger" :open="isBackendTooltipOpen"
           @close="isBackendTooltipOpen = false">
           <div class="backend-task-panel">
             <p class="backend-task-panel-title">{{ t('backendTasksTitle') }}</p>
             <div v-if="visibleBackendTasks.length === 0" class="backend-task-empty">{{ t('backendTasksEmpty') }}</div>
-            <div v-for="task in visibleBackendTasks" :key="task.id" class="backend-task-item">
-              <span class="backend-task-dot" :class="`is-${task.status}`"></span>
-              <span class="backend-task-label">{{ task.label }}</span>
-              <span class="backend-task-status">{{ backendTaskStatusText(task.status) }}</span>
+            <div v-for="task in visibleBackendTasks" :key="task.id" class="backend-task-row">
+              <div class="backend-task-item">
+                <span class="backend-task-dot" :class="`is-${task.status}`"></span>
+                <span class="backend-task-label">{{ task.label }}</span>
+                <span class="backend-task-status">{{ task.status === 'running' && typeof task.progress === 'number' ?
+                  `${task.progress}%` : backendTaskStatusText(task.status) }}</span>
+              </div>
+              <!-- 真实进度的线性进度条（M3：4dp 高、全圆角、primary 活动段） -->
+              <div v-if="task.status === 'running' && typeof task.progress === 'number'" class="backend-task-progress"
+                role="progressbar" :aria-valuenow="task.progress" aria-valuemin="0" aria-valuemax="100">
+                <div class="backend-task-progress-fill" :style="{ width: `${task.progress}%` }"></div>
+              </div>
             </div>
           </div>
         </m3e-rich-tooltip>
@@ -1630,8 +1674,8 @@ onMounted(() => {
 
           <!-- 检查答案 / 返回教程：始终显示，无教程上下文时禁用（原为 v-if 隐藏） -->
           <div class="left-toolbar-group">
-            <m3e-button size="extra-small" variant="text" class="answerBtn" :disabled="!isTutorialQuizMode"
-              @click="handleCheckAnswerClick">
+            <m3e-button size="extra-small" variant="text" class="answerBtn" :class="{ 'is-passed': activeQuizPassed }"
+              :disabled="!isTutorialQuizMode" @click="handleCheckAnswerClick">
               <span slot="icon" class="material-symbols-rounded">{{ activeQuizPassed ? 'check_circle' : 'task_alt'
               }}</span>
               {{ activeQuizPassed ? t('quizAnswerCorrectDesc') : t('checkAnswer') }}
@@ -1724,7 +1768,8 @@ onMounted(() => {
     <MD3LoadingModal :show="isInitializing" :status="loadingStatus" />
 
     <!-- Snackbar Notification Toast -->
-    <m3e-snackbar :open="!!toastMessage" :duration="snackbarDuration" @toggle="handleSnackbarToggle">
+    <m3e-snackbar class="app-snackbar" :open="!!toastMessage" :duration="snackbarDuration"
+      @toggle="handleSnackbarToggle">
       {{ toastMessage }}
     </m3e-snackbar>
 
@@ -1753,6 +1798,20 @@ onMounted(() => {
         <m3e-button variant="text" size="small" @click="handleUnsavedCancel">{{ t('cancel') }}</m3e-button>
         <m3e-button variant="outlined" size="small" @click="handleUnsavedDontSave">{{ t('dontSave') }}</m3e-button>
         <m3e-button variant="filled" size="small" @click="handleUnsavedSave">{{ t('save') }}</m3e-button>
+      </div>
+    </m3e-dialog>
+
+    <!-- 保存冲突 Dialog：磁盘文件已被外部修改（NFR-5.4） -->
+    <m3e-dialog :open="!!conflictState" @cancel="handleConflictCancel" @closed="handleConflictCancel">
+      <span slot="header" class="m3e-dialog-title-row">
+        <span class="material-symbols-rounded m3e-dialog-icon is-danger">sync_problem</span>
+        <span class="m3e-dialog-title">{{ t('conflictTitle') }}</span>
+      </span>
+      <p class="m3e-dialog-desc">{{ tf('conflictMsg', { name: conflictState?.name || '' }) }}</p>
+      <div slot="actions" class="m3e-dialog-actions">
+        <m3e-button variant="text" size="small" @click="handleConflictCancel">{{ t('cancel') }}</m3e-button>
+        <m3e-button variant="filled" size="small" @click="handleConflictOverwrite">{{ t('conflictOverwrite')
+          }}</m3e-button>
       </div>
     </m3e-dialog>
 
@@ -2088,6 +2147,22 @@ m3e-nav-rail {
   color: var(--text-tertiary);
 }
 
+/* 安装等任务的真实进度条（M3 LinearProgressIndicator：4dp 高、全圆角、primary 活动段） */
+.backend-task-progress {
+  height: 4px;
+  margin: 2px 0 4px 16px;
+  border-radius: 9999px;
+  background-color: var(--surface-container-highest);
+  overflow: hidden;
+}
+
+.backend-task-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background-color: var(--primary);
+  transition: width 0.2s ease;
+}
+
 .titlebar-spinner {
   width: 11px;
   height: 11px;
@@ -2155,6 +2230,12 @@ m3e-nav-rail {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+/* 全局 snackbar 层级保险：m3e-snackbar 使用 Popover API（top layer），
+   显式抬高 z-index 确保不会被 dialog 遮罩/其他弹层盖住（判分失败对比弹窗场景） */
+m3e-snackbar.app-snackbar {
+  z-index: 40000;
 }
 
 /* 网页端环境提示条：琥珀色信息条，不遮挡操作 */
@@ -2248,6 +2329,14 @@ m3e-nav-rail {
   --m3e-button-label-text-color: var(--text-color);
   --m3e-button-focus-icon-color: var(--text-color);
   --m3e-button-focus-label-text-color: var(--text-color);
+}
+
+/* 测验已通过：按钮图标与文字变为主色，强化通过反馈 */
+.answerBtn.is-passed {
+  --m3e-button-icon-color: var(--primary);
+  --m3e-button-label-text-color: var(--primary);
+  --m3e-button-focus-icon-color: var(--primary);
+  --m3e-button-focus-label-text-color: var(--primary);
 }
 
 .tutorBtn {

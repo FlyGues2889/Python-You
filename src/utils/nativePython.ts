@@ -3,6 +3,7 @@
 import { ref } from 'vue';
 import { nativeApi, type PythonVersion } from './native';
 import { t, tf } from './i18n';
+import { isInstallProgressLine, parseInstallProgress } from './installProgress';
 import type { ConsoleOutput, FSItem } from '../types';
 import { uid } from './id';
 
@@ -213,13 +214,26 @@ class NativePythonRunner {
     return undefined;
   }
 
-  async loadPackage(pkgName: string, onOutput: (out: ConsoleOutput) => void): Promise<boolean> {
+  async loadPackage(
+    pkgName: string,
+    onOutput: (out: ConsoleOutput) => void,
+    onProgress?: (progress: number | null) => void
+  ): Promise<boolean> {
     const session: Session = 'pip';
     await this.ensureListener();
 
     return new Promise(async (resolve) => {
       this.listeners[session] = (kind, text) => {
         if (kind === 'stdout' || kind === 'stderr') {
+          // FR-5.6：进度条片段只用于后台任务指示器，不进终端（否则每次刷新都是一行）
+          if (isInstallProgressLine(text)) {
+            onProgress?.(parseInstallProgress(text));
+            return;
+          }
+          // 下载完成进入安装写入阶段：没有百分比数据，切回不确定态
+          if (/Installing collected packages/i.test(text)) {
+            onProgress?.(null);
+          }
           onOutput({
             id: uid(),
             type: kind === 'stdout' ? 'stdout' : 'stderr',

@@ -3,7 +3,7 @@ import { ref, computed, watch, nextTick } from 'vue';
 import { type TutorialStage, type TutorialTopic, getLocalizedTutorialStages } from './tutorialData';
 import { useI18n } from '../../utils/i18n';
 
-const { t } = useI18n();
+const { t, tf } = useI18n();
 
 const props = defineProps<{
   activeTopicId: string;
@@ -24,6 +24,28 @@ const quizDone = (topicId: string): boolean => {
 };
 
 const stages = computed(() => getLocalizedTutorialStages());
+
+// FR-6.6 全局学习进度：课程主题总数 / 已完成数（数据由父级传入，仅统计仍在目录中的主题）
+const allTopicIds = computed(() => {
+  const ids: string[] = [];
+  for (const stage of stages.value) {
+    stage.topics?.forEach(topic => ids.push(topic.id));
+    stage.subcategories?.forEach(sub => sub.topics?.forEach(topic => ids.push(topic.id)));
+  }
+  return ids;
+});
+
+const completedCount = computed(() =>
+  allTopicIds.value.filter(id => props.completedTopics?.has(id)).length
+);
+
+// 测验平均分：已作答测验得分的算术平均；无成绩时为 null（显示占位文案）
+const quizAverage = computed<number | null>(() => {
+  const stats = Object.values(props.quizStats || {}).filter(s => s.total > 0);
+  if (stats.length === 0) return null;
+  const sum = stats.reduce((acc, s) => acc + s.correct / s.total, 0);
+  return Math.round((sum / stats.length) * 100);
+});
 
 const searchQuery = ref('');
 
@@ -52,6 +74,25 @@ const toggleStage = (stageId: string) => {
 
 const toggleSub = (subId: string) => {
   expandedSubs.value[subId] = !expandedSubs.value[subId];
+};
+
+// 键盘可达（无障碍）：Enter/Space 激活与点击相同的操作
+const onStageKeydown = (e: KeyboardEvent, stageId: string) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  e.preventDefault();
+  toggleStage(stageId);
+};
+
+const onSubKeydown = (e: KeyboardEvent, subId: string) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  e.preventDefault();
+  toggleSub(subId);
+};
+
+const onTopicKeydown = (e: KeyboardEvent, topicId: string) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  e.preventDefault();
+  emit('select-topic', topicId);
 };
 
 // Locate active topic in catalog
@@ -163,6 +204,20 @@ const filteredStages = computed(() => {
         </div>
       </div>
 
+      <!-- 全局学习进度（FR-6.6）：主题完成数 + 测验平均分 -->
+      <div class="progress-summary">
+        <span class="progress-chip" :title="t('progressTopicsTooltip')">
+          <span class="material-symbols-rounded">task_alt</span>
+          <span>{{ tf('progressTopicsDone', { done: completedCount, total: allTopicIds.length }) }}</span>
+        </span>
+        <span class="progress-chip is-score" :class="{ 'is-empty': quizAverage === null }"
+          :title="t('progressQuizTooltip')">
+          <span class="material-symbols-rounded">scoreboard</span>
+          <span>{{ quizAverage === null ? t('progressNoQuiz') : tf('progressQuizAverage', { score: quizAverage })
+            }}</span>
+        </span>
+      </div>
+
       <!-- Search Input -->
       <div class="search-box">
         <m3e-search-bar class="tree-search-bar" clearable @clear="searchQuery = ''">
@@ -175,7 +230,8 @@ const filteredStages = computed(() => {
       <m3e-content-pane class="tree-nodes-list">
         <div v-for="stage in filteredStages" :key="stage.id" class="stage-block">
           <!-- Stage Header Folder -->
-          <div class="stage-header-item" @click="toggleStage(stage.id)">
+          <div class="stage-header-item" role="button" tabindex="0" @click="toggleStage(stage.id)"
+            @keydown="onStageKeydown($event, stage.id)">
             <span class="material-symbols-rounded folder-arrow"
               :class="{ 'is-open': expandedStages[stage.id] || searchQuery }">
               chevron_right
@@ -187,8 +243,9 @@ const filteredStages = computed(() => {
           <!-- Stage Level Topics -->
           <Transition name="expand">
             <div v-if="(expandedStages[stage.id] || searchQuery) && stage.topics" class="topic-group">
-              <div v-for="topic in stage.topics" :key="topic.id" class="topic-item"
-                :class="{ 'is-active': activeTopicId === topic.id }" @click="emit('select-topic', topic.id)">
+              <div v-for="topic in stage.topics" :key="topic.id" class="topic-item" role="button" tabindex="0"
+                :class="{ 'is-active': activeTopicId === topic.id }" @click="emit('select-topic', topic.id)"
+                @keydown="onTopicKeydown($event, topic.id)">
                 <span :class="[
                   activeTopicId === topic.id ? 'material-symbols-rounded-fill' : 'material-symbols-rounded',
                   'topic-icon'
@@ -210,7 +267,8 @@ const filteredStages = computed(() => {
           <Transition name="expand">
             <div v-if="(expandedStages[stage.id] || searchQuery) && stage.subcategories" class="subcat-group">
               <div v-for="sub in stage.subcategories" :key="sub.id" class="subcat-block">
-                <div class="subcat-header-item" @click="toggleSub(sub.id)">
+                <div class="subcat-header-item" role="button" tabindex="0" @click="toggleSub(sub.id)"
+                  @keydown="onSubKeydown($event, sub.id)">
                   <span class="material-symbols-rounded folder-arrow"
                     :class="{ 'is-open': expandedSubs[sub.id] || searchQuery }">
                     chevron_right
@@ -221,8 +279,9 @@ const filteredStages = computed(() => {
 
                 <Transition name="expand">
                   <div v-if="(expandedSubs[sub.id] || searchQuery) && sub.topics" class="topic-group indented">
-                    <div v-for="topic in sub.topics" :key="topic.id" class="topic-item"
-                      :class="{ 'is-active': activeTopicId === topic.id }" @click="emit('select-topic', topic.id)">
+                    <div v-for="topic in sub.topics" :key="topic.id" class="topic-item" role="button" tabindex="0"
+                      :class="{ 'is-active': activeTopicId === topic.id }" @click="emit('select-topic', topic.id)"
+                      @keydown="onTopicKeydown($event, topic.id)">
                       <span :class="[
                         activeTopicId === topic.id ? 'material-symbols-rounded-fill' : 'material-symbols-rounded',
                         'topic-icon'
@@ -335,6 +394,43 @@ const filteredStages = computed(() => {
   border-bottom: none;
 }
 
+/* 全局学习进度（FR-6.6）：M3 风格统计芯片（32dp 高 / 8dp 圆角，selected 态填充色） */
+.progress-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 8px;
+}
+
+.progress-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.progress-chip .material-symbols-rounded {
+  font-size: 1rem;
+}
+
+.progress-chip.is-score {
+  background-color: var(--tertiary-container);
+  color: var(--on-tertiary-container);
+}
+
+.progress-chip.is-empty {
+  background-color: var(--surface-variant);
+  color: var(--text-tertiary);
+}
+
 .tree-search-bar {
   flex: 1;
 }
@@ -360,7 +456,7 @@ const filteredStages = computed(() => {
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
-  border-radius: 999px;
+  border-radius: 8px;
   cursor: pointer;
   transition: background-color 0.15s;
   min-width: 0;
@@ -458,7 +554,7 @@ const filteredStages = computed(() => {
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  border-radius: 9999px;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 0.8125rem;
   color: var(--text-secondary);
@@ -475,11 +571,11 @@ const filteredStages = computed(() => {
 }
 
 .topic-item.is-active {
-  background-color: transparent;
-  color: var(--text-color);
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
   font-weight: 600;
-  border: 1px solid var(--secondary);
-  border-radius: 9999px;
+  border: 1px solid transparent;
+  border-radius: 8px;
 }
 
 .topic-icon {
@@ -489,7 +585,7 @@ const filteredStages = computed(() => {
 }
 
 .topic-item.is-active .topic-icon {
-  color: var(--secondary);
+  color: var(--on-secondary-container);
 }
 
 .topic-title-text {

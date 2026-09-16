@@ -58,6 +58,9 @@ export const nativeApi = {
   writeFile(path: string, content: string): Promise<void> {
     return invoke('fs_write_file', { path, content });
   },
+  statMtime(path: string): Promise<number> {
+    return invoke('fs_stat_mtime', { path });
+  },
   createDir(parentPath: string, name: string): Promise<string> {
     return invoke('fs_create_dir', { parentPath, name });
   },

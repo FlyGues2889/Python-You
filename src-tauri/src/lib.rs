@@ -20,6 +20,7 @@ pub fn run() {
             fs::fs_read_directory,
             fs::fs_read_file,
             fs::fs_write_file,
+            fs::fs_stat_mtime,
             fs::fs_create_file,
             fs::fs_create_dir,
             fs::fs_rename,

@@ -11,8 +11,31 @@ use tauri::{AppHandle, Manager};
 // 读写工作区之外的任意文件（NFR-5.2）。
 static WORKSPACE_ROOT: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
 
-fn workspace_root() -> &'static Mutex<Option<PathBuf>> {
+pub(crate) fn workspace_root() -> &'static Mutex<Option<PathBuf>> {
     WORKSPACE_ROOT.get_or_init(|| Mutex::new(None))
+}
+
+// 校验子进程 cwd（python_run / python_repl_start）：
+// 允许工作区根目录内的路径（含子目录），或物化虚拟工作区的临时目录
+// （fs_materialize_workspace 生成的 temp/python_you_ws_*，其内部路径已防 .. 逃逸）。
+// 拒绝任意路径，防止前端被注入后把 Python 进程 cwd 指向工作区之外（NFR-5.2）。
+pub(crate) fn validate_cwd(cwd: &Path) -> Result<(), String> {
+    let temp = std::env::temp_dir();
+    if cwd.starts_with(&temp)
+        && cwd
+            .file_name()
+            .map_or(false, |n| n.to_string_lossy().starts_with("python_you_ws_"))
+    {
+        return Ok(());
+    }
+    let guard = workspace_root().lock().unwrap();
+    let root = guard.as_ref().ok_or_else(|| "工作区根目录未设置".to_string())?;
+    let root_canon = root.canonicalize().unwrap_or_else(|_| root.clone());
+    let cwd_canon = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
+    if cwd_canon.starts_with(&root_canon) {
+        return Ok(());
+    }
+    Err(format!("cwd 不在工作区内: {}", cwd.display()))
 }
 
 #[tauri::command]
@@ -147,6 +170,18 @@ pub fn fs_write_file(path: String, content: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
     ensure_within_root(&p)?;
     fs::write(&p, content).map_err(|e| e.to_string())
+}
+
+// 文件最后修改时间（Unix 毫秒）：前端保存前比对，检测工作区文件是否被外部修改（NFR-5.4）
+#[tauri::command]
+pub fn fs_stat_mtime(path: String) -> Result<f64, String> {
+    let p = PathBuf::from(&path);
+    ensure_within_root(&p)?;
+    let modified = fs::metadata(&p).and_then(|m| m.modified()).map_err(|e| e.to_string())?;
+    Ok(modified
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as f64)
+        .unwrap_or(0.0))
 }
 
 #[tauri::command]

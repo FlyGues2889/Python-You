@@ -79,6 +79,7 @@ const translations = {
 
     // File Tree & Context Menu
     workspace: '工作区文件',
+    explorerLabel: '资源管理器',
     newFileTooltip: '新建文件',
     newFolderTooltip: '新建文件夹',
     folderNamePlaceholder: '文件夹名称...',
@@ -106,12 +107,24 @@ const translations = {
     uninstall: '卸载',
     installedSectionTitle: '已安装拓展包',
     availableSectionTitle: '可安装拓展包',
+    pkgCountText: '{count} 个',
+    pkgNoInstalled: '暂无已安装的扩展包',
+    pkgNoAvailable: '暂无可载入的拓展包',
+    pkgUninstalledListOnly: '[包管理] 已将 {name} 移出已安装列表（仅移出本应用记录，未从 Python 环境卸载）',
+    pkgConfirmTitle: '确认安装扩展包',
+    pkgConfirmTargetLocal: '将通过本机 pip 安装「{name}」（来源 PyPI），并使用 --user 写入用户目录，不污染全局 Python 环境。',
+    pkgConfirmTargetWasm: '将通过 Pyodide 安装「{name}」（来源 Pyodide 官方仓库）；若引擎不可用则仅登记记录，不真实安装。',
+    pkgConfirmRisk: '安装会联网下载并执行该包提供的安装代码，请确认包名无误。',
+    pkgConfirmInstall: '确认安装',
 
     // Dialogs & Toasts
     confirmDeleteTitle: '确认删除',
     confirmDeleteMsg: '确定要删除 "{name}" 吗？此操作无法撤销。',
     confirmDeleteFolderMsg: '确定要删除文件夹 "{name}" 及其全部内容吗？此操作无法撤销。',
     unsavedChangesTitle: '未保存的更改',
+    conflictTitle: '文件已被外部修改',
+    conflictMsg: '「{name}」在磁盘上已被其他程序修改。继续保存将覆盖这些修改。',
+    conflictOverwrite: '覆盖保存',
     unsavedChangesMsg: '文件 "{name}" 存在未保存的更改。是否在关闭前保存？',
     dontSave: '不保存',
     cancel: '取消',
@@ -191,6 +204,8 @@ const translations = {
     outputTerminalTitle: '输出',
     fontSizeIncrease: '增大编辑器字体',
     fontSizeDecrease: '减小编辑器字体',
+    tracebackExpand: '展开完整错误信息',
+    tracebackCollapse: '收起完整错误信息',
 
     // 使用帮助弹窗
     helpTitle: '使用帮助',
@@ -227,6 +242,9 @@ const translations = {
     codeActionHint: '在编辑器窗口中修改代码，点击右下角「检查答案」校验输出',
     choiceSubmitted: '选择题已提交',
     submitQuizText: '提交测验（已选 {answered}/{total}）',
+    quizSubmitPassed: '测验通过，全部正确！',
+    quizSubmitScore: '测验已提交：答对 {correct} / {total}',
+    quizResetDone: '测验已重置，可重新作答',
     retakeQuiz: '重新测验',
     quizDirectoryTitle: '测验目录',
     quizDirectorySubtitle: '每节课后完成测验，巩固所学知识',
@@ -237,6 +255,13 @@ const translations = {
     quizShort: '测验',
     noTutorialMatch: '未找到匹配的教程内容',
     locateCurrentTopic: '定位当前课程在目录中的位置',
+
+    // 教程全局学习进度（FR-6.6）
+    progressTopicsDone: '完成 {done}/{total}',
+    progressTopicsTooltip: '已完成主题数 / 课程主题总数',
+    progressQuizAverage: '测验均分 {score}%',
+    progressNoQuiz: '测验均分 —',
+    progressQuizTooltip: '已作答测验的平均得分',
 
     // Tutorial Article Content UI
     tocTitle: '目录',
@@ -279,6 +304,11 @@ const translations = {
     pyodideTimeout: 'Pyodide WASM 引擎加载超时',
     pyodideCdnUnavailable: 'Pyodide 引擎加载失败',
     pyodideInitTimeout: 'Pyodide WASM 引擎初始化超时，检查你的网络',
+    pyodideStopped: '[INFO] 已停止 WASM 引擎执行，Python 会话已重置（变量与已加载的包需重新执行 / 加载）。',
+    pyodideInputPrompt: '程序请求输入：',
+    pyodideInputCanceled: '[INFO] 已取消输入，本次执行中止。',
+    pyodideInputTooMany: '输入次数超过上限，已中止执行（代码中可能存在无限输入循环）。',
+    pyodideReplInputUnsupported: '[INFO] WASM 引擎的交互终端暂不支持 input()，请把代码放入编辑器运行。',
     demoModeRunning: '[演示模式] 正在以演示引擎执行（非真实 Python 运行）...',
     demoExecuted: '[演示模式] 演示引擎执行结束（非真实 Python 运行，结果仅供演示）。',
     demoUnsupportedWarning: '[演示模式] 警告：代码中有 {count} 处语句无法由演示引擎执行（第 {lines} 行），这些语句未运行，结果不完整。',
@@ -287,6 +317,7 @@ const translations = {
     pyodideInstalledPkg: '[INFO] 成功安装包 \'{name}\'',
     pyodideInstallFail: '[ERROR] 安装包 \'{name}\'失败。错误: {err}',
     demoPkgRegistered: '[演示模式] 包 \'{name}\' 仅登记记录，未真实安装；代码中 import 该包仍会失败。',
+    errorSummaryPrefix: '错误摘要：',
     processFinishedCode: '[INFO] 进程已完成并退出，代码 0 ，完成时间 {duration}ms',
     invalidFileName: '文件名不能包含 \\ / : * ? " < > | 或 .. 等字符',
     pkgInstallFailedMsg: '安装 {name} 失败，详情见终端输出',
@@ -310,11 +341,20 @@ const translations = {
     // 网页端环境提示条
     webEnvBanner: '网页版：工作区与学习进度仅保存在本浏览器（清除缓存或更换浏览器将丢失），代码在本机浏览器内执行',
 
+    // 设置页数据管理
+    dataSettings: '数据',
+    clearData: '清除本地数据',
+    clearDataSubtitle: '删除工作区、设置、会话与教程进度等所有本地数据，并重置为首次启动状态',
+    clearDataConfirmTitle: '确认清除本地数据',
+    clearDataConfirmMsg: '将删除工作区、配置、会话与教程进度等所有本地数据，并重置为首次启动状态。\n此操作无法撤销。',
+    clearDataConfirm: '确认清除',
+
     // 标题栏后台任务指示器
     statusIdle: '后台无内容',
     statusDetectingPython: '正在检测本机 Python…',
     statusLoadingPyodide: '正在加载 Pyodide 引擎…',
     statusApplyingInterpreter: '正在应用解释器设置…',
+    statusInstallingPkg: '正在安装 {name}…',
     backendTasksTitle: '后台任务',
     backendTasksEmpty: '无任务',
     backendTaskRunning: '进行中',

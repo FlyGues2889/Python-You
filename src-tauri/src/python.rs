@@ -4,8 +4,8 @@
 // - 通过事件 "py-output" 把 stdout/stderr/完成信息流式推送给前端
 // - 进程保存在全局 State 中，前端可随时调用 python_stop 强制 kill（让"停止运行"真正可用）
 // - 脚本写入临时文件后以 `python -u <file>` 运行，支持超长代码，且以工作区为 cwd
-use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -227,6 +227,55 @@ fn emit(app: &AppHandle, kind: &str, text: &str, session: &str) {
     );
 }
 
+// 读取子进程输出并逐段转成 py-output 事件。
+// split_cr = true 时按 \r 与 \n 双双切分：pip 下载进度条以 \r 原地刷新，
+// 只按 \n 读取时进度要等整条进度条结束才到达前端，无法实时显示（FR-5.6）。
+fn stream_reader<R: Read + Send + 'static>(
+    app: AppHandle,
+    mut reader: R,
+    kind: &'static str,
+    session: String,
+    split_cr: bool,
+) {
+    std::thread::spawn(move || {
+        if !split_cr {
+            for line in BufReader::new(reader).lines().map_while(Result::ok) {
+                emit(&app, kind, line.trim_end_matches('\r'), &session);
+            }
+            return;
+        }
+        // 字节流切分：跨 read 边界的多字节字符留在 pending 里等下一个终止符
+        let mut buf = [0u8; 4096];
+        let mut pending: Vec<u8> = Vec::new();
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    pending.extend_from_slice(&buf[..n]);
+                    let mut start = 0usize;
+                    for i in 0..pending.len() {
+                        if pending[i] == b'\n' || pending[i] == b'\r' {
+                            if i > start {
+                                if let Ok(text) = std::str::from_utf8(&pending[start..i]) {
+                                    emit(&app, kind, text, &session);
+                                }
+                            }
+                            start = i + 1;
+                        }
+                    }
+                    pending.drain(0..start);
+                }
+                Err(_) => break,
+            }
+        }
+        if !pending.is_empty() {
+            if let Ok(text) = std::str::from_utf8(&pending) {
+                emit(&app, kind, text, &session);
+            }
+        }
+    });
+}
+
 // 通用：启动一个流式子进程（stdout/stderr -> 事件），并存下句柄以便 stop 强杀
 fn spawn_streaming(
     app: AppHandle,
@@ -234,6 +283,7 @@ fn spawn_streaming(
     mut cmd: Command,
     script: Option<PathBuf>,
     session: &str,
+    split_cr: bool,
 ) -> Result<(), String> {
     // 先杀掉上一个进程（运行脚本 / REPL / pip 之间互斥），并通知上一个会话已终止
     let prev_session = {
@@ -258,21 +308,8 @@ fn spawn_streaming(
     let stdout = child.stdout.take().expect("child stdout");
     let stderr = child.stderr.take().expect("child stderr");
 
-    let app_stdout = app.clone();
-    let session_stdout = session.to_string();
-    std::thread::spawn(move || {
-        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            emit(&app_stdout, "stdout", line.trim_end_matches('\r'), &session_stdout);
-        }
-    });
-
-    let app_stderr = app.clone();
-    let session_stderr = session.to_string();
-    std::thread::spawn(move || {
-        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-            emit(&app_stderr, "stderr", line.trim_end_matches('\r'), &session_stderr);
-        }
-    });
+    stream_reader(app.clone(), stdout, "stdout", session.to_string(), split_cr);
+    stream_reader(app.clone(), stderr, "stderr", session.to_string(), split_cr);
 
     *state.proc.lock().unwrap() = Some(child);
 
@@ -376,9 +413,10 @@ pub fn python_run(
     cmd.arg("-u").arg(&script);
     cmd.env("PYTHONPATH", "."); // 让脚本可以 import 工作区里的兄弟模块
     if let Some(dir) = &cwd {
+        crate::fs::validate_cwd(Path::new(dir))?; // 白名单校验（NFR-5.2）
         cmd.current_dir(dir);
     }
-    spawn_streaming(app, &state, cmd, Some(script), "run")
+    spawn_streaming(app, &state, cmd, Some(script), "run", false)
 }
 
 #[tauri::command]
@@ -443,6 +481,7 @@ def _py_help(obj=None):
 builtins.help = _py_help";
     cmd.arg("-u").arg("-i").arg("-c").arg(REPL_HELP_PATCH);
     if let Some(dir) = &cwd {
+        crate::fs::validate_cwd(Path::new(dir))?; // 白名单校验（NFR-5.2）
         cmd.current_dir(dir);
     }
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).stdin(Stdio::piped());
@@ -543,10 +582,26 @@ pub fn shutdown(state: &PythonState) {
     }
 }
 
+// 解释器是否为虚拟环境：venv 内 pip 不支持 --user，会直接报错
+fn is_venv(py_parts: &[String]) -> bool {
+    let mut probe = command_from_parts(py_parts);
+    probe.arg("-c").arg("import sys; print(1 if sys.prefix != sys.base_prefix else 0)");
+    no_console(&mut probe);
+    match probe.output() {
+        Ok(out) => String::from_utf8_lossy(&out.stdout).trim() == "1",
+        Err(_) => false,
+    }
+}
+
 #[tauri::command]
 pub fn python_pip_install(app: AppHandle, state: State<PythonState>, pkg: String) -> Result<(), String> {
     let py_parts = resolve_python(&state)?;
     let mut cmd = command_from_parts(&py_parts);
-    cmd.arg("-m").arg("pip").arg("install").arg("--no-input").arg(&pkg);
-    spawn_streaming(app, &state, cmd, None, "pip")
+    cmd.arg("-m").arg("pip").arg("install").arg("--no-input");
+    // NFR-5.3：系统解释器用 --user 装到用户目录，避免污染全局 site-packages
+    if !is_venv(&py_parts) {
+        cmd.arg("--user");
+    }
+    cmd.arg(&pkg);
+    spawn_streaming(app, &state, cmd, None, "pip", true)
 }

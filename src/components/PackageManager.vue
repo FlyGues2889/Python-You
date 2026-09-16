@@ -5,6 +5,8 @@ import { ConsoleOutput, FSItem } from '../types';
 import { useI18n } from '../utils/i18n';
 import PageHeader from './PageHeader.vue';
 import { syncWorkspacePackages, saveInstalledPackages } from '../utils/packageUtils';
+import { addBackendTask, updateBackendTask, finishBackendTask } from '../utils/backendTasks';
+import { nativePython } from '../utils/nativePython';
 
 const props = defineProps<{
   workspaceFiles?: FSItem[];
@@ -119,15 +121,43 @@ const availablePackages = computed(() => {
 // 安装失败提示（FR-5.3：页面内联错误 + Toast，不静默无声）
 const installError = ref('');
 
+// NFR-5.3：安装前确认（包名 + 来源 + 风险），确认后才真正执行
+const pendingInstall = ref<string | null>(null);
+
+const requestInstall = (pkgName: string) => {
+  const cleanName = pkgName.trim().toLowerCase();
+  if (!cleanName || installingSet.value.has(cleanName)) return;
+  pendingInstall.value = cleanName;
+};
+
+const installTargetText = computed(() =>
+  nativePython.supported && nativePython.enabled && nativePython.versions.value.length > 0
+    ? tf('pkgConfirmTargetLocal', { name: pendingInstall.value || '' })
+    : tf('pkgConfirmTargetWasm', { name: pendingInstall.value || '' })
+);
+
+const handleConfirmInstall = async () => {
+  const cleanName = pendingInstall.value;
+  pendingInstall.value = null;
+  if (cleanName) await handleInstall(cleanName);
+};
+
 const handleInstall = async (pkgName: string) => {
   const cleanName = pkgName.trim().toLowerCase();
   if (!cleanName || installingSet.value.has(cleanName)) return;
 
   installError.value = '';
   installingSet.value.add(cleanName);
+
+  // FR-5.6：安装任务登记到标题栏后台指示区，进度随 pip 输出实时更新
+  const taskId = `install-pkg-${cleanName}`;
+  addBackendTask(taskId, tf('statusInstallingPkg', { name: cleanName }));
   const ok = await pythonRunner.loadPackage(cleanName, (out) => {
     emit('add-console-output', out);
+  }, (progress) => {
+    updateBackendTask(taskId, { progress });
   });
+  finishBackendTask(taskId, ok ? 'done' : 'failed');
 
   if (ok) {
     installedSet.value.add(cleanName);
@@ -148,9 +178,10 @@ const handleUninstall = (pkgName: string) => {
   if (!cleanName) return;
   installedSet.value.delete(cleanName);
   saveInstalledPackages(Array.from(installedSet.value));
+  // FR-5.4：明示「仅移出列表」，避免用户误解为从 Python 环境真实卸载
   emit('add-console-output', {
     type: 'system',
-    text: `[Pip] 已卸载包: ${cleanName}`,
+    text: tf('pkgUninstalledListOnly', { name: cleanName }),
     timestamp: new Date().toLocaleTimeString()
   });
 };
@@ -168,11 +199,11 @@ const handleUninstall = (pkgName: string) => {
           <m3e-search-bar clearable @clear="customPackageName = ''; filterQuery = ''">
             <span slot="leading" class="material-symbols-rounded">search</span>
             <input slot="input" v-model="customPackageName" :placeholder="t('pkgSearchPlaceholder')"
-              @input="filterQuery = customPackageName" @keydown.enter.prevent="handleInstall(customPackageName)" />
+              @input="filterQuery = customPackageName" @keydown.enter.prevent="requestInstall(customPackageName)" />
           </m3e-search-bar>
         </div>
         <m3e-button variant="filled" size="small" :disabled="installingSet.has(customPackageName.trim().toLowerCase()) || !customPackageName.trim()"
-          @click="handleInstall(customPackageName)">
+          @click="requestInstall(customPackageName)">
           <span slot="icon" class="material-symbols-rounded">download</span>
           {{ installingSet.has(customPackageName.trim().toLowerCase()) ? t('installing') : t('installPkg') }}
         </m3e-button>
@@ -186,7 +217,7 @@ const handleUninstall = (pkgName: string) => {
       <m3e-card variant="outlined">
         <div slot="header" class="pkg-card-header">
           <h4 class="pkg-card-title">{{ t('installedSectionTitle') }}</h4>
-          <span class="count-tag">{{ installedPackages.length }} 个</span>
+          <span class="count-tag">{{ tf('pkgCountText', { count: installedPackages.length }) }}</span>
         </div>
 
         <m3e-list v-if="installedPackages.length > 0" slot="content" class="pkg-m3e-list">
@@ -203,7 +234,7 @@ const handleUninstall = (pkgName: string) => {
           </m3e-list-item>
         </m3e-list>
         <div v-else slot="content" class="empty-category-hint">
-          <span>暂无已安装的扩展包</span>
+          <span>{{ t('pkgNoInstalled') }}</span>
         </div>
       </m3e-card>
 
@@ -211,7 +242,7 @@ const handleUninstall = (pkgName: string) => {
       <m3e-card variant="outlined">
         <div slot="header" class="pkg-card-header">
           <h4 class="pkg-card-title">{{ t('availableSectionTitle') }}</h4>
-          <span class="count-tag">{{ availablePackages.length }} 个</span>
+          <span class="count-tag">{{ tf('pkgCountText', { count: availablePackages.length }) }}</span>
         </div>
 
         <m3e-list v-if="availablePackages.length > 0" slot="content" class="pkg-m3e-list">
@@ -221,7 +252,7 @@ const handleUninstall = (pkgName: string) => {
             <span slot="supporting-text">{{ pkg.descZh }}</span>
             <div slot="trailing" class="item-actions">
               <m3e-button variant="filled" size="extra-small"
-                :disabled="installingSet.has(pkg.name.toLowerCase())" @click="handleInstall(pkg.name)">
+                :disabled="installingSet.has(pkg.name.toLowerCase())" @click="requestInstall(pkg.name)">
                 <span slot="icon" class="material-symbols-rounded">download</span>
                 {{ installingSet.has(pkg.name.toLowerCase()) ? t('installing') : t('loadPkg') }}
               </m3e-button>
@@ -229,10 +260,25 @@ const handleUninstall = (pkgName: string) => {
           </m3e-list-item>
         </m3e-list>
         <div v-else slot="content" class="empty-category-hint">
-          <span>暂无可载入的拓展包</span>
+          <span>{{ t('pkgNoAvailable') }}</span>
         </div>
       </m3e-card>
     </div>
+
+    <!-- 安装确认（NFR-5.3）：包名、来源与风险提示 -->
+    <m3e-dialog :open="!!pendingInstall" @cancel="pendingInstall = null" @closed="pendingInstall = null">
+      <span slot="header" class="pkg-dialog-title-row">
+        <span class="material-symbols-rounded pkg-dialog-icon">download</span>
+        <span class="pkg-dialog-title">{{ t('pkgConfirmTitle') }}</span>
+      </span>
+      <p class="pkg-dialog-desc">{{ installTargetText }}</p>
+      <p class="pkg-dialog-desc is-risk">{{ t('pkgConfirmRisk') }}</p>
+      <div slot="actions" class="pkg-dialog-actions">
+        <m3e-button variant="text" size="small" @click="pendingInstall = null">{{ t('cancel') }}</m3e-button>
+        <m3e-button variant="filled" size="small" @click="handleConfirmInstall">{{ t('pkgConfirmInstall') }}
+        </m3e-button>
+      </div>
+    </m3e-dialog>
   </m3e-content-pane>
 </template>
 
@@ -286,7 +332,6 @@ const handleUninstall = (pkgName: string) => {
 
 /* 分组卡片：与设置界面同款圆角与内边距 */
 .pkg-list-container m3e-card {
-  --m3e-card-shape: 20px;
   --m3e-card-padding: 1rem;
 }
 
@@ -330,6 +375,42 @@ const handleUninstall = (pkgName: string) => {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
+}
+
+/* 安装确认弹窗 */
+.pkg-dialog-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pkg-dialog-icon {
+  font-size: 1.25rem;
+  color: var(--primary);
+}
+
+.pkg-dialog-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.pkg-dialog-desc {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: 0 0 8px;
+}
+
+.pkg-dialog-desc.is-risk {
+  color: var(--error);
+}
+
+.pkg-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 </style>

@@ -32,7 +32,7 @@ m3e-list-item [slot="leading"] {
    - 背景与描边用 color-mix 半透明叠加，随主题色联动 */
 m3e-card {
   --m3e-card-padding: 1rem;
-  --m3e-card-shape: var(--md-sys-shape-corner-extra-large);
+  --m3e-card-shape: var(--md-sys-shape-corner-medium);
   --m3e-card-container-color: color-mix(in srgb, var(--md-sys-color-surface-container) 70%, transparent);
   --m3e-card-outline-color: color-mix(in srgb, var(--md-sys-color-secondary) 10%, transparent);
   --m3e-outlined-card-outline-thickness: 2px;

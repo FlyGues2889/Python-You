@@ -18,6 +18,13 @@ const { t } = useI18n();
 
 const terminalContainerRef = ref<HTMLDivElement | null>(null);
 
+// FR-4.5：完整 traceback 默认折叠，点击展开/收起（摘要行始终可见）
+const expandedLogs = ref<Set<string>>(new Set());
+const toggleLogDetail = (id: string) => {
+  if (expandedLogs.value.has(id)) expandedLogs.value.delete(id);
+  else expandedLogs.value.add(id);
+};
+
 const getLogTypeClass = (out: ConsoleOutput) => {
   const text = out.text || '';
   if (out.type === 'error' || out.type === 'stderr' || text.includes('[ERROR]') || text.includes('Error:') || text.includes('Traceback')) {
@@ -90,9 +97,20 @@ onUnmounted(() => {
     <m3e-content-pane ref="terminalContainerRef" class="terminal-logs-body"
       :class="`theme-${props.codeTheme || 'github-dark'}`">
       <div v-if="outputs.length === 0" class="terminal-placeholder"></div>
-      <div v-for="out in outputs" :key="out.id" class="log-line" :class="getLogTypeClass(out)">
-        <pre class="log-text">{{ out.text }}</pre>
-      </div>
+      <template v-for="out in outputs" :key="out.id">
+        <!-- 可折叠详情（完整 traceback）：默认只显示展开按钮，避免刷屏 -->
+        <div v-if="out.collapsible" class="log-line log-collapsible" :class="getLogTypeClass(out)">
+          <button class="log-toggle" type="button" @click="toggleLogDetail(out.id)">
+            <span class="material-symbols-rounded">{{ expandedLogs.has(out.id) ? 'expand_less' : 'expand_more'
+              }}</span>
+            <span>{{ expandedLogs.has(out.id) ? t('tracebackCollapse') : t('tracebackExpand') }}</span>
+          </button>
+          <pre v-show="expandedLogs.has(out.id)" class="log-text">{{ out.text }}</pre>
+        </div>
+        <div v-else class="log-line" :class="getLogTypeClass(out)">
+          <pre class="log-text">{{ out.text }}</pre>
+        </div>
+      </template>
     </m3e-content-pane>
   </div>
 </template>
@@ -198,21 +216,80 @@ onUnmounted(() => {
   user-select: text !important;
 }
 
+.log-collapsible {
+  flex-direction: column;
+  gap: 0;
+}
+
+.log-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  padding: 2px 10px;
+  border: 1px solid var(--border-color-muted);
+  border-radius: 8px;
+  background: none;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.log-toggle:hover {
+  background-color: var(--surface-variant);
+  color: var(--text-color);
+}
+
+.log-toggle .material-symbols-rounded {
+  font-size: 1rem;
+}
+
+.log-collapsible .log-text {
+  margin-top: 4px;
+}
+
+/* 日志语义色随代码主题深浅切换（浅色主题取深色调保证对比度；solarized 单独用其调色板） */
+.terminal-logs-body.theme-github-dark,
+.terminal-logs-body.theme-monokai,
+.terminal-logs-body.theme-one-dark,
+.terminal-logs-body.theme-vs-code {
+  --log-system-color: #60a5fa;
+  --log-warning-color: #f59e0b;
+  --log-error-color: #ffb4ab;
+}
+
+.terminal-logs-body.theme-github-light,
+.terminal-logs-body.theme-one-light,
+.terminal-logs-body.theme-vs-code-light,
+.terminal-logs-body.theme-solarized-light {
+  --log-system-color: #1d4ed8;
+  --log-warning-color: #b45309;
+  --log-error-color: #ba1a1a;
+}
+
+.terminal-logs-body.theme-solarized-light {
+  --log-system-color: #268bd2;
+  --log-warning-color: #cb4b16;
+  --log-error-color: #dc322f;
+}
+
 /* INFO / System messages */
 .log-system {
-  color: #3b82f6;
+  color: var(--log-system-color, #3b82f6);
   font-weight: 600;
 }
 
 /* WARN / Warning messages */
 .log-warning {
-  color: #f59e0b;
+  color: var(--log-warning-color, #f59e0b);
   font-weight: 600;
 }
 
 /* ERROR / Exception / Traceback messages */
 .log-error {
-  color: var(--error);
+  color: var(--log-error-color, var(--error));
   font-weight: 600;
 }
 </style>

@@ -186,7 +186,7 @@ const filteredItems = computed(() => {
     <div class="tree-content">
       <!-- Tree Header Bar -->
       <m3e-list-item>
-        <span slot="overline">资源管理器</span>
+        <span slot="overline">{{ t('explorerLabel') }}</span>
         {{ rootName || t('workspace') }}
         <div class="tree-header-actions" slot="trailing">
         </div>
@@ -306,7 +306,7 @@ const filteredItems = computed(() => {
   align-items: center;
   height: 32px;
   padding-right: 8px;
-  border-radius: 9999px;
+  border-radius: 8px;
   margin: 1px 4px;
   user-select: none;
   font-size: 0.875rem;

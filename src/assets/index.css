@@ -147,3 +147,9 @@ button:focus-visible {
   outline-offset: 2px !important;
 }
 
+/* 自定义可点击行（role="button" 的 div）的键盘焦点指示 */
+[role="button"]:focus-visible {
+  outline: 2px solid var(--primary) !important;
+  outline-offset: 2px !important;
+}
+

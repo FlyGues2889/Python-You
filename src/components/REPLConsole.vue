@@ -5,6 +5,7 @@ import { pythonRunner } from '../utils/pythonRunner';
 import { nativePython } from '../utils/nativePython';
 import { paneScroller, watchPaneScroll } from '../utils/contentPane';
 import { useI18n } from '../utils/i18n';
+import { uid } from '../utils/id';
 
 const props = defineProps<{
   config?: AppConfig;
@@ -43,6 +44,13 @@ const promptRowRef = ref<HTMLDivElement | null>(null);
 // 会话记录由 App 持有（props.logs），切换页面不丢失；应用重启后由 App 内存态自动清空
 const logs = computed<ConsoleOutput[]>(() => props.logs || []);
 
+// FR-4.5：完整 traceback 默认折叠，点击展开/收起（摘要行始终可见）
+const expandedLogs = ref<Set<string>>(new Set());
+const toggleLogDetail = (id: string) => {
+  if (expandedLogs.value.has(id)) expandedLogs.value.delete(id);
+  else expandedLogs.value.add(id);
+};
+
 // 用户是否滚离底部：贴底时新输出自动滚到底部，滚离后不打断阅读/选区
 const userScrolledAway = ref(false);
 
@@ -66,20 +74,78 @@ const ensurePromptVisible = () => {
   });
 };
 
-const handleExecute = async () => {
-  const cmd = inputCommand.value.trim();
-  if (!cmd) return;
+// 多行续行（FR-4.4）：语句未闭合（括号未配平 / 行尾冒号）时进入续行模式，
+// 提示符变 `...`，继续输入直到语句闭合才执行；粘贴多行代码直接整体执行
+const pendingLines = ref<string[]>([]);
+const isContinuation = computed(() => pendingLines.value.length > 0);
 
-  commandHistory.value.push(cmd);
+// 粗略判断语句是否需要续行：忽略引号内容，检查括号配平 + 最后一行行尾冒号
+const isUnclosed = (text: string): boolean => {
+  let depth = 0;
+  let inStr: string | null = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inStr) {
+      if (ch === '\\') i++;
+      else if (ch === inStr) inStr = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") inStr = ch;
+    else if (ch === '(' || ch === '[' || ch === '{') depth++;
+    else if (ch === ')' || ch === ']' || ch === '}') depth--;
+  }
+  if (depth > 0) return true;
+  const lines = text.split('\n');
+  const last = lines[lines.length - 1].trimEnd();
+  return last.endsWith(':');
+};
+
+const emitReplLog = (type: ConsoleOutput['type'], text: string) => {
+  const out: ConsoleOutput = { id: uid(), type, text, timestamp: new Date().toLocaleTimeString() };
+  emit('add-log', out);
+  emit('add-console-output', out);
+};
+
+const runStatement = async (statement: string) => {
+  commandHistory.value.push(statement);
   historyIndex.value = commandHistory.value.length;
-  inputCommand.value = '';
-
-  await pythonRunner.runREPL(cmd, (out) => {
+  await pythonRunner.runREPL(statement, (out) => {
     emit('add-log', out);
     emit('add-console-output', out);
   }, props.config?.demoMode);
-
   nextTick(scrollReplToBottom);
+};
+
+const handleExecute = async () => {
+  const cmd = inputCommand.value;
+  inputCommand.value = '';
+  if (!cmd.trim()) return;
+
+  // 粘贴的多行代码：整体执行（不进入逐行续行状态；回显由 runREPL 统一处理）
+  if (cmd.includes('\n')) {
+    const full = [...pendingLines.value, cmd].join('\n');
+    pendingLines.value = [];
+    await runStatement(full);
+    return;
+  }
+
+  const trimmed = cmd.trim();
+  // 进入续行模式：首个未闭合语句
+  if (pendingLines.value.length === 0 && isUnclosed(trimmed)) {
+    pendingLines.value = [trimmed];
+    emitReplLog('input', `>>> ${trimmed}`);
+    return;
+  }
+  // 续行中：仍未闭合 → 继续累积
+  if (pendingLines.value.length > 0 && isUnclosed(trimmed)) {
+    pendingLines.value.push(trimmed);
+    emitReplLog('input', `... ${trimmed}`);
+    return;
+  }
+  // 续行闭合 / 普通单行：执行（回显由 runREPL 统一处理）
+  const full = pendingLines.value.length > 0 ? [...pendingLines.value, trimmed].join('\n') : trimmed;
+  pendingLines.value = [];
+  await runStatement(full);
 };
 
 // 回车执行（输入法组合期间的回车用于选词，不执行）
@@ -90,6 +156,12 @@ const handlePromptEnter = (e: KeyboardEvent) => {
 
 const handleKeyDown = (e: KeyboardEvent) => {
   if (e.isComposing) return;
+  // Esc 取消续行模式（丢弃已输入的多行缓冲）
+  if (e.key === 'Escape' && pendingLines.value.length > 0) {
+    pendingLines.value = [];
+    e.preventDefault();
+    return;
+  }
   if (e.key === 'ArrowUp') {
     if (historyIndex.value > 0) {
       historyIndex.value--;
@@ -112,6 +184,16 @@ const onBodyClick = (e: MouseEvent) => {
   if (target.closest('.repl-log-line')) return;
   if (!(window.getSelection()?.isCollapsed ?? true)) return;
   replInputRef.value?.focus();
+};
+
+// 粘贴多行代码：input 元素会丢弃换行符，须拦截并手动置入（整体执行走 handleExecute 的多行分支）
+const handlePaste = (e: ClipboardEvent) => {
+  const pasted = e.clipboardData?.getData('text');
+  if (pasted && pasted.includes('\n')) {
+    e.preventDefault();
+    inputCommand.value = pasted.replace(/\r\n/g, '\n');
+    handleExecute();
+  }
 };
 
 // 异步输出（如流式 stdout）到达时同样按贴底规则滚动
@@ -163,15 +245,20 @@ const clearLogs = () => {
         </div>
 
         <div v-for="log in logs" :key="log.id" class="repl-log-line" :class="`log-${log.type}`">
-          <pre>{{ log.text }}</pre>
+          <button v-if="log.collapsible" class="repl-detail-toggle" type="button" @click="toggleLogDetail(log.id)">
+            <span class="material-symbols-rounded">{{ expandedLogs.has(log.id) ? 'expand_less' : 'expand_more'
+              }}</span>
+            <span>{{ expandedLogs.has(log.id) ? t('tracebackCollapse') : t('tracebackExpand') }}</span>
+          </button>
+          <pre v-show="!log.collapsible || expandedLogs.has(log.id)">{{ log.text }}</pre>
         </div>
 
         <div ref="promptRowRef" class="repl-inline-prompt">
-          <span class="prompt-symbol">&gt;&gt;&gt;</span>
+          <span class="prompt-symbol">{{ isContinuation ? '...' : '&gt;&gt;&gt;' }}</span>
           <input ref="replInputRef" v-model="inputCommand" class="repl-inline-input" type="text"
             :placeholder="logs.length === 0 ? t('replPlaceholder') : ''" autocomplete="off" autocapitalize="off"
             spellcheck="false" @keydown.enter.prevent="handlePromptEnter" @keydown="handleKeyDown"
-            @focus="ensurePromptVisible" @input="ensurePromptVisible" />
+            @focus="ensurePromptVisible" @input="ensurePromptVisible" @paste="handlePaste" />
         </div>
       </m3e-content-pane>
     </div>
@@ -274,18 +361,68 @@ const clearLogs = () => {
   word-break: break-word;
 }
 
+.repl-detail-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  margin: 2px 0;
+  border: 1px solid var(--border-color-muted);
+  border-radius: 8px;
+  background: none;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.repl-detail-toggle:hover {
+  background-color: var(--surface-variant);
+  color: var(--text-color);
+}
+
+.repl-detail-toggle .material-symbols-rounded {
+  font-size: 1rem;
+}
+
+/* 日志语义色随代码主题深浅切换（浅色主题取深色调保证对比度；solarized 单独用其调色板） */
+.repl-body.theme-github-dark,
+.repl-body.theme-monokai,
+.repl-body.theme-one-dark,
+.repl-body.theme-vs-code {
+  --log-input-color: #ffd54f;
+  --log-stdout-color: #81c784;
+  --log-error-color: #ffb4ab;
+}
+
+.repl-body.theme-github-light,
+.repl-body.theme-one-light,
+.repl-body.theme-vs-code-light,
+.repl-body.theme-solarized-light {
+  --log-input-color: #7d4e00;
+  --log-stdout-color: #1a7f37;
+  --log-error-color: #ba1a1a;
+}
+
+.repl-body.theme-solarized-light {
+  --log-input-color: #b58900;
+  --log-stdout-color: #859900;
+  --log-error-color: #dc322f;
+}
+
 .log-input {
-  color: #ffd54f;
+  color: var(--log-input-color, #ffd54f);
   font-weight: 600;
 }
 
 .log-stdout {
-  color: #81c784;
+  color: var(--log-stdout-color, #81c784);
 }
 
 .log-stderr,
 .log-error {
-  color: var(--error);
+  color: var(--log-error-color, var(--error));
 }
 
 /* 行内输入提示行：位于输出区末尾，随内容一起滚动 */

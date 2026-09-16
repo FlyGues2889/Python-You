@@ -85,6 +85,16 @@ const handleClick = () => {
   }
 };
 
+// 键盘可达（无障碍）：行获得焦点时 Enter/Space 触发与点击相同的操作；
+// 忽略来自内部输入框/操作按钮的按键（冒泡时 target 不同）
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.target !== e.currentTarget) return;
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    handleClick();
+  }
+};
+
 const saveRename = () => {
   const name = editingName.value.trim();
   if (name && name !== props.item.name) {
@@ -116,6 +126,8 @@ const cancelInline = () => {
     <!-- Single Node Item -->
     <div
       class="tree-node-item"
+      role="button"
+      tabindex="0"
       :class="{
         'is-active': activeFileId === item.id && !item.isFolder,
         'is-folder': item.isFolder,
@@ -123,6 +135,7 @@ const cancelInline = () => {
       }"
       :style="{ paddingLeft: `${(depth || 0) * 16 + 12}px` }"
       @click="handleClick"
+      @keydown="handleKeydown"
       @contextmenu.prevent="e => emit('contextmenu-item', e, item)"
       @mouseenter="isHovered = true"
       @mouseleave="isHovered = false"
@@ -295,7 +308,7 @@ const cancelInline = () => {
   height: 32px;
   padding-right: 8px;
   cursor: pointer;
-  border-radius: 9999px;
+  border-radius: 8px;
   margin: 1px 4px;
   user-select: none;
   font-size: 0.8125rem;
@@ -311,11 +324,11 @@ const cancelInline = () => {
 }
 
 .tree-node-item.is-active {
-  background-color: transparent;
-  color: var(--text-color);
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
   font-weight: 600;
-  border: 1px solid var(--secondary);
-  border-radius: 9999px;
+  border: 1px solid transparent;
+  border-radius: 8px;
 }
 
 .tree-node-item.is-editing {

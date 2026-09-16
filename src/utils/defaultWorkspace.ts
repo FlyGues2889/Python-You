@@ -169,7 +169,7 @@ if __name__ == "__main__":
         path: '/data/sample_data.json',
         isFolder: false,
         parentId: 'folder-data',
-        content: `{\n  "project": "Python You Local Python IDE",\n  "version": "0.3.5",\n  "features": [\n    "File Tree Explorer",\n    "Pyodide Python 3.11 Execution",\n    "Interactive REPL Console",\n    "Gemini AI Code Assistant"\n  ]\n}`
+        content: `{\n  "project": "Python You Local Python IDE",\n  "version": "0.3.51",\n  "features": [\n    "File Tree Explorer",\n    "Pyodide Python 3.11 Execution",\n    "Interactive REPL Console",\n    "Tutorial & Quiz System"\n  ]\n}`
       }
     ]
   },
@@ -188,7 +188,7 @@ Welcome to **Python You**, a full-featured local Python IDE running directly in 
 - **In-Browser Execution**: Runs Python 3.11 using Pyodide WebAssembly engine with zero server latency.
 - **Interactive REPL**: Try Python statements line-by-line in the bottom terminal.
 - **Package Manager**: Install Pyodide-supported packages like \`numpy\`, \`pandas\`, \`matplotlib\`, and more.
-- **AI Assistant**: Built-in Gemini AI assistant to debug errors, explain code, and generate algorithms.
+- **Tutorial & Quiz**: Built-in Python course with per-lesson quizzes and automatic output grading.
 `
   }
 ];

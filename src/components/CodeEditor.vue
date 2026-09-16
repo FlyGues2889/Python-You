@@ -554,9 +554,10 @@ const acceptCompletion = () => {
 /* ==================== 代码悬停用法提示（VS Code hover 风格） ====================
    鼠标悬停在已输入代码中的关键字/内置函数/模块/片段名上时，浮出简略语法用法。
    坐标计算：相对 textarea 的偏移 → 行/列（canvas 逐字符测宽）→ getWordAt → getUsage。 */
-const hoverTooltip = ref<{ visible: boolean; text: string; x: number; y: number }>({
+const hoverTooltip = ref<{ visible: boolean; syntax: string; description: string; x: number; y: number }>({
   visible: false,
-  text: '',
+  syntax: '',
+  description: '',
   x: 0,
   y: 0
 });
@@ -615,9 +616,12 @@ const computeHoverTooltip = (e: MouseEvent) => {
   const usage = word ? getUsage(word) : null;
   if (!usage) { hideHoverTooltip(); return; }
 
+  // 用法文本为「语法行 + 说明行」：语法行单独渲染以便加粗与强调着色
+  const usageLines = usage.split('\n');
   hoverTooltip.value = {
     visible: true,
-    text: usage,
+    syntax: usageLines[0],
+    description: usageLines.slice(1).join('\n'),
     x: e.clientX - wrapperRect.left,
     y: e.clientY - wrapperRect.top
   };
@@ -1030,6 +1034,14 @@ const scrollTabs = (dir: number) => {
   tabsBarRef.value?.scrollBy({ left: dir * 240, behavior: 'smooth' });
 };
 
+// 键盘可达（无障碍）：Enter/Space 切换标签页；忽略来自内部关闭按钮的按键（冒泡时 target 不同）
+const handleTabKeydown = (e: KeyboardEvent, tabId: string) => {
+  if (e.target !== e.currentTarget) return;
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  e.preventDefault();
+  emit('select-tab', tabId);
+};
+
 watch(() => [props.tabs.length, props.activeTabId], () => {
   nextTick(updateTabsScrollState);
 }, { deep: true });
@@ -1071,8 +1083,9 @@ onBeforeUnmount(() => {
         <span class="material-symbols-rounded">keyboard_double_arrow_left</span>
       </m3e-icon-button>
       <div ref="tabsBarRef" class="editor-tabs-bar" @scroll="updateTabsScrollState">
-        <div v-for="tab in tabs" :key="tab.id" class="editor-tab-item" :class="{ 'is-active': tab.id === activeTabId }"
-          @click="emit('select-tab', tab.id)">
+        <div v-for="tab in tabs" :key="tab.id" class="editor-tab-item" role="button" tabindex="0"
+          :class="{ 'is-active': tab.id === activeTabId }" @click="emit('select-tab', tab.id)"
+          @keydown="handleTabKeydown($event, tab.id)">
           <span class="material-symbols-rounded tab-icon">
             {{ getTabIcon(tab.name) }}
           </span>
@@ -1168,7 +1181,10 @@ onBeforeUnmount(() => {
 
           <!-- 代码悬停用法提示（VS Code hover 风格）：悬停关键字/函数/模块名显示简略用法 -->
           <div v-if="hoverTooltip.visible" class="code-hover-tooltip"
-            :style="{ left: `${hoverTooltip.x + 12}px`, top: hoverTooltip.y > 44 ? `${hoverTooltip.y - 34}px` : `${hoverTooltip.y + 16}px` }">{{ hoverTooltip.text }}</div>
+            :style="{ left: `${hoverTooltip.x + 12}px`, top: hoverTooltip.y > 44 ? `${hoverTooltip.y - 34}px` : `${hoverTooltip.y + 16}px` }">
+            <div class="hover-syntax">{{ hoverTooltip.syntax }}</div>
+            <div v-if="hoverTooltip.description" class="hover-desc">{{ hoverTooltip.description }}</div>
+          </div>
 
           <!-- Code Completion Popup -->
           <div v-if="completionVisible && completionItems.length > 0" class="completion-popup"
@@ -1605,9 +1621,13 @@ kbd {
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   pointer-events: none;
-  /* 两行结构：第一行用法（中文参数名），第二行一句话说明 */
   white-space: pre-line;
   overflow-wrap: break-word;
+}
+
+.hover-syntax {
+  font-weight: 700;
+  color: var(--primary);
 }
 
 .completion-popup {
@@ -1628,6 +1648,17 @@ kbd {
 .completion-list {
   max-height: 240px;
   overflow-y: auto;
+  /* 全局滚动条默认透明、悬停才显形；补全弹层里需要始终可见 */
+  scrollbar-color: color-mix(in srgb, var(--outline) 45%, transparent) transparent;
+}
+
+.completion-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.completion-list::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--outline) 45%, transparent);
+  border-radius: 9999px;
 }
 
 .completion-item {
@@ -1680,7 +1711,6 @@ kbd {
   gap: 4px;
   padding: 5px 10px;
   margin-top: 2px;
-  border-top: 1px solid var(--border-color-muted);
   font-size: 0.6875rem;
   color: var(--text-tertiary);
 }

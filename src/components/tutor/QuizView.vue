@@ -17,7 +17,7 @@ import { getAllTutorialTopics, type TutorialTopic } from './tutorialData';
 import TutorialFormattedText from './TutorialFormattedText.vue';
 import { useI18n } from '../../utils/i18n';
 
-const { t } = useI18n();
+const { t, tf } = useI18n();
 
 const props = defineProps<{
   topicId: string;
@@ -77,16 +77,27 @@ const selectAnswer = (questionId: string, optionIndex: number) => {
   setQuizAnswer(props.topicId, questionId, optionIndex);
 };
 
+// 提交测验的 snackbar 反馈（self-contained，不依赖 App 事件链）
+const quizSnackMsg = ref('');
+const showQuizSnack = (msg: string) => {
+  quizSnackMsg.value = msg;
+};
+
 const submitChoice = () => {
   submitted.value = true;
+  let correct = 0;
+  const total = choiceQuestions.value.length;
   for (const q of choiceQuestions.value) {
     const chosen = answers.value[q.id];
     const pass = chosen !== undefined && chosen === q.answerIndex;
+    if (pass) correct++;
     setQuizQuestionResult(props.topicId, q.id, pass ? 'pass' : 'fail');
   }
   syncQuizCompletion(props.topicId);
   refreshTick.value++;
   emit('results-changed');
+  // 提交反馈：全部答对 → 通过提示；否则给出得分
+  showQuizSnack(correct === total ? t('quizSubmitPassed') : tf('quizSubmitScore', { correct, total }));
 };
 
 const resetQuiz = () => {
@@ -98,6 +109,7 @@ const resetQuiz = () => {
   submitted.value = false;
   refreshTick.value++;
   emit('results-changed');
+  showQuizSnack(t('quizResetDone'));
 };
 
 const loadToEditor = (q: QuizQuestion) => {
@@ -146,75 +158,83 @@ const isChoicePass = (q: QuizQuestion) =>
       </div>
 
       <template v-else>
-        <!-- 选择题 -->
-        <div v-for="(q, qi) in choiceQuestions" :key="q.id" class="quiz-question-card">
-          <div class="question-label">
-            <span class="q-index">{{ t('questionIndexText').replace('{n}', String(qi + 1)) }}</span>
-            <span class="q-type-chip">{{ t('questionTypeChoice') }}</span>
+        <!-- 选择题（卡片与设置界面同款） -->
+        <m3e-card v-for="(q, qi) in choiceQuestions" :key="q.id" variant="outlined" class="quiz-question-card">
+          <div slot="header" class="quiz-card-header">
+            <h4 class="quiz-card-title">
+              <span class="q-index">{{ t('questionIndexText').replace('{n}', String(qi + 1)) }}</span>
+              <span class="q-type-chip">{{ t('questionTypeChoice') }}</span>
+            </h4>
             <span v-if="submitted" class="q-result-chip" :class="isChoicePass(q) ? 'chip-pass' : 'chip-fail'">
               {{ isChoicePass(q) ? t('answerCorrect') : t('answerWrong') }}
             </span>
           </div>
-          <p class="question-text">
-            <TutorialFormattedText :text="q.question" />
-          </p>
-          <div class="option-list">
-            <button v-for="(opt, oi) in q.options" :key="oi" class="option-item" :class="{
-              'is-selected': answers[q.id] === oi,
-              'is-correct': submitted && oi === q.answerIndex,
-              'is-wrong': submitted && answers[q.id] === oi && oi !== q.answerIndex,
-              'is-locked': submitted
-            }" @click="selectAnswer(q.id, oi)">
-              <span class="option-mark material-symbols-rounded">
-                {{
-                  submitted && oi === q.answerIndex
-                    ? 'check_circle'
-                    : submitted && answers[q.id] === oi
-                      ? 'cancel'
-                      : answers[q.id] === oi
-                        ? 'radio_button_checked'
-                        : 'radio_button_unchecked'
-                }}
+          <div slot="content" class="quiz-card-content">
+            <p class="question-text">
+              <TutorialFormattedText :text="q.question" />
+            </p>
+            <div class="option-list">
+              <button v-for="(opt, oi) in q.options" :key="oi" class="option-item" :class="{
+                'is-selected': answers[q.id] === oi,
+                'is-correct': submitted && oi === q.answerIndex,
+                'is-wrong': submitted && answers[q.id] === oi && oi !== q.answerIndex,
+                'is-locked': submitted
+              }" @click="selectAnswer(q.id, oi)">
+                <span class="option-mark material-symbols-rounded">
+                  {{
+                    submitted && oi === q.answerIndex
+                      ? 'check_circle'
+                      : submitted && answers[q.id] === oi
+                        ? 'cancel'
+                        : answers[q.id] === oi
+                          ? 'radio_button_checked'
+                          : 'radio_button_unchecked'
+                  }}
+                </span>
+                <span class="option-text">
+                  <TutorialFormattedText :text="opt" />
+                </span>
+              </button>
+            </div>
+            <div v-if="submitted && q.explanation" class="explanation-box">
+              <span class="material-symbols-rounded">lightbulb</span>
+              <span>
+                <TutorialFormattedText :text="q.explanation" />
               </span>
-              <span class="option-text">
-                <TutorialFormattedText :text="opt" />
-              </span>
-            </button>
+            </div>
           </div>
-          <div v-if="submitted && q.explanation" class="explanation-box">
-            <span class="material-symbols-rounded">lightbulb</span>
-            <span>
-              <TutorialFormattedText :text="q.explanation" />
-            </span>
-          </div>
-        </div>
+        </m3e-card>
 
-        <!-- 代码题 -->
-        <div v-for="(q, qi) in codeQuestions" :key="q.id" class="quiz-question-card">
-          <div class="question-label">
-            <span class="q-index">{{ t('questionIndexText').replace('{n}', String(choiceQuestions.length + qi + 1))
-              }}</span>
-            <span class="q-type-chip chip-code">{{ t('questionTypeCode') }}</span>
+        <!-- 代码题（卡片与设置界面同款） -->
+        <m3e-card v-for="(q, qi) in codeQuestions" :key="q.id" variant="outlined" class="quiz-question-card">
+          <div slot="header" class="quiz-card-header">
+            <h4 class="quiz-card-title">
+              <span class="q-index">{{ t('questionIndexText').replace('{n}', String(choiceQuestions.length + qi + 1))
+                }}</span>
+              <span class="q-type-chip chip-code">{{ t('questionTypeCode') }}</span>
+            </h4>
             <span v-if="getCodeStatus(q)" class="q-result-chip"
               :class="getCodeStatus(q) === 'pass' ? 'chip-pass' : 'chip-fail'">
               {{ getCodeStatus(q) === 'pass' ? t('codePassed') : t('codeFailed') }}
             </span>
             <span v-else class="q-result-chip chip-pending">{{ t('notAnswered') }}</span>
           </div>
-          <p class="question-text">
-            <TutorialFormattedText :text="q.question" />
-          </p>
-          <div class="code-question-block">
-            <pre class="code-preview"><code>{{ q.starterCode }}</code></pre>
-            <div class="code-question-actions">
-              <m3e-button variant="filled" size="extra-small" @click="loadToEditor(q)">
-                <span slot="icon" class="material-symbols-rounded">open_in_new</span>
-                {{ t('putInEditor') }}
-              </m3e-button>
-              <span class="code-action-hint">{{ t('codeActionHint') }}</span>
+          <div slot="content" class="quiz-card-content">
+            <p class="question-text">
+              <TutorialFormattedText :text="q.question" />
+            </p>
+            <div class="code-question-block">
+              <pre class="code-preview"><code>{{ q.starterCode }}</code></pre>
+              <div class="code-question-actions">
+                <m3e-button variant="filled" size="extra-small" @click="loadToEditor(q)">
+                  <span slot="icon" class="material-symbols-rounded">open_in_new</span>
+                  {{ t('putInEditor') }}
+                </m3e-button>
+                <span class="code-action-hint">{{ t('codeActionHint') }}</span>
+              </div>
             </div>
           </div>
-        </div>
+        </m3e-card>
 
         <!-- 底部操作 -->
         <div class="quiz-actions">
@@ -231,6 +251,12 @@ const isChoicePass = (q: QuizQuestion) =>
       </template>
     </div>
   </m3e-content-pane>
+
+  <!-- 提交测验 / 重置的 snackbar 反馈 -->
+  <m3e-snackbar :open="!!quizSnackMsg" :duration="3000"
+    @toggle="(e: Event) => { if ((e as any).newState === 'closed') quizSnackMsg = ''; }">
+    {{ quizSnackMsg }}
+  </m3e-snackbar>
 </template>
 
 <style scoped>
@@ -313,20 +339,29 @@ const isChoicePass = (q: QuizQuestion) =>
   color: var(--text-tertiary);
 }
 
+/* 题目卡片沿用全局 m3e-card 外观（与设置界面一致），这里只留间距 */
 .quiz-question-card {
-  background-color: var(--surface-color);
-  border: 1px solid var(--border-color-muted);
-  border-radius: 16px;
-  padding: 20px 24px;
   margin-bottom: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
-.question-label {
+.quiz-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  h4 {
+    line-height: 2.4rem;
+  }
+}
+
+.quiz-card-title {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--secondary);
+  margin: 0;
 }
 
 .q-index {
@@ -336,8 +371,10 @@ const isChoicePass = (q: QuizQuestion) =>
 }
 
 .q-type-chip {
+  font-family: var(--font-sans);
   font-size: 0.6875rem;
   font-weight: 600;
+  line-height: 1.5;
   padding: 2px 10px;
   border-radius: 9999px;
   background-color: var(--secondary-container);
@@ -350,15 +387,17 @@ const isChoicePass = (q: QuizQuestion) =>
 }
 
 .q-result-chip {
+  font-family: var(--font-sans);
   font-size: 0.6875rem;
   font-weight: 600;
+  line-height: 1.5;
   padding: 2px 10px;
   border-radius: 9999px;
 }
 
 .chip-pass {
-  background-color: color-mix(in srgb, #2e7d32 14%, transparent);
-  color: #2e7d32;
+  background-color: color-mix(in srgb, var(--accent-emerald-border) 14%, transparent);
+  color: var(--accent-emerald-text);
 }
 
 .chip-fail {
@@ -412,9 +451,9 @@ const isChoicePass = (q: QuizQuestion) =>
 }
 
 .option-item.is-correct {
-  border-color: #2e7d32;
-  background-color: color-mix(in srgb, #2e7d32 12%, var(--surface-color));
-  color: #1b5e20;
+  border-color: var(--accent-emerald-border);
+  background-color: color-mix(in srgb, var(--accent-emerald-border) 12%, var(--surface-color));
+  color: var(--accent-emerald-text);
 }
 
 .option-item.is-wrong {

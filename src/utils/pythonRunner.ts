@@ -2,22 +2,67 @@ import { ConsoleOutput, FSItem } from '../types';
 import { nativePython } from './nativePython';
 import { t, tf } from './i18n';
 import { uid } from './id';
+import { flattenWorkspace } from './pyodideEngine';
+import type { WorkerRequest, WorkerResponse } from './pyodideWorker';
 
-declare global {
-  interface Window {
-    loadPyodide?: (config: { indexURL: string }) => Promise<any>;
-    pyodideInstance?: any;
+const now = () => new Date().toLocaleTimeString();
+
+// FR-4.5：从 Python traceback 文本提取面向初学者的错误摘要
+// （错误类型 + 消息 + 最近的文件/行号），置顶展示；无 traceback 结构时返回 null
+function extractErrorSummary(text: string): string | null {
+  const lines = text.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = lines[i].match(/^([A-Za-z_][A-Za-z0-9_]*Error):\s*(.+)$/);
+    if (m) {
+      let loc = '';
+      for (let j = i - 1; j >= 0; j--) {
+        const lm = lines[j].match(/File "([^"]+)".*line (\d+)/);
+        if (lm) {
+          const fname = lm[1].split(/[\\/]/).pop() || lm[1];
+          loc = `（${fname} 第 ${lm[2]} 行）`;
+          break;
+        }
+      }
+      return `${m[1]}：${m[2]}${loc}`;
+    }
+  }
+  return null;
+}
+
+// 输出错误：摘要置顶（可读），完整 traceback 原文作为可折叠详情保留在下方
+function emitError(onOutput: (out: ConsoleOutput) => void, raw: string) {
+  const summary = extractErrorSummary(raw);
+  onOutput({
+    id: uid(),
+    type: 'error',
+    text: summary ? `${t('errorSummaryPrefix')}${summary}` : raw,
+    timestamp: new Date().toLocaleTimeString()
+  });
+  if (summary && summary !== raw) {
+    onOutput({
+      id: uid(),
+      type: 'error',
+      text: raw,
+      collapsible: true,
+      timestamp: new Date().toLocaleTimeString()
+    });
   }
 }
 
 class PythonRunnerService {
-  private pyodide: any = null;
-  private isLoading = false;
-  private isReady = false;
   private demoScope: Record<string, any> = {};
+  // Pyodide 跑在 Web Worker 里（主线程不阻塞）：这里只持有 Worker 与当前操作句柄
+  private worker: Worker | null = null;
+  private workerReady = false;
+  private workerLoading = false;
+  private initResolve: ((ok: boolean) => void) | null = null;
+  private initTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastInitError = '';
+  private currentOp: {
+    onOutput: (out: ConsoleOutput) => void;
+    resolve: (result: { success: boolean; value?: string | null }) => void;
+  } | null = null;
 
-  // 本地 npm 包 pyodide：构建时由 vite-plugin-static-copy 从 node_modules 复制到 /pyodide/
-  private static readonly PYODIDE_INDEX_URL = '/pyodide/';
   // 加载超时：桌面端可能无网络，避免“Connecting to Pyodide...”无限卡死无提示
   private static readonly PYODIDE_TIMEOUT_MS = 15000;
 
@@ -27,141 +72,143 @@ class PythonRunnerService {
   // 引擎加载状态回调（标题栏状态指示器用）：Pyodide 开始加载时 true，完成/失败后 false
   public onEngineLoading?: (loading: boolean) => void;
 
-  // 加载本地 Pyodide 脚本，带超时（script 既不打 onload 也不打 onerror 时会一直挂着）
-  private loadPyodideScript(timeoutMs = PythonRunnerService.PYODIDE_TIMEOUT_MS): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      let settled = false;
-      const fail = (msg: string) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        script.remove();
-        reject(new Error(msg));
-      };
-      const timer = setTimeout(() => fail(t('pyodideTimeout')), timeoutMs);
-      script.src = `${PythonRunnerService.PYODIDE_INDEX_URL}pyodide.js`;
-      script.onload = () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        resolve();
-      };
-      script.onerror = () => fail(t('pyodideCdnUnavailable'));
-      document.head.appendChild(script);
-    });
+  // ---- Pyodide Worker 生命周期 ----
+
+  private ensureWorker(): Worker {
+    if (this.worker) return this.worker;
+    const worker = new Worker(new URL('./pyodideWorker.ts', import.meta.url), { type: 'module' });
+    worker.onmessage = (event: MessageEvent<WorkerResponse>) => this.handleWorkerMessage(event.data);
+    worker.onerror = (event) => {
+      const text = event.message || t('pyodideCdnUnavailable');
+      if (this.currentOp) {
+        emitError(this.currentOp.onOutput, text);
+        this.currentOp.resolve({ success: false });
+        this.currentOp = null;
+      }
+      this.lastInitError = text;
+      this.terminateWorker();
+    };
+    this.worker = worker;
+    return worker;
   }
 
-  // 初始化 Pyodide 实例（拉取 wasm），带超时防止无网时无限等待
-  private loadPyodideInstance(timeoutMs = PythonRunnerService.PYODIDE_TIMEOUT_MS): Promise<any> {
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(t('pyodideInitTimeout'))), timeoutMs);
-      (async () => {
-        try {
-          const inst = await window.loadPyodide!({ indexURL: PythonRunnerService.PYODIDE_INDEX_URL });
-          clearTimeout(timer);
-          resolve(inst);
-        } catch (e) {
-          clearTimeout(timer);
-          reject(e);
-        }
-      })();
+  private terminateWorker() {
+    this.worker?.terminate();
+    this.worker = null;
+    this.workerReady = false;
+    this.workerLoading = false;
+  }
+
+  private clearInitTimer() {
+    if (this.initTimer !== null) {
+      clearTimeout(this.initTimer);
+      this.initTimer = null;
+    }
+  }
+
+  private failInit(text: string) {
+    this.lastInitError = text;
+    this.clearInitTimer();
+    this.workerLoading = false;
+    this.initResolve?.(false);
+    this.initResolve = null;
+    this.terminateWorker();
+  }
+
+  private handleWorkerMessage(msg: WorkerResponse) {
+    switch (msg.type) {
+      case 'ready':
+        this.workerReady = true;
+        this.workerLoading = false;
+        this.clearInitTimer();
+        this.initResolve?.(true);
+        this.initResolve = null;
+        break;
+      case 'init-error':
+        this.failInit(msg.text);
+        break;
+      case 'stdout':
+      case 'stderr':
+      case 'system':
+        this.currentOp?.onOutput({ id: uid(), type: msg.type, text: msg.text, timestamp: now() });
+        break;
+      case 'error':
+        if (this.currentOp) emitError(this.currentOp.onOutput, msg.text);
+        break;
+      case 'need-input': {
+        // Worker 内没有 prompt：主线程弹窗询问后回传（优先用 Python 侧 input 的提示语）
+        const value = window.prompt(msg.prompt || t('pyodideInputPrompt'), '');
+        this.worker?.postMessage({ type: 'input', value: value === null ? null : String(value) } as WorkerRequest);
+        break;
+      }
+      case 'done':
+        this.currentOp?.resolve({ success: msg.success, value: msg.value ?? null });
+        this.currentOp = null;
+        break;
+    }
+  }
+
+  private runInWorker(
+    message: WorkerRequest,
+    onOutput: (out: ConsoleOutput) => void
+  ): Promise<{ success: boolean; value?: string | null }> {
+    return new Promise((resolve) => {
+      if (!this.worker) {
+        resolve({ success: false });
+        return;
+      }
+      this.currentOp = { onOutput, resolve };
+      this.worker.postMessage(message);
     });
   }
 
   public async initPyodide(onOutput?: (out: ConsoleOutput) => void): Promise<boolean> {
-    if (this.isReady) return true;
-    if (this.isLoading) return false;
+    if (this.workerReady) return true;
+    if (this.workerLoading) return false;
 
-    this.isLoading = true;
+    this.workerLoading = true;
     this.onEngineLoading?.(true);
-    try {
-      // Tauri WebView 恒有 window，直接检查脚本是否已注入
-      if (!window.loadPyodide) {
-        onOutput?.({
-          id: uid(),
-          type: 'system',
-          text: t('pyodideLoading'),
-          timestamp: new Date().toLocaleTimeString()
-        });
+    this.lastInitError = '';
 
-        await this.loadPyodideScript();
-      }
+    onOutput?.({
+      id: uid(),
+      type: 'system',
+      text: t('pyodideLoading'),
+      timestamp: now()
+    });
 
-      if (window.loadPyodide) {
-        this.pyodide = await this.loadPyodideInstance();
-        window.pyodideInstance = this.pyodide;
+    const worker = this.ensureWorker();
+    const ok = await new Promise<boolean>((resolve) => {
+      this.initResolve = resolve;
+      this.initTimer = setTimeout(
+        () => this.failInit(t('pyodideInitTimeout')),
+        PythonRunnerService.PYODIDE_TIMEOUT_MS
+      );
+      worker.postMessage({ type: 'init' } as WorkerRequest);
+    });
 
-        // Pyodide 无真实 stdin：builtins.input 默认调用浏览器原生 prompt() 弹窗。
-        // help() 无参会进入 pydoc 交互模式并读 stdin → 弹窗且输入无效。
-        // 用包装函数替换 builtins.help：help() 打印提示（不进入交互、不读 stdin），
-        // help(obj) 惰性 import pydoc 打印文档。初始化阶段不 import pydoc，
-        // 避免在 Pyodide 初始化链路中引入失败面。
-        this.pyodide.runPython(`
-import builtins
-def _py_help(obj=None):
-    if obj is None:
-        print('帮助：使用 help(对象) 查看对象的文档。')
-        return
-    import pydoc
-    # pydoc.plain 剥离 \b 粗体/下划线格式（真实终端渲染成样式，
-    # 非终端通道会变成 iinntt 式重复字符乱码）
-    print(pydoc.plain(pydoc.render_doc(obj)))
-builtins.help = _py_help
-`);
-
-        this.isReady = true;
-        this.isLoading = false;
-        this.onEngineLoading?.(false);
-
-        onOutput?.({
-          id: uid(),
-          type: 'system',
-          text: t('pyodideActive'),
-          timestamp: new Date().toLocaleTimeString()
-        });
-        return true;
-      }
-      throw new Error('Web environment missing');
-    } catch (err: any) {
-      this.isLoading = false;
-      this.isReady = false;
-      this.onEngineLoading?.(false);
+    this.onEngineLoading?.(false);
+    if (ok) {
       onOutput?.({
         id: uid(),
         type: 'system',
-        text: tf('pyodideUnavailable', { err: err?.message || err }),
-        timestamp: new Date().toLocaleTimeString()
+        text: t('pyodideActive'),
+        timestamp: now()
       });
-      return false;
+      return true;
     }
+    onOutput?.({
+      id: uid(),
+      type: 'system',
+      text: tf('pyodideUnavailable', { err: this.lastInitError || t('pyodideCdnUnavailable') }),
+      timestamp: now()
+    });
+    return false;
   }
 
   public syncFileSystem(items: FSItem[]) {
-    if (!this.pyodide) return;
-    try {
-      const fs = this.pyodide.FS;
-      for (const item of items) {
-        const fullPath = item.path.startsWith('/') ? item.path : '/' + item.path;
-        if (item.isFolder) {
-          try { fs.mkdir(fullPath); } catch (e: any) {}
-          if (item.children) this.syncFileSystem(item.children);
-        } else {
-          const content = item.content || '';
-          try {
-            const parts = fullPath.split('/').filter(Boolean);
-            if (parts.length > 1) {
-              let currentDir = '';
-              for (let i = 0; i < parts.length - 1; i++) {
-                currentDir += '/' + parts[i];
-                try { fs.mkdir(currentDir); } catch (e) {}
-              }
-            }
-            fs.writeFile(fullPath, content);
-          } catch (e) {}
-        }
-      }
-    } catch (err) {}
+    if (!this.workerReady || !this.worker) return;
+    this.worker.postMessage({ type: 'sync-fs', files: flattenWorkspace(items) } as WorkerRequest);
   }
 
   public async runCode(
@@ -180,71 +227,42 @@ builtins.help = _py_help
 
     const startTime = performance.now();
 
-    if (!forceDemoMode && !this.isReady && !this.isLoading) {
+    if (!forceDemoMode && !this.workerReady && !this.workerLoading) {
       await this.initPyodide(onOutput);
     }
 
-    if (!forceDemoMode && this.isReady && this.pyodide) {
-      try {
-        this.syncFileSystem(workspaceFiles);
+    if (!forceDemoMode && this.workerReady) {
+      onOutput({
+        id: uid(),
+        type: 'stdout',
+        text: '\n',
+        timestamp: now()
+      });
 
-        const stdoutHandler = (text: string) => {
-          onOutput({
-            id: uid(),
-            type: 'stdout',
-            text,
-            timestamp: new Date().toLocaleTimeString()
-          });
-        };
+      const result = await this.runInWorker(
+        { type: 'run', code, files: flattenWorkspace(workspaceFiles) } as WorkerRequest,
+        onOutput
+      );
+      const durationMs = Math.round(performance.now() - startTime);
 
-        const stderrHandler = (text: string) => {
-          onOutput({
-            id: uid(),
-            type: 'stderr',
-            text,
-            timestamp: new Date().toLocaleTimeString()
-          });
-        };
+      onOutput({
+        id: uid(),
+        type: 'stdout',
+        text: '\n',
+        timestamp: now()
+      });
 
-        this.pyodide.setStdout({ batched: stdoutHandler });
-        this.pyodide.setStderr({ batched: stderrHandler });
-
-        onOutput({
-          id: uid(),
-          type: 'stdout',
-          text: '\n',
-          timestamp: new Date().toLocaleTimeString()
-        });
-
-        await this.pyodide.runPythonAsync(code);
-
-        const durationMs = Math.round(performance.now() - startTime);
-
-        onOutput({
-          id: uid(),
-          type: 'stdout',
-          text: '\n',
-          timestamp: new Date().toLocaleTimeString()
-        });
-
+      // 失败时的错误摘要由 Worker 的 error 消息经 emitError 输出（FR-4.5）
+      if (result.success) {
         onOutput({
           id: uid(),
           type: 'system',
           text: tf('processFinishedCode', { duration: durationMs }),
-          timestamp: new Date().toLocaleTimeString()
+          timestamp: now()
         });
-
-        return { success: true, durationMs };
-      } catch (err: any) {
-        const durationMs = Math.round(performance.now() - startTime);
-        onOutput({
-          id: uid(),
-          type: 'error',
-          text: err?.message || String(err),
-          timestamp: new Date().toLocaleTimeString()
-        });
-        return { success: false, durationMs };
       }
+
+      return { success: result.success, durationMs };
     }
 
     // Default: Lightweight instant presentation demo mode
@@ -270,43 +288,25 @@ builtins.help = _py_help
       timestamp: new Date().toLocaleTimeString()
     });
 
-    if (!forceDemoMode && !this.isReady && !this.isLoading) {
+    if (!forceDemoMode && !this.workerReady && !this.workerLoading) {
       await this.initPyodide(onOutput);
     }
 
-    if (!forceDemoMode && this.isReady && this.pyodide) {
-      try {
-        const stdoutHandler = (text: string) => {
-          onOutput({
-            id: uid(),
-            type: 'stdout',
-            text,
-            timestamp: new Date().toLocaleTimeString()
-          });
-        };
-        this.pyodide.setStdout({ batched: stdoutHandler });
-        const result = await this.pyodide.runPythonAsync(statement);
-        if (result !== undefined) {
-          onOutput({
-            id: uid(),
-            type: 'stdout',
-            text: String(result),
-            timestamp: new Date().toLocaleTimeString()
-          });
-        }
-        return result;
-      } catch (err: any) {
+    if (!forceDemoMode && this.workerReady) {
+      const result = await this.runInWorker({ type: 'repl', statement } as WorkerRequest, onOutput);
+      if (result.value) {
         onOutput({
           id: uid(),
-          type: 'error',
-          text: err?.message || String(err),
-          timestamp: new Date().toLocaleTimeString()
+          type: 'stdout',
+          text: result.value,
+          timestamp: now()
         });
       }
-    } else {
-      // Demo mode REPL
-      return this.runDemoREPL(statement, onOutput);
+      return result.value ?? undefined;
     }
+
+    // Demo mode REPL
+    return this.runDemoREPL(statement, onOutput);
   }
 
   private runDemoInterpreter(
@@ -425,12 +425,7 @@ builtins.help = _py_help
       return { success: true, durationMs };
     } catch (err: any) {
       const durationMs = Math.round(performance.now() - startTime);
-      onOutput({
-        id: uid(),
-        type: 'error',
-        text: err?.message || String(err),
-        timestamp: new Date().toLocaleTimeString()
-      });
+      emitError(onOutput, err?.message || String(err));
       return { success: false, durationMs };
     }
   }
@@ -536,43 +531,30 @@ builtins.help = _py_help
     }
   }
 
-  public async loadPackage(pkgName: string, onOutput?: (out: ConsoleOutput) => void, forceDemoMode = false): Promise<boolean> {
-    if (!forceDemoMode && nativePython.supported) {
+  public async loadPackage(
+    pkgName: string,
+    onOutput?: (out: ConsoleOutput) => void,
+    onProgress?: (progress: number | null) => void,
+    forceDemoMode = false
+  ): Promise<boolean> {
+    if (!forceDemoMode && nativePython.supported && nativePython.enabled) {
       const det = await nativePython.detect();
       if (det.available && onOutput) {
-        return nativePython.loadPackage(pkgName, onOutput);
+        return nativePython.loadPackage(pkgName, onOutput, onProgress);
       }
     }
 
-    if (!forceDemoMode && !this.isReady && !this.isLoading) {
+    if (!forceDemoMode && !this.workerReady && !this.workerLoading) {
       await this.initPyodide(onOutput);
     }
 
-    if (!forceDemoMode && this.isReady && this.pyodide) {
-      try {
-        onOutput?.({
-          id: uid(),
-          type: 'system',
-          text: tf('pyodideInstallingPkg', { name: pkgName }),
-          timestamp: new Date().toLocaleTimeString()
-        });
-        await this.pyodide.loadPackage(pkgName);
-        onOutput?.({
-          id: uid(),
-          type: 'system',
-          text: tf('pyodideInstalledPkg', { name: pkgName }),
-          timestamp: new Date().toLocaleTimeString()
-        });
-        return true;
-      } catch (err: any) {
-        onOutput?.({
-          id: uid(),
-          type: 'error',
-          text: tf('pyodideInstallFail', { name: pkgName, err: err?.message || err }),
-          timestamp: new Date().toLocaleTimeString()
-        });
-        return false;
-      }
+    if (!forceDemoMode && this.workerReady) {
+      // 安装消息由 Worker 内的引擎产出（无进度回调，指示器保持不确定态）
+      const result = await this.runInWorker(
+        { type: 'install', pkg: pkgName } as WorkerRequest,
+        onOutput ?? (() => { })
+      );
+      return result.success;
     }
 
     onOutput?.({
@@ -584,10 +566,18 @@ builtins.help = _py_help
     return true;
   }
 
-  // 停止当前运行的子进程（本机 Python 引擎可真正中断；Pyodide/演示模式为尽力而为）
+  // 停止当前执行：本机引擎杀子进程，Pyodide 终止 Worker
+  //（这是不借助 SharedArrayBuffer 停下死循环的唯一方式，代价是 Python 会话重置）
   public async stop(): Promise<void> {
     if (nativePython.supported) {
       await nativePython.stop();
+    }
+    if (this.worker && this.currentOp) {
+      const op = this.currentOp;
+      this.currentOp = null;
+      this.terminateWorker();
+      op.onOutput({ id: uid(), type: 'system', text: t('pyodideStopped'), timestamp: now() });
+      op.resolve({ success: false });
     }
   }
 }

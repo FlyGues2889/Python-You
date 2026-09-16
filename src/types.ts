@@ -8,6 +8,7 @@ export interface FSItem {
   children?: FSItem[];
   isOpen?: boolean; // Folder expand state
   readOnly?: boolean;
+  mtime?: number; // 读盘时的最后修改时间，保存前比对检测外部修改（NFR-5.4）
 }
 
 export interface EditorTab {
@@ -26,6 +27,8 @@ export interface ConsoleOutput {
   type: 'stdout' | 'stderr' | 'system' | 'info' | 'error' | 'input' | 'warning';
   text: string;
   timestamp: string;
+  // FR-4.5：完整 traceback 等长文本详情，终端中默认折叠、可展开（摘要行仍常显）
+  collapsible?: boolean;
 }
 
 export interface AppConfig {
