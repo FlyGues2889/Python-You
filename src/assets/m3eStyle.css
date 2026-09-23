@@ -13,10 +13,11 @@ m3e-search-bar {
   --m3e-icon-button-medium-icon-size: 18px;
 }
 
-/* 菜单项统一密度与图标：行高 44px → 36px 紧凑显示；
-   图标 0.9rem、图标与文字间距 0.5rem。 */
+/* 菜单项统一紧凑尺寸：行高 44px → 36px，图标 0.9rem、图标与文字间距 0.5rem。
+   直接给固定行高而不是设 --md-sys-density-scale：库的行高公式是
+   44px + max(-3, scale) * 4px，密度令牌在标题栏弹出菜单与右键菜单上不生效。 */
 m3e-menu-item {
-  --md-sys-density-scale: -2;
+  --m3e-menu-item-container-height: 36px;
   --m3e-menu-item-icon-size: var(--text-size-sm);
   --m3e-menu-item-icon-label-space: 0.5rem;
 }
@@ -70,4 +71,33 @@ m3e-icon-button {
 m3e-nav-rail {
   --m3e-nav-bar-height: 100vh;
   --m3e-nav-rail-top-space: 1rem;
+}
+
+/* 弹窗统一最大宽度：库默认较宽，长内容（如解释器绝对路径）会把弹窗撑得更大 */
+m3e-dialog {
+  --m3e-dialog-max-width: 26rem;
+}
+
+/* 选择框下拉面板同样限宽；内容过长的选项在面板内省略 */
+m3e-option-panel {
+  --m3e-option-panel-container-max-width: 26rem;
+}
+
+/* 解释器选项（设置页 / 版本管理器弹窗共用）：名称 + 绝对路径两行 */
+.interp-option {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.interp-option > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.interp-path {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-tertiary);
 }

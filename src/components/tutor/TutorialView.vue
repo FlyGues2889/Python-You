@@ -187,6 +187,7 @@ const handleLoadCode = (payload: { code: string; topicId: string; topicTitle: st
       @back-to-tutorial="backToArticle"
       @load-code-to-editor="handleLoadCode"
       @results-changed="refreshQuizStats"
+      @next-topic="handleSelectTopic"
     />
   </div>
 </template>

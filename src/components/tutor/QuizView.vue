@@ -4,6 +4,7 @@ import {
   getTopicQuiz,
   getQuizQuestionResult,
   getTopicQuizScore,
+  isQuizAllCorrect,
   loadQuizResults,
   saveQuizResults,
   setQuizQuestionResult,
@@ -27,6 +28,7 @@ const emit = defineEmits<{
   (e: 'back-to-tutorial'): void;
   (e: 'load-code-to-editor', payload: { code: string; topicId: string; topicTitle: string; isQuiz: boolean; questionId: string; expectedOutput: string }): void;
   (e: 'results-changed'): void;
+  (e: 'next-topic', topicId: string): void;
 }>();
 
 const topic = computed<TutorialTopic | undefined>(() =>
@@ -65,6 +67,19 @@ watch(
 const score = computed(() => {
   void refreshTick.value;
   return getTopicQuizScore(props.topicId);
+});
+
+// 全部题目（含代码题）通过 → 显示「下一节」入口
+const allPassed = computed(() => {
+  void refreshTick.value;
+  return isQuizAllCorrect(props.topicId);
+});
+
+// 课程目录中的下一节；已是最后一节时为 null
+const nextTopic = computed<TutorialTopic | null>(() => {
+  const topics = getAllTutorialTopics();
+  const idx = topics.findIndex(topic => topic.id === props.topicId);
+  return idx >= 0 && idx < topics.length - 1 ? topics[idx + 1] : null;
 });
 
 const answeredCount = computed(() =>
@@ -124,8 +139,10 @@ const loadToEditor = (q: QuizQuestion) => {
   });
 };
 
-const getCodeStatus = (q: QuizQuestion): 'pass' | 'fail' | null =>
-  getQuizQuestionResult(props.topicId, q.id);
+const getCodeStatus = (q: QuizQuestion): 'pass' | 'fail' | null => {
+  void refreshTick.value; // 依赖刷新计数：作答结果变化后重新渲染
+  return getQuizQuestionResult(props.topicId, q.id);
+};
 
 const isChoicePass = (q: QuizQuestion) =>
   getQuizQuestionResult(props.topicId, q.id) === 'pass';
@@ -206,7 +223,8 @@ const isChoicePass = (q: QuizQuestion) =>
         </m3e-card>
 
         <!-- 代码题（卡片与设置界面同款） -->
-        <m3e-card v-for="(q, qi) in codeQuestions" :key="q.id" variant="outlined" class="quiz-question-card">
+        <m3e-card v-for="(q, qi) in codeQuestions" :key="q.id" variant="outlined" class="quiz-question-card"
+          :class="{ 'is-passed': getCodeStatus(q) === 'pass' }">
           <div slot="header" class="quiz-card-header">
             <h4 class="quiz-card-title">
               <span class="q-index">{{ t('questionIndexText').replace('{n}', String(choiceQuestions.length + qi + 1))
@@ -246,6 +264,12 @@ const isChoicePass = (q: QuizQuestion) =>
           <m3e-button variant="tonal" size="medium" @click="resetQuiz">
             <span slot="icon" class="material-symbols-rounded">restart_alt</span>
             {{ t('retakeQuiz') }}
+          </m3e-button>
+          <!-- 测验全部通过后才出现：跳到课程目录的下一节 -->
+          <m3e-button v-if="allPassed && nextTopic" variant="filled" size="medium"
+            @click="emit('next-topic', nextTopic.id)">
+            <span slot="icon" class="material-symbols-rounded">arrow_forward</span>
+            {{ t('nextSectionBtn') }}
           </m3e-button>
         </div>
       </template>
@@ -344,6 +368,11 @@ const isChoicePass = (q: QuizQuestion) =>
   margin-bottom: 20px;
 }
 
+/* 代码题已通过：绿色描边 + 加粗状态 chip，明确「已通过」 */
+.quiz-question-card.is-passed {
+  --m3e-card-outline-color: var(--accent-emerald-border);
+}
+
 .quiz-card-header {
   display: flex;
   align-items: center;
@@ -396,8 +425,9 @@ const isChoicePass = (q: QuizQuestion) =>
 }
 
 .chip-pass {
-  background-color: color-mix(in srgb, var(--accent-emerald-border) 14%, transparent);
+  background-color: color-mix(in srgb, var(--accent-emerald-border) 20%, transparent);
   color: var(--accent-emerald-text);
+  font-weight: 700;
 }
 
 .chip-fail {

@@ -350,6 +350,6 @@ const filteredItems = computed(() => {
 }
 m3e-list-item {
   margin-top: -0.2rem;
-  --md-sys-density-scale: -3;
+  --md-sys-density-scale: -2;
 }
 </style>

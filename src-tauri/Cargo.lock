@@ -2567,7 +2567,7 @@ dependencies = [
 
 [[package]]
 name = "python-you"
-version = "0.3.51"
+version = "0.3.52"
 dependencies = [
  "serde",
  "serde_json",

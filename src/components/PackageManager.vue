@@ -4,9 +4,10 @@ import { pythonRunner } from '../utils/pythonRunner';
 import { ConsoleOutput, FSItem } from '../types';
 import { useI18n } from '../utils/i18n';
 import PageHeader from './PageHeader.vue';
-import { syncWorkspacePackages, saveInstalledPackages } from '../utils/packageUtils';
+import { detectImportedPackages, getStoredInstalledPackages, saveInstalledPackages } from '../utils/packageUtils';
 import { addBackendTask, updateBackendTask, finishBackendTask } from '../utils/backendTasks';
 import { nativePython } from '../utils/nativePython';
+import { nativeApi } from '../utils/native';
 
 const props = defineProps<{
   workspaceFiles?: FSItem[];
@@ -22,11 +23,14 @@ const customPackageName = ref('');
 const filterQuery = ref('');
 const installingSet = ref<Set<string>>(new Set());
 
-const installedSet = ref<Set<string>>(new Set(['numpy']));
+// 已安装 = 应用自身的安装记录（只有安装/卸载会改），不从代码 import 推断
+const installedSet = ref<Set<string>>(new Set(getStoredInstalledPackages()));
+// 工作区代码引用到的包：仅作提示，不参与已安装判定
+const referencedPackages = ref<Set<string>>(new Set());
 
 const syncPackages = () => {
-  const allInstalled = syncWorkspacePackages(props.workspaceFiles || []);
-  installedSet.value = new Set(allInstalled);
+  installedSet.value = new Set(getStoredInstalledPackages());
+  referencedPackages.value = new Set(detectImportedPackages(props.workspaceFiles || []));
 };
 
 onMounted(() => {
@@ -36,7 +40,7 @@ onMounted(() => {
 watch(
   () => props.workspaceFiles,
   () => {
-    syncPackages();
+    referencedPackages.value = new Set(detectImportedPackages(props.workspaceFiles || []));
   },
   { deep: true }
 );
@@ -173,6 +177,36 @@ const handleInstall = async (pkgName: string) => {
   installingSet.value.delete(cleanName);
 };
 
+// 从本地文件安装扩展包（wheel / sdist）：仅本机引擎可用，安装后并入已安装列表
+const handleImportPackage = async () => {
+  const path = await nativeApi.pickFile([
+    { name: 'Python 安装包', extensions: ['whl', 'gz', 'zip', 'tar'] }
+  ]);
+  if (!path) return;
+  const fileName = path.split(/[\\/]/).pop() || path;
+
+  const taskId = `install-file-${fileName}`;
+  addBackendTask(taskId, tf('statusInstallingPkg', { name: fileName }));
+  const ok = await pythonRunner.installPackageFile(path, fileName, (out) => {
+    emit('add-console-output', out);
+  }, (progress) => {
+    updateBackendTask(taskId, { progress });
+  });
+  finishBackendTask(taskId, ok ? 'done' : 'failed');
+
+  if (ok) {
+    // 轮子文件名形如 包名-版本-...，取第一段作为包名并入已装列表
+    const distName = fileName.replace(/\.(whl|tar\.gz|zip)$/i, '').split('-')[0];
+    if (distName) {
+      installedSet.value.add(distName);
+      saveInstalledPackages(Array.from(installedSet.value));
+    }
+    emit('show-toast', tf('importPkgInstalled', { name: fileName }));
+  } else {
+    emit('show-toast', tf('pkgInstallFailedMsg', { name: fileName }));
+  }
+};
+
 const handleUninstall = (pkgName: string) => {
   const cleanName = pkgName.trim();
   if (!cleanName) return;
@@ -207,6 +241,11 @@ const handleUninstall = (pkgName: string) => {
           <span slot="icon" class="material-symbols-rounded">download</span>
           {{ installingSet.has(customPackageName.trim().toLowerCase()) ? t('installing') : t('installPkg') }}
         </m3e-button>
+        <!-- 从本地文件安装（.whl / .tar.gz），与安装按钮留 4dp 间隔 -->
+        <m3e-icon-button class="import-pkg-btn" size="extra-small" :title="t('importPkgTooltip')"
+          @click="handleImportPackage">
+          <span class="material-symbols-rounded">upload_file</span>
+        </m3e-icon-button>
       </div>
       <p v-if="installError" class="install-error">{{ installError }}</p>
     </div>
@@ -251,6 +290,7 @@ const handleUninstall = (pkgName: string) => {
             {{ pkg.name }}
             <span slot="supporting-text">{{ pkg.descZh }}</span>
             <div slot="trailing" class="item-actions">
+              <span v-if="referencedPackages.has(pkg.name)" class="pkg-ref-tag">{{ t('pkgReferencedHint') }}</span>
               <m3e-button variant="filled" size="extra-small"
                 :disabled="installingSet.has(pkg.name.toLowerCase())" @click="requestInstall(pkg.name)">
                 <span slot="icon" class="material-symbols-rounded">download</span>
@@ -307,6 +347,10 @@ const handleUninstall = (pkgName: string) => {
   align-items: center;
   gap: 12px;
   padding: 4px 0;
+}
+
+.import-pkg-btn {
+  margin-left: 4px;
 }
 
 .input-flex-grow {
@@ -375,6 +419,12 @@ const handleUninstall = (pkgName: string) => {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
+}
+
+.pkg-ref-tag {
+  font-size: 0.6875rem;
+  color: var(--text-tertiary);
+  white-space: nowrap;
 }
 
 /* 安装确认弹窗 */

@@ -21,11 +21,12 @@ pub(crate) fn workspace_root() -> &'static Mutex<Option<PathBuf>> {
 // 拒绝任意路径，防止前端被注入后把 Python 进程 cwd 指向工作区之外（NFR-5.2）。
 pub(crate) fn validate_cwd(cwd: &Path) -> Result<(), String> {
     let temp = std::env::temp_dir();
-    if cwd.starts_with(&temp)
-        && cwd
-            .file_name()
-            .map_or(false, |n| n.to_string_lossy().starts_with("python_you_ws_"))
-    {
+    let in_temp_workspace = cwd
+        .file_name()
+        .map_or(false, |n| n.to_string_lossy().starts_with("python_you_ws_"))
+        && (cwd.starts_with(&temp)
+            || downloads_dir().map_or(false, |downloads| cwd.starts_with(downloads)));
+    if in_temp_workspace {
         return Ok(());
     }
     let guard = workspace_root().lock().unwrap();
@@ -184,6 +185,72 @@ pub fn fs_stat_mtime(path: String) -> Result<f64, String> {
         .unwrap_or(0.0))
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceEntry {
+    path: String,
+    is_folder: bool,
+    mtime: f64,
+    size: u64,
+}
+
+// 整树清单条目上限：误把超大目录设为工作区时，避免每轮轮询搬运过大的清单
+const SCAN_LIMIT: usize = 5000;
+
+// 工作区整树清单（相对路径 + mtime + 大小）：前端轮询与上一次清单比对，
+// 检测外部程序对工作区的增删改，并据此刷新文件树与已打开的文件。
+// 广度优先遍历：条目触顶时优先覆盖浅层目录。
+#[tauri::command]
+pub fn fs_scan_workspace() -> Result<Vec<WorkspaceEntry>, String> {
+    use std::collections::VecDeque;
+
+    let root = {
+        let guard = workspace_root().lock().unwrap();
+        guard
+            .as_ref()
+            .ok_or_else(|| "工作区根目录未设置".to_string())?
+            .clone()
+    };
+    let mut entries = Vec::new();
+    let mut queue: VecDeque<(PathBuf, String)> = VecDeque::new();
+    queue.push_back((root, String::new()));
+    while let Some((dir, rel)) = queue.pop_front() {
+        if entries.len() >= SCAN_LIMIT {
+            break;
+        }
+        let rd = match fs::read_dir(&dir) {
+            Ok(rd) => rd,
+            Err(_) => continue,
+        };
+        for entry in rd.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if SKIP_DIRS.contains(&name.as_str()) {
+                continue;
+            }
+            let file_type = match entry.file_type() {
+                Ok(ft) => ft,
+                Err(_) => continue,
+            };
+            let child_rel = format!("{rel}/{name}");
+            if file_type.is_dir() {
+                entries.push(WorkspaceEntry { path: child_rel.clone(), is_folder: true, mtime: 0.0, size: 0 });
+                queue.push_back((entry.path(), child_rel));
+            } else if file_type.is_file() {
+                let meta = entry.metadata().ok();
+                let mtime = meta
+                    .as_ref()
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_millis() as f64)
+                    .unwrap_or(0.0);
+                let size = meta.map(|m| m.len()).unwrap_or(0);
+                entries.push(WorkspaceEntry { path: child_rel, is_folder: false, mtime, size });
+            }
+        }
+    }
+    Ok(entries)
+}
+
 #[tauri::command]
 pub fn fs_create_file(parent_path: String, name: String) -> Result<String, String> {
     ensure_valid_name(&name)?;
@@ -272,6 +339,82 @@ pub fn ensure_default_workspace(app: AppHandle) -> Result<String, String> {
     Ok(root.to_string_lossy().to_string())
 }
 
+// 用户可见的输出目录：优先「下载」文件夹（跨平台按惯例定位），不可用时回退系统临时目录
+pub(crate) fn downloads_dir() -> Option<PathBuf> {
+    let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))?;
+    let dir = PathBuf::from(home).join("Downloads");
+    dir.is_dir().then_some(dir)
+}
+
+// 应用生成的临时产物根目录：下载文件夹下的 python_you 子目录（便于用户找到），回退系统临时目录
+pub(crate) fn temp_output_dir() -> PathBuf {
+    downloads_dir()
+        .map(|dir| dir.join("python_you"))
+        .unwrap_or_else(std::env::temp_dir)
+}
+
+// 本次会话创建的临时工作区：退出时清理（NFR-5.7），避免在用户目录里堆积
+static TEMP_WORKSPACES: OnceLock<Mutex<Vec<PathBuf>>> = OnceLock::new();
+
+fn temp_workspaces() -> &'static Mutex<Vec<PathBuf>> {
+    TEMP_WORKSPACES.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+fn collect_stale_temp_workspaces() -> Vec<PathBuf> {
+    let mut stale = Vec::new();
+    for base in [temp_output_dir(), std::env::temp_dir()] {
+        let Ok(rd) = fs::read_dir(&base) else { continue };
+        for entry in rd.flatten() {
+            if entry.file_name().to_string_lossy().starts_with("python_you_ws_") {
+                stale.push(entry.path());
+            }
+        }
+    }
+    stale
+}
+
+// 退出时清理：本次创建的临时工作区 + 上次异常退出遗留的同名前缀目录
+pub(crate) fn cleanup_temp_workspaces() {
+    let mut dirs = {
+        let mut guard = temp_workspaces().lock().unwrap();
+        std::mem::take(&mut *guard)
+    };
+    dirs.extend(collect_stale_temp_workspaces());
+    dirs.dedup();
+    for dir in dirs {
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+// 导出文件到下载文件夹（默认位置，重名自动加序号），返回实际保存的绝对路径
+#[tauri::command]
+pub fn fs_export_file(name: String, content: String) -> Result<String, String> {
+    ensure_valid_name(&name)?;
+    let dir = downloads_dir().unwrap_or_else(std::env::temp_dir);
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let mut target = dir.join(&name);
+    if target.exists() {
+        let stem = Path::new(&name)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| name.clone());
+        let ext = Path::new(&name)
+            .extension()
+            .map(|e| format!(".{}", e.to_string_lossy()))
+            .unwrap_or_default();
+        for i in 1..1000 {
+            let candidate = dir.join(format!("{stem} ({i}){ext}"));
+            if !candidate.exists() {
+                target = candidate;
+                break;
+            }
+        }
+    }
+    fs::write(&target, content).map_err(|e| e.to_string())?;
+    Ok(target.to_string_lossy().to_string())
+}
+
 // 把虚拟工作区（内存中的文件树）落盘到临时目录，供本机 Python 以该目录为 cwd 运行
 #[tauri::command]
 pub fn fs_materialize_workspace(items: Vec<ImportItem>) -> Result<String, String> {
@@ -279,7 +422,9 @@ pub fn fs_materialize_workspace(items: Vec<ImportItem>) -> Result<String, String
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let base = std::env::temp_dir().join(format!("python_you_ws_{}_{}", std::process::id(), nanos));
+    let base = temp_output_dir().join(format!("python_you_ws_{}_{}", std::process::id(), nanos));
+    fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+    temp_workspaces().lock().unwrap().push(base.clone());
     for item in &items {
         let rel = item.path.trim_start_matches('/');
         // 相对路径不得包含父目录组件（..），防止虚拟工作区文件名逃逸出临时目录

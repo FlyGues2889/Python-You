@@ -3,6 +3,9 @@ import { nativePython } from './nativePython';
 import { t, tf } from './i18n';
 import { uid } from './id';
 import { flattenWorkspace } from './pyodideEngine';
+import { extractImportsFromCode, collectLocalModules, getStoredInstalledPackages } from './packageUtils';
+import { requestInstallConfirm } from './dependencyGate';
+import { addBackendTask, finishBackendTask } from './backendTasks';
 import type { WorkerRequest, WorkerResponse } from './pyodideWorker';
 
 const now = () => new Date().toLocaleTimeString();
@@ -217,6 +220,9 @@ class PythonRunnerService {
     onOutput: (out: ConsoleOutput) => void,
     forceDemoMode = false
   ): Promise<{ success: boolean; durationMs: number }> {
+    // 运行前依赖检查：代码引用的第三方包缺失时（经用户确认）先自动安装，再执行
+    if (!forceDemoMode) await this.ensureImports(code, workspaceFiles, onOutput);
+
     // 渐进增强：Tauri 环境且本机有 Python 时，优先用真实子进程执行
     if (!forceDemoMode && nativePython.supported && nativePython.enabled) {
       const det = await nativePython.detect();
@@ -568,6 +574,61 @@ class PythonRunnerService {
 
   // 停止当前执行：本机引擎杀子进程，Pyodide 终止 Worker
   //（这是不借助 SharedArrayBuffer 停下死循环的唯一方式，代价是 Python 会话重置）
+  // 运行前依赖检查：扫描 import、排除标准库与工作区本地模块，缺失的经确认后自动安装
+  private async ensureImports(
+    code: string,
+    workspaceFiles: FSItem[],
+    onOutput: (out: ConsoleOutput) => void
+  ): Promise<void> {
+    const needed = extractImportsFromCode(code);
+    if (needed.length === 0) return;
+
+    const localModules = collectLocalModules(workspaceFiles);
+    const candidates = needed.filter((name) => !localModules.has(name));
+    if (candidates.length === 0) return;
+
+    const installed = await this.installedPackages();
+    if (!installed) return; // 拿不到已装列表：跳过检查，避免误装
+
+    const missing = candidates.filter((name) => !installed.has(name.toLowerCase()));
+    if (missing.length === 0) return;
+
+    if (!(await requestInstallConfirm(missing))) return;
+
+    addBackendTask('run-deps', tf('statusInstallingPkg', { name: missing.join(', ') }));
+    try {
+      for (const pkg of missing) {
+        await this.loadPackage(pkg, onOutput);
+      }
+    } finally {
+      finishBackendTask('run-deps');
+    }
+  }
+
+  // 当前引擎下已安装的包集合：本机走 pip list，WASM / 演示模式用应用自身的安装记录
+  private async installedPackages(): Promise<Set<string> | null> {
+    if (nativePython.supported && nativePython.enabled) {
+      const det = await nativePython.detect();
+      if (det.available) return nativePython.installedPackages();
+    }
+    return new Set(getStoredInstalledPackages().map((name) => name.toLowerCase()));
+  }
+
+  // 从本地文件安装扩展包（本地 wheel / sdist 只能交给本机 pip）
+  public async installPackageFile(
+    filePath: string,
+    fileName: string,
+    onOutput: (out: ConsoleOutput) => void,
+    onProgress?: (progress: number | null) => void
+  ): Promise<boolean> {
+    if (nativePython.supported && nativePython.enabled) {
+      const det = await nativePython.detect();
+      if (det.available) return nativePython.installFromFile(filePath, fileName, onOutput, onProgress);
+    }
+    onOutput({ id: uid(), type: 'system', text: t('importPkgUnsupported'), timestamp: now() });
+    return false;
+  }
+
   public async stop(): Promise<void> {
     if (nativePython.supported) {
       await nativePython.stop();

@@ -211,6 +211,10 @@ const startScrollDrag = (e: PointerEvent, axis: 'vertical' | 'horizontal') => {
 // Sync scrolling between textarea, line numbers, and highlight layer
 const handleScroll = () => {
   hideHoverTooltip(); // 滚动时悬停提示位置失效，直接隐藏
+  // 补全弹层锚定在光标处：跟随滚动重算坐标（不重算会浮在错误位置，direction 键仍被吞）
+  if (completionVisible.value && textareaRef.value) {
+    completionPos.value = computePopupPosition(textareaRef.value.selectionStart);
+  }
   if (textareaRef.value) {
     if (lineNumbersRef.value) {
       lineNumbersRef.value.scrollTop = textareaRef.value.scrollTop;
@@ -246,6 +250,9 @@ const updateCursorPosition = () => {
     cursorMemory.value[tab.path] = { line: cursorLine.value, col: cursorCol.value };
     scheduleCursorSave(tab.path, cursorLine.value, cursorCol.value);
   }
+
+  // 光标已离开补全词尾：关闭弹层（点击别处、Home/End、左右键都会走到这里）
+  if (completionVisible.value && !isCompletionRangeCurrent()) closeCompletions();
 };
 
 /* ==================== 光标位置记忆 / 会话恢复 ==================== */
@@ -304,25 +311,29 @@ watch(
 // Handle Tab key, Enter key auto-indentation, and shortcuts
 const handleKeyDown = (e: KeyboardEvent) => {
   if (!activeTab.value || !textareaRef.value) return;
+  // 输入法组合期间（如中文选词）不接管任何按键，否则回车选词会被当成接受补全
+  if (e.isComposing) return;
 
-  // 补全弹层打开时的键位：上下选择 / Enter/Tab 确认 / Esc 关闭
+  // 补全弹层打开时的键位：↑↓ 选择 / Enter、Tab 确认 / Esc 关闭。
+  // 只接管无修饰键的按键——Shift+方向键（扩选）、Ctrl+方向键（按词移动）、Shift+Enter 等交回编辑器原生行为。
+  // 光标已离开补全词尾（鼠标点击、Home/End、左右键）或列表为空时弹层视为失效：
+  // 先关闭再让按键走默认处理，避免「看不见的弹层吞掉方向键」。
   if (completionVisible.value) {
-    if (e.key === 'ArrowDown') {
+    const plain = !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey;
+    const stale = completionItems.value.length === 0 || !isCompletionRangeCurrent();
+    if (stale) {
+      closeCompletions();
+    } else if (plain && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
       e.preventDefault();
-      completionIndex.value = (completionIndex.value + 1) % completionItems.value.length;
+      const total = completionItems.value.length;
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      completionIndex.value = (completionIndex.value + step + total) % total;
       return;
-    }
-    if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      completionIndex.value = (completionIndex.value - 1 + completionItems.value.length) % completionItems.value.length;
-      return;
-    }
-    if ((e.key === 'Enter' || e.key === 'Tab') && !e.ctrlKey && !e.metaKey) {
+    } else if (plain && (e.key === 'Enter' || e.key === 'Tab')) {
       e.preventDefault();
       acceptCompletion();
       return;
-    }
-    if (e.key === 'Escape') {
+    } else if (e.key === 'Escape') {
       e.preventDefault();
       closeCompletions();
       return;
@@ -432,6 +443,12 @@ const completionRange = ref({ start: 0, end: 0 });
 const completionListRef = ref<HTMLElement | null>(null);
 const activeCompletionItemRef = ref<HTMLElement | null>(null);
 
+// 弹层生命周期内光标应停在补全词尾：离开该位置（鼠标点击、Home/End、左右键、扩选）即视为失效
+const isCompletionRangeCurrent = () => {
+  const el = textareaRef.value;
+  return !!el && el.selectionStart === completionRange.value.end && el.selectionEnd === completionRange.value.end;
+};
+
 const setActiveItemRef = (el: unknown, idx: number) => {
   if (el && idx === completionIndex.value) activeCompletionItemRef.value = el as HTMLElement;
 };
@@ -456,6 +473,14 @@ const closeCompletions = () => {
   completionVisible.value = false;
   completionItems.value = [];
 };
+
+// 字号变化会改变光标的像素位置，弹层坐标随之失效（工具栏加减 / Ctrl+滚轮）
+watch(
+  () => props.config?.fontSize,
+  () => {
+    if (completionVisible.value) closeCompletions();
+  }
+);
 
 // 用 canvas 按真实字体测量文本宽度（等宽字体下更精确地定位弹层）
 let measureCanvas: HTMLCanvasElement | null = null;
@@ -537,8 +562,10 @@ const openCompletions = (force = false) => {
 const acceptCompletion = () => {
   const el = textareaRef.value;
   const item = completionItems.value[completionIndex.value];
+  const rangeCurrent = isCompletionRangeCurrent();
   closeCompletions();
-  if (!el || !item || !activeTab.value) return;
+  // 光标已离开原补全位置：放弃本次补全，否则会把文本插到旧位置并把光标拽回去
+  if (!el || !item || !activeTab.value || !rangeCurrent) return;
   const { start, end } = completionRange.value;
   const newContent = el.value.slice(0, start) + item.insertText + el.value.slice(end);
   emit('content-change', activeTab.value.id, newContent);
@@ -562,6 +589,18 @@ const hoverTooltip = ref<{ visible: boolean; syntax: string; description: string
   y: 0
 });
 let hoverRafId = 0;
+
+// 提示跟随编辑器字号 1:1 缩放；偏移量按同一比例缩放，保证默认字号下的观感不变
+const hoverTipStyle = computed(() => {
+  const fontSize = props.config?.fontSize || 15;
+  const ratio = fontSize / 15;
+  const { x, y } = hoverTooltip.value;
+  return {
+    fontSize: `${fontSize}px`,
+    left: `${x + 12 * ratio}px`,
+    top: y > 44 * ratio ? `${y - 34 * ratio}px` : `${y + 16 * ratio}px`
+  };
+});
 
 const hideHoverTooltip = () => {
   if (hoverTooltip.value.visible) hoverTooltip.value.visible = false;
@@ -1180,8 +1219,7 @@ onBeforeUnmount(() => {
             @blur="closeCompletions" @mousemove="handleTextareaMousemove" @mouseleave="hideHoverTooltip"></textarea>
 
           <!-- 代码悬停用法提示（VS Code hover 风格）：悬停关键字/函数/模块名显示简略用法 -->
-          <div v-if="hoverTooltip.visible" class="code-hover-tooltip"
-            :style="{ left: `${hoverTooltip.x + 12}px`, top: hoverTooltip.y > 44 ? `${hoverTooltip.y - 34}px` : `${hoverTooltip.y + 16}px` }">
+          <div v-if="hoverTooltip.visible" class="code-hover-tooltip" :style="hoverTipStyle">
             <div class="hover-syntax">{{ hoverTooltip.syntax }}</div>
             <div v-if="hoverTooltip.description" class="hover-desc">{{ hoverTooltip.description }}</div>
           </div>
@@ -1613,8 +1651,8 @@ kbd {
   max-width: 380px;
   padding: 6px 10px;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
-  line-height: 1.55;
+  /* 字号由 hoverTipStyle 按编辑器字号 1:1 注入 */
+  line-height: 1.5;
   color: var(--text-color);
   background-color: var(--surface-container-high);
   border: 1px solid var(--border-color-muted);

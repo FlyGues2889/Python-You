@@ -26,12 +26,21 @@ export interface PythonVersion {
   version: string; // 如 "Python 3.13.14"
   label: string; // 展示名
   command: string[]; // 启动命令拆分，如 ["py", "-3.13"]
+  path?: string; // 解释器可执行文件绝对路径（选择器里用于辨认）
 }
 
 interface PyOutputEvent {
   kind: string;
   text: string;
   session: string;
+}
+
+// 工作区整树清单条目（fs_scan_workspace），供外部变更检测使用
+export interface WorkspaceEntry {
+  path: string;
+  isFolder: boolean;
+  mtime: number;
+  size: number;
 }
 
 export const nativeApi = {
@@ -44,8 +53,8 @@ export const nativeApi = {
     return open({ directory: true, multiple: false }) as Promise<string | null>;
   },
 
-  pickFile(): Promise<string | null> {
-    return open({ multiple: false }) as Promise<string | null>;
+  pickFile(filters?: { name: string; extensions: string[] }[]): Promise<string | null> {
+    return open({ multiple: false, filters }) as Promise<string | null>;
   },
 
   // ---------- 文件系统 ----------
@@ -61,6 +70,9 @@ export const nativeApi = {
   statMtime(path: string): Promise<number> {
     return invoke('fs_stat_mtime', { path });
   },
+  scanWorkspace(): Promise<WorkspaceEntry[]> {
+    return invoke('fs_scan_workspace');
+  },
   createDir(parentPath: string, name: string): Promise<string> {
     return invoke('fs_create_dir', { parentPath, name });
   },
@@ -72,6 +84,10 @@ export const nativeApi = {
   },
   materializeWorkspace(items: { path: string; content: string; isFolder: boolean }[]): Promise<string> {
     return invoke('fs_materialize_workspace', { items });
+  },
+  // 导出到「下载」文件夹，返回实际保存的绝对路径
+  exportFile(name: string, content: string): Promise<string> {
+    return invoke('fs_export_file', { name, content });
   },
   ensureDefaultWorkspace(): Promise<string> {
     return invoke('ensure_default_workspace');
@@ -103,6 +119,15 @@ export const nativeApi = {
   pipInstall(pkg: string): Promise<void> {
     return invoke('python_pip_install', { pkg });
   },
+  pipList(): Promise<string[]> {
+    return invoke('python_pip_list');
+  },
+  pipInstallFile(path: string): Promise<void> {
+    return invoke('python_pip_install_file', { path });
+  },
+  addInterpreter(path: string): Promise<PythonVersion> {
+    return invoke('python_add_interpreter', { path });
+  },
 
   onPythonEvent(cb: (e: PyOutputEvent) => void): Promise<() => void> {
     return listen<PyOutputEvent>('py-output', (event) => cb(event.payload));
@@ -115,9 +140,9 @@ export function fsEntriesToFSItems(
   parentId: string | null = null,
   relDir = ''
 ): FSItem[] {
-  return entries.map((entry, index) => {
+  return entries.map((entry) => {
     const relPath = `${relDir}/${entry.name}`;
-    const id = `n${Math.random().toString(36).substring(2, 9)}${index}`;
+    const id = nativeFileId(relPath);
     if (entry.isFolder) {
       return {
         id,
@@ -140,6 +165,11 @@ export function fsEntriesToFSItems(
       parentId,
     };
   });
+}
+
+// 磁盘工作区节点的稳定 id：由相对路径推导，文件树刷新时标签页与节点的关联不被打断
+export function nativeFileId(relPath: string): string {
+  return `n:${relPath}`;
 }
 
 // 工作区根目录 + 虚拟相对路径 => 磁盘绝对路径

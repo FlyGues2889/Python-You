@@ -21,7 +21,7 @@ const MODULE_TO_PACKAGE_MAP: Record<string, string> = {
   'requests_mock': 'requests-mock'
 };
 
-function extractImportsFromCode(code: string): string[] {
+export function extractImportsFromCode(code: string): string[] {
   if (!code) return [];
   const found = new Set<string>();
   const lines = code.split('\n');
@@ -74,7 +74,7 @@ function extractAllImportsFromWorkspace(items: FSItem[]): string[] {
   return Array.from(pkgs);
 }
 
-function getStoredInstalledPackages(): string[] {
+export function getStoredInstalledPackages(): string[] {
   try {
     const stored = safeStorage.getItem(STORAGE_KEY);
     if (stored) {
@@ -91,14 +91,26 @@ export function saveInstalledPackages(pkgs: string[]): void {
   } catch (e) {}
 }
 
-export function syncWorkspacePackages(workspaceItems: FSItem[], extraCode?: string): string[] {
-  const stored = getStoredInstalledPackages();
+// 工作区内的本地模块名（不含 .py）：运行前依赖检查时要排除，避免把 import utils 当成第三方包自动安装
+export function collectLocalModules(items: FSItem[]): Set<string> {
+  const names = new Set<string>();
+  const walk = (list: FSItem[]) => {
+    for (const item of list) {
+      if (item.isFolder) {
+        if (item.children) walk(item.children);
+      } else if (item.name.endsWith('.py')) {
+        names.add(item.name.slice(0, -3));
+      }
+    }
+  };
+  walk(items);
+  return names;
+}
+
+// 工作区代码里 import 的第三方包（只扫描，不写入已装记录）：
+// 已装记录仅由安装/卸载动作修改——若把 import 结果并进去，卸载会被代码里的 import 立即复原
+export function detectImportedPackages(workspaceItems: FSItem[], extraCode?: string): string[] {
   const detected = extractAllImportsFromWorkspace(workspaceItems);
-  let extraDetected: string[] = [];
-  if (extraCode) {
-    extraDetected = extractImportsFromCode(extraCode);
-  }
-  const combined = Array.from(new Set([...stored, ...detected, ...extraDetected]));
-  saveInstalledPackages(combined);
-  return combined;
+  const extraDetected = extraCode ? extractImportsFromCode(extraCode) : [];
+  return Array.from(new Set([...detected, ...extraDetected]));
 }

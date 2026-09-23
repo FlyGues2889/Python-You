@@ -15,12 +15,13 @@ import MD3LoadingModal from './components/selfComponents/loadingModal.vue';
 import { minimizeWindow, maximizeWindow, closeWindow } from './utils/tauriWindow';
 import ContextMenu from './components/ContextMenu.vue';
 import { safeStorage } from './utils/storage';
-import { nativeApi, fsEntriesToFSItems, absPath } from './utils/native';
+import { nativeApi, fsEntriesToFSItems, nativeFileId, absPath, type WorkspaceEntry } from './utils/native';
+import { WorkspaceWatcher, type WorkspaceChange } from './utils/workspaceWatcher';
+import { pendingDependencies, resolveInstallConfirm } from './utils/dependencyGate';
 import { nativePython } from './utils/nativePython';
 import { copyToClipboard } from './utils/clipboard';
 import { revealItemInDir, openPath } from '@tauri-apps/plugin-opener';
 
-import { syncWorkspacePackages } from './utils/packageUtils';
 import { gradeOutput } from './utils/quizGrader';
 import { uid } from './utils/id';
 import { resolveCodeTheme } from './utils/theme';
@@ -388,6 +389,7 @@ const loadWorkspaceFromDisk = async (root: string) => {
     openTabs.value = [];
     activeEditorTabId.value = null;
     safeStorage.setItem('python_you_workspace_root', root);
+    await startWorkspaceWatcher();
 
     const mainFile = findFileByPath(workspaceItems.value, '/main.py');
     if (mainFile) {
@@ -420,7 +422,6 @@ watch(
     if (v === 'explorer') attachInnerSplitResizeObserver();
   }
 );
-const sidebarExpanded = ref(false);
 
 // App Config State
 const config = ref<AppConfig>({
@@ -443,11 +444,14 @@ const resolvedCodeTheme = computed(() => resolveCodeTheme(config.value.codeTheme
 // Toast message notifier
 const toastMessage = ref<string | null>(null);
 const showToast = (msg: string) => {
-  toastMessage.value = msg;
-  // 自动关闭由 m3e-snackbar 的 duration 计时控制
+  // 先置空再赋值：已有 toast 未关闭时 open 不变，组件不会重新计时，
+  // 新消息会被上一条的收尾（closed → 置空）立刻清掉
+  toastMessage.value = null;
+  nextTick(() => {
+    toastMessage.value = msg;
+  });
 };
 
-// 配置导出功能已于 v0.3.2 移除：isExportToast / handleOpenExportFolder 死代码已清理（L-10）
 const snackbarDuration = 5000;
 const handleSnackbarToggle = (e: Event) => {
   if ((e as any).newState === 'closed') {
@@ -505,6 +509,24 @@ const selectInterpreter = async (id: string) => {
 
 // 版本管理器弹窗
 const isInterpreterOpen = ref(false);
+const interpreterError = ref('');
+// 添加自定义解释器：选择 Python 可执行文件 → Rust 探测版本与真实路径 → 并入列表并切换
+const handleAddInterpreter = async () => {
+  interpreterError.value = '';
+  const path = await nativeApi.pickFile();
+  if (!path) return;
+  addBackendTask('add-interpreter', t('statusAddingInterpreter'));
+  try {
+    const entry = await nativePython.addInterpreter(path);
+    await selectInterpreter(entry.id);
+    showToast(tf('interpreterAdded', { label: entry.label }));
+  } catch (err: any) {
+    interpreterError.value = t('interpreterAddFailed') + (err?.message || err);
+    showToast(interpreterError.value);
+  } finally {
+    finishBackendTask('add-interpreter');
+  }
+};
 const onInterpreterDialogChange = async (e: Event) => {
   await selectInterpreter((e.target as any).value as string);
 };
@@ -602,6 +624,9 @@ onMounted(async () => {
     }
   };
 
+  // 应用在用户目录生成文件（如运行用的临时工作区）时，用 snackbar 告知保存位置
+  nativePython.onNotice = (message) => showToast(message);
+
   // 恢复/初始化工作区：
   // - Tauri 环境：由 Rust 在应用数据目录确保 WorkSpace 示例工作区存在（首次启动才写入），
   //   再加载最近打开的工作区（或默认的 WorkSpace）。
@@ -631,6 +656,7 @@ onMounted(async () => {
         pythonRunner.workspaceRoot = savedRoot;
         workspaceItems.value = fsEntriesToFSItems(entries);
         safeStorage.setItem('python_you_workspace_root', savedRoot);
+        await startWorkspaceWatcher();
         loadedFromDisk = true;
       } catch (e) {
         // 保存的根目录已失效，继续走首次创建流程
@@ -649,6 +675,7 @@ onMounted(async () => {
         pythonRunner.workspaceRoot = defaultRoot;
         workspaceItems.value = fsEntriesToFSItems(entries);
         safeStorage.setItem('python_you_workspace_root', defaultRoot);
+        await startWorkspaceWatcher();
       } catch (e) {
         // 磁盘工作区不可用，退回虚拟工作区
         loadVirtualWorkspace();
@@ -823,13 +850,15 @@ const writeDiskFile = async (item: FSItem, abs: string, content: string) => {
   try {
     await nativeApi.writeFile(abs, content);
     item.mtime = await nativeApi.statMtime(abs);
+    noteSelfChange();
   } catch (e) { }
 };
 
-// 按需加载文件内容（目录扫描时不预读，打开/运行/下载时才从磁盘读取）
-const ensureFileContent = async (file: FSItem): Promise<void> => {
+// 按需加载文件内容（目录扫描时不预读，打开/运行/下载时才从磁盘读取）。
+// force = true 忽略内存缓存强制回读：文件可能已被其他程序修改，重新打开时应看到磁盘上的最新内容
+const ensureFileContent = async (file: FSItem, force = false): Promise<void> => {
   if (!workspaceRootPath.value || file.isFolder) return;
-  if (file.content && file.content.length > 0) return;
+  if (!force && file.content && file.content.length > 0) return;
   try {
     const abs = absPath(workspaceRootPath.value, file.path);
     const content = await nativeApi.readFile(abs);
@@ -837,14 +866,127 @@ const ensureFileContent = async (file: FSItem): Promise<void> => {
     try {
       file.mtime = await nativeApi.statMtime(abs);
     } catch (e) { /* 拿不到 mtime 就不做事前比对 */ }
-    // 若该文件已有打开的标签页，同步其内容
+    // 同步已打开的标签页；有未保存修改时保留用户内容（写盘前仍会走冲突检测）
     const tab = openTabs.value.find((t) => t.fileId === file.id);
-    if (tab) {
+    if (tab && !tab.isDirty) {
       tab.content = content;
       tab.savedContent = content;
-      tab.isDirty = false;
     }
   } catch (e) { }
+};
+
+// ---- 工作区外部变更检测（轮询 + 后台状态显示） ----
+let workspaceWatcher: WorkspaceWatcher | null = null;
+let applyingWorkspaceChange = false;
+
+const stopWorkspaceWatcher = () => {
+  workspaceWatcher?.stop();
+  workspaceWatcher = null;
+};
+
+const startWorkspaceWatcher = async () => {
+  stopWorkspaceWatcher();
+  if (!workspaceRootPath.value) return;
+  const watcher = new WorkspaceWatcher((change) => { void applyWorkspaceChange(change); });
+  workspaceWatcher = watcher;
+  await watcher.prime();
+  watcher.start();
+};
+
+// 应用自身写入文件后刷新基线：避免把自己的改动当成外部变更反复提示
+const noteSelfChange = () => { void workspaceWatcher?.prime(); };
+
+const sortTreeLevel = (items: FSItem[]) => {
+  items.sort((a, b) => (a.isFolder !== b.isFolder)
+    ? (a.isFolder ? -1 : 1)
+    : a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+};
+
+const findFolderByPath = (items: FSItem[], path: string): FSItem | null => {
+  for (const item of items) {
+    if (!item.isFolder) continue;
+    if (item.path === path) return item;
+    if (item.children) {
+      const found = findFolderByPath(item.children, path);
+      if (found) return found;
+    }
+  }
+  return null;
+};
+
+const removeItemByPath = (items: FSItem[], path: string): boolean => {
+  const index = items.findIndex((item) => item.path === path);
+  if (index >= 0) {
+    items.splice(index, 1);
+    return true;
+  }
+  for (const item of items) {
+    if (item.isFolder && item.children && removeItemByPath(item.children, path)) return true;
+  }
+  return false;
+};
+
+// 把清单里的新条目挂到树上；父目录还没展开（children 未加载）时跳过，展开时会按需读盘
+const addEntryToTree = (entry: WorkspaceEntry) => {
+  const name = entry.path.split('/').filter(Boolean).pop() || entry.path;
+  const parentPath = entry.path.slice(0, entry.path.lastIndexOf('/'));
+  const node: FSItem = {
+    id: nativeFileId(entry.path),
+    name,
+    path: entry.path,
+    isFolder: entry.isFolder,
+    parentId: null,
+    isOpen: false
+  };
+  if (entry.isFolder) node.children = [];
+  else node.mtime = entry.mtime;
+
+  if (!parentPath || parentPath === '/') {
+    workspaceItems.value.push(node);
+    sortTreeLevel(workspaceItems.value);
+    return;
+  }
+  const parent = findFolderByPath(workspaceItems.value, parentPath);
+  if (!parent || !Array.isArray(parent.children)) return;
+  node.parentId = parent.id;
+  parent.children.push(node);
+  sortTreeLevel(parent.children);
+};
+
+// 应用外部变更：更新文件树、刷新受影响的已打开文件，并在标题栏后台指示区给出同步状态
+const applyWorkspaceChange = async (change: WorkspaceChange) => {
+  if (applyingWorkspaceChange) return;
+  applyingWorkspaceChange = true;
+  const summary = tf('statusWorkspaceSynced', {
+    added: change.added.length,
+    modified: change.modified.length,
+    removed: change.removed.length
+  });
+  addBackendTask('workspace-sync', t('statusWorkspaceSyncing'));
+  try {
+    searchContentCache.clear(); // 内容已变：清掉搜索用的读盘缓存
+    for (const path of change.removed) removeItemByPath(workspaceItems.value, path);
+    for (const entry of change.added) addEntryToTree(entry);
+
+    // 外部删除的文件：干净的标签页关闭；有未保存修改的保留，保存时重新写回磁盘
+    for (const path of change.removed) {
+      const tab = openTabs.value.find((t) => t.path === path);
+      if (tab && !tab.isDirty) forceCloseTab(tab.id);
+    }
+    // 外部修改且已在标签页中打开的文件：回读磁盘（有未保存修改的标签页保留用户内容）
+    for (const path of change.modified) {
+      const file = findFileByPath(workspaceItems.value, path);
+      if (file && openTabs.value.some((tab) => tab.fileId === file.id)) {
+        await ensureFileContent(file, true);
+      }
+    }
+
+    updateBackendTask('workspace-sync', { label: summary });
+    showToast(summary);
+  } finally {
+    finishBackendTask('workspace-sync');
+    applyingWorkspaceChange = false;
+  }
 };
 
 function openFileInTab(file: FSItem) {
@@ -872,7 +1014,7 @@ const handleSelectFile = async (file: FSItem) => {
   // 手动从文件树打开文件 = 离开教程流程：清除教程来源，
   // 否则「检查答案/返回教程」按钮会一直出现在之后打开的 tutorial_demo.py 上
   activeTutorialSource.value = null;
-  await ensureFileContent(file);
+  await ensureFileContent(file, true);
   openFileInTab(file);
 };
 
@@ -951,7 +1093,7 @@ const handleCreateFolder = (parentId: string | null, name: string) => {
     const parentAbs = parentId
       ? absPath(workspaceRootPath.value, getParentPath(parentId))
       : workspaceRootPath.value;
-    nativeApi.createDir(parentAbs, name).catch(() => { });
+    nativeApi.createDir(parentAbs, name).then(noteSelfChange).catch(() => { });
   }
 
   showToast(t('toastFolderCreated').replace('{name}', name));
@@ -977,7 +1119,7 @@ const handleRenameItem = (item: FSItem, newName: string) => {
 
   // 原生工作区：重命名磁盘上的真实文件/文件夹
   if (workspaceRootPath.value) {
-    nativeApi.renamePath(absPath(workspaceRootPath.value, oldPath), newName).catch(() => { });
+    nativeApi.renamePath(absPath(workspaceRootPath.value, oldPath), newName).then(noteSelfChange).catch(() => { });
   }
   showToast(t('toastRenamed'));
 };
@@ -992,7 +1134,7 @@ const confirmDelete = () => {
     const item = deleteTargetItem.value;
     // 原生工作区：先删除磁盘上的真实文件/文件夹
     if (workspaceRootPath.value) {
-      nativeApi.deletePath(absPath(workspaceRootPath.value, item.path)).catch(() => { });
+      nativeApi.deletePath(absPath(workspaceRootPath.value, item.path)).then(noteSelfChange).catch(() => { });
     }
     removeItemFromTree(workspaceItems.value, item.id);
     // Close tab if open
@@ -1009,7 +1151,7 @@ const confirmDelete = () => {
 
 // Run file directly from tree
 const handleRunFile = async (item: FSItem) => {
-  await ensureFileContent(item);
+  await ensureFileContent(item, true);
   openFileInTab(item);
   activeNavTab.value = 'explorer';
 
@@ -1027,8 +1169,23 @@ const handleRunFile = async (item: FSItem) => {
 
 // Download File
 const handleDownloadFile = async (item: FSItem) => {
-  await ensureFileContent(item);
-  const blob = new Blob([item.content || ''], { type: 'text/plain;charset=utf-8' });
+  await ensureFileContent(item, true);
+  const content = item.content || '';
+
+  // 桌面端：直接写到「下载」文件夹，并把实际保存路径告知用户
+  if (nativeApi.available()) {
+    try {
+      const path = await nativeApi.exportFile(item.name, content);
+      showToast(tf('toastExportedPath', { name: item.name, path }));
+      return;
+    } catch (err: any) {
+      // 写盘失败（如无写权限）退回浏览器下载，保证导出仍可用且有反馈
+      showToast(t('toastExportFailed') + (err?.message || err));
+    }
+  }
+
+  // 浏览器：只能走 Blob 下载，落盘位置由浏览器决定
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -1037,7 +1194,7 @@ const handleDownloadFile = async (item: FSItem) => {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  showToast(t('toastExported').replace('{name}', item.name));
+  showToast(t('toastExportedBrowser'));
 };
 
 // Import uploaded files
@@ -1126,8 +1283,6 @@ const handleContentChange = (tabId: string, newContent: string) => {
   if (tab) {
     tab.content = newContent;
     tab.isDirty = tab.content !== tab.savedContent;
-    // Scan imports from workspace + current unsaved buffer
-    syncWorkspacePackages(workspaceItems.value, newContent);
   }
 };
 
@@ -1146,7 +1301,6 @@ const commitSave = async (tab: EditorTab) => {
     if (file) await writeDiskFile(file, abs, tab.content);
     else nativeApi.writeFile(abs, tab.content).catch(() => { });
   }
-  syncWorkspacePackages(workspaceItems.value);
   showToast(t('toastFileSaved').replace('{name}', tab.name));
 };
 
@@ -1225,6 +1379,8 @@ function rebaseChildrenPaths(item: FSItem, oldPrefix: string, newPrefix: string)
 const activeTutorialSource = ref<{ id: string; title: string; isQuiz?: boolean; questionId?: string; expectedOutput?: string } | null>(null);
 const activeTutorialTopicId = ref<string>(safeStorage.getItem('python_you_last_tutorial_topic') || 'p1_home');
 const activeQuizPassed = ref(false);
+// 当前 tutorial_demo.py 缓冲区属于哪道题：同一题重复载入时保留已写入的作答
+const demoBufferKey = ref<string | null>(null);
 
 // Load tutorial code to editor
 const handleLoadTutorialCodeToEditor = (payload: { code: string; topicId: string; topicTitle: string; isQuiz?: boolean; questionId?: string; expectedOutput?: string } | string) => {
@@ -1263,7 +1419,14 @@ const handleLoadTutorialCodeToEditor = (payload: { code: string; topicId: string
   }
 
   activeNavTab.value = 'explorer';
+  const bufferKey = isQuiz && questionId ? `${topicId}#${questionId}` : `topic:${topicId}`;
   let demoFile = workspaceItems.value.find((item) => item.name === 'tutorial_demo.py');
+  const existingTab = demoFile ? openTabs.value.find((t) => t.fileId === demoFile.id) : undefined;
+  // 同一道题重复载入（编辑器 ↔ 测验来回切换）时保留已写入的作答：
+  // 用起始代码覆盖会把用户写好的答案改掉，之后的「检查答案」就会拿起始代码判分
+  const keepAnswer = !!existingTab && demoBufferKey.value === bufferKey;
+  demoBufferKey.value = bufferKey;
+
   if (!demoFile) {
     demoFile = {
       id: 'tutorial_demo_' + Date.now(),
@@ -1275,22 +1438,22 @@ const handleLoadTutorialCodeToEditor = (payload: { code: string; topicId: string
       modifiedAt: new Date()
     };
     workspaceItems.value.push(demoFile);
-  } else {
+  }
+  if (!keepAnswer) {
     demoFile.content = code;
-  }
-  // 本地工作区：首次（及每次）加载时把 tutorial_demo.py 落盘，保证重启后仍在工作区里
-  if (workspaceRootPath.value) {
-    writeDiskFile(demoFile, absPath(workspaceRootPath.value, '/tutorial_demo.py'), code);
-  }
-  // Sync content to already-open tab so editor shows latest code immediately
-  const existingTab = openTabs.value.find((t) => t.fileId === demoFile.id);
-  if (existingTab) {
-    existingTab.content = code;
-    existingTab.savedContent = code;
-    existingTab.isDirty = false;
+    // 本地工作区：把 tutorial_demo.py 落盘，保证重启后仍在工作区里
+    if (workspaceRootPath.value) {
+      writeDiskFile(demoFile, absPath(workspaceRootPath.value, '/tutorial_demo.py'), code);
+    }
+    // 同步到已打开的标签页，编辑器立即显示最新代码
+    if (existingTab) {
+      existingTab.content = code;
+      existingTab.savedContent = code;
+      existingTab.isDirty = false;
+    }
   }
   openFileInTab(demoFile);
-  showToast(t('toastTutorialCodeLoaded'));
+  showToast(keepAnswer ? t('toastTutorialCodeKept') : t('toastTutorialCodeLoaded'));
 };
 
 const tutorialViewRef = ref<InstanceType<typeof TutorialView> | null>(null);
@@ -1360,7 +1523,9 @@ const handleQuizSubmit = async () => {
   // 判分逻辑在独立判分器（utils/quizGrader）中：行序列规范化 + 逐行比对
   const { passed, expectedLines, actualLines } = gradeOutput(stdoutParts, src.expectedOutput || '');
   activeQuizPassed.value = passed;
-  setQuizQuestionResult(src.id, src.questionId || '', passed ? 'pass' : 'fail');
+  // 已通过的题目不因再次判分失败而降级（仅「重新测验」会清除成绩）
+  const alreadyPassed = getQuizQuestionResult(src.id, src.questionId || '') === 'pass';
+  setQuizQuestionResult(src.id, src.questionId || '', passed || alreadyPassed ? 'pass' : 'fail');
   if (passed) {
     syncQuizCompletion(src.id);
     showToast(t('toastQuizPassed'));
@@ -1385,10 +1550,16 @@ const isTutorialQuizMode = computed(() => {
   return !!(activeTutorialSource.value && activeTabObject.value?.name === 'tutorial_demo.py');
 });
 
+// 从测验的代码题进入编辑器时，返回目标应是测验页：工具栏「返回教程」禁用（避免绕开测验回到文章页）
+const canReturnToTutorial = computed(() => isTutorialQuizMode.value && !activeTutorialSource.value?.isQuiz);
+
 const handleCheckAnswerClick = () => {
   const src = activeTutorialSource.value;
   if (!src || !isTutorialQuizMode.value) return;
-  if (activeQuizPassed.value) {
+  // 以存储的作答记录为准（「重新测验」清除成绩后，编辑器里的按钮状态随之回退）
+  const passed = src.questionId ? getQuizQuestionResult(src.id, src.questionId) === 'pass' : false;
+  activeQuizPassed.value = passed;
+  if (passed) {
     // 已通过后再点击：返回测验页，同时再次给出通过反馈（snackbar）
     showToast(t('toastQuizPassed'));
     handleReturnToQuiz(src.id);
@@ -1399,7 +1570,7 @@ const handleCheckAnswerClick = () => {
 
 const handleTutorialBtnClick = () => {
   const src = activeTutorialSource.value;
-  if (!src || !isTutorialQuizMode.value) return;
+  if (!src || !canReturnToTutorial.value) return;
   handleReturnToTutorial(src.id);
 };
 
@@ -1449,7 +1620,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="app-container" :style="{ '--sidebar-width': sidebarExpanded ? '256px' : '80px' }">
+  <div class="app-container">
     <m3e-nav-rail id="nav-rail">
 
       <!-- Primary destinations -->
@@ -1554,13 +1725,14 @@ onMounted(() => {
         <div v-else class="title-bar-brand">
           <span>Python You</span>
         </div>
-        <!-- 后台任务指示器按钮：位于三操作按钮左侧 3.2rem，常驻显示；
-             点击弹出 rich-tooltip 展示后台任务列表 -->
-        <button id="backend-status-trigger" class="titlebar-backend-status" type="button"
-          :title="t('backendTasksTitle')" @click="toggleBackendTooltip">
-          <span class="titlebar-spinner" :class="{ 'is-idle': !backendBusy }"></span>
-          <span class="titlebar-status-text">{{ backendStatus || t('statusIdle') }}{{ backendProgressSuffix }}</span>
-        </button>
+        <!-- 后台任务指示器按钮：标题栏居中常驻；点击弹出 rich-tooltip 展示后台任务列表 -->
+        <div class="titlebar-center">
+          <button id="backend-status-trigger" class="titlebar-backend-status" type="button"
+            :title="t('backendTasksTitle')" @click="toggleBackendTooltip">
+            <span class="titlebar-spinner" :class="{ 'is-idle': !backendBusy }"></span>
+            <span class="titlebar-status-text">{{ backendStatus || t('statusIdle') }}{{ backendProgressSuffix }}</span>
+          </button>
+        </div>
         <m3e-rich-tooltip for="backend-status-trigger" :open="isBackendTooltipOpen"
           @close="isBackendTooltipOpen = false">
           <div class="backend-task-panel">
@@ -1680,7 +1852,7 @@ onMounted(() => {
               }}</span>
               {{ activeQuizPassed ? t('quizAnswerCorrectDesc') : t('checkAnswer') }}
             </m3e-button>
-            <m3e-button size="extra-small" variant="text" class="tutorBtn" :disabled="!isTutorialQuizMode"
+            <m3e-button size="extra-small" variant="text" class="tutorBtn" :disabled="!canReturnToTutorial"
               @click="handleTutorialBtnClick">
               <span slot="icon" class="material-symbols-rounded">school</span>
               {{ t('returnToTutorial') }}
@@ -1815,6 +1987,22 @@ onMounted(() => {
       </div>
     </m3e-dialog>
 
+    <!-- 运行前依赖确认 Dialog：代码引用了未安装的第三方包（安装后自动继续运行） -->
+    <m3e-dialog :open="!!pendingDependencies" @cancel="resolveInstallConfirm(false)"
+      @closed="resolveInstallConfirm(false)">
+      <span slot="header" class="m3e-dialog-title-row">
+        <span class="material-symbols-rounded m3e-dialog-icon">download</span>
+        <span class="m3e-dialog-title">{{ t('depsConfirmTitle') }}</span>
+      </span>
+      <p class="m3e-dialog-desc">{{ tf('depsConfirmMsg', { packages: (pendingDependencies || []).join('、') }) }}</p>
+      <p class="m3e-dialog-desc">{{ t('pkgConfirmRisk') }}</p>
+      <div slot="actions" class="m3e-dialog-actions">
+        <m3e-button variant="text" size="small" @click="resolveInstallConfirm(false)">{{ t('cancel') }}</m3e-button>
+        <m3e-button variant="filled" size="small" @click="resolveInstallConfirm(true)">{{ t('depsConfirmInstall')
+          }}</m3e-button>
+      </div>
+    </m3e-dialog>
+
     <!-- 解释器版本管理器 Dialog -->
     <m3e-dialog :open="isInterpreterOpen" @cancel="isInterpreterOpen = false" @closed="isInterpreterOpen = false">
       <span slot="header" class="m3e-dialog-title-row">
@@ -1822,7 +2010,11 @@ onMounted(() => {
         <span class="m3e-dialog-title">{{ t('interpreter') }}</span>
       </span>
       <div class="interpreter-dialog-body">
-        <p class="m3e-dialog-desc">{{ t('interpreterSubtitle') }}</p>
+        <!-- <p class="m3e-dialog-desc">{{ t('interpreterSubtitle') }}</p> -->
+        <p class="interpreter-current-status">
+          {{ interpreterError || engineLabel || t('engineLabelDefault') }}
+        </p>
+
         <m3e-select class="theme-select" @change="onInterpreterDialogChange">
           <m3e-option value="auto" :selected="!config.interpreter || config.interpreter === 'auto'">
             {{ t('interpreterAuto') }}
@@ -1833,14 +2025,20 @@ onMounted(() => {
           <m3e-optgroup>
             <span slot="label">{{ t('interpreterLocal') }}</span>
             <m3e-option v-for="v in nativePython.versions.value" :key="v.id" :value="v.id"
-              :selected="config.interpreter === v.id">{{ v.label }}</m3e-option>
+              :selected="config.interpreter === v.id">
+              <span class="interp-option">
+                <span>{{ v.label }}</span>
+                <span v-if="v.path" class="interp-path">{{ v.path }}</span>
+              </span>
+            </m3e-option>
           </m3e-optgroup>
         </m3e-select>
-        <p class="interpreter-current-status">
-          {{ engineLabel || t('engineLabelDefault') }}
-        </p>
       </div>
       <div slot="actions" class="m3e-dialog-actions">
+        <m3e-button variant="outlined" size="small" @click="handleAddInterpreter">
+          <span slot="icon" class="material-symbols-rounded">add</span>
+          {{ t('interpreterAdd') }}
+        </m3e-button>
         <m3e-button variant="filled" size="small" @click="isInterpreterOpen = false">{{ t('helpGotIt') }}</m3e-button>
       </div>
     </m3e-dialog>
@@ -2015,7 +2213,7 @@ m3e-nav-rail {
 }
 
 .windows-title-bar {
-  height: 36px;
+  height: 32px;
   background-color: var(--surface-color);
   display: flex;
   align-items: center;
@@ -2048,8 +2246,21 @@ m3e-nav-rail {
   z-index: 35000;
 }
 
-/* 后台服务状态指示器：三操作按钮左侧 3.2rem，自绘小加载器 + 状态小字 */
+/* 标题栏中央承载层：用 flex 居中，不用 transform——
+   m3e 的浮层锚定走 offsetLeft/offsetTop（不含 transform），带位移的按钮会让
+   后台任务列表浮层整体偏掉半个按钮宽度，文字越长偏得越多 */
+.titlebar-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* 后台服务状态指示器：自绘小加载器 + 状态小字，常驻显示 */
 .titlebar-backend-status {
+  pointer-events: auto;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -2057,10 +2268,6 @@ m3e-nav-rail {
   color: var(--text-tertiary);
   user-select: none;
   white-space: nowrap;
-
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
 
   /* 按钮样式：可点击弹出后台任务列表；标题栏是拖拽区，须 no-drag 才能接收点击 */
   padding: 2px 8px;
@@ -2129,8 +2336,15 @@ m3e-nav-rail {
 }
 
 @keyframes backend-dot-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
 }
 
 .backend-task-label {
@@ -2363,6 +2577,8 @@ m3e-snackbar.app-snackbar {
   color: var(--text-tertiary);
   margin: 0;
 }
+
+/* 解释器选项样式在全局 m3eStyle.css（与设置页共用） */
 
 /* m3e-dialog 内容样式 */
 .m3e-dialog-title-row {

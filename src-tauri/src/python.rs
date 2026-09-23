@@ -7,16 +7,15 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 pub struct PythonState {
     pub proc: Mutex<Option<Child>>,
     pub repl_stdin: Mutex<Option<ChildStdin>>,
-    pub python_path: Mutex<Option<String>>,
     // 用户选择的解释器 id（"python" / "py" / "py-3.13" / 等），None = 自动选第一个可用
     pub selected_python: Mutex<Option<String>>,
     // 当前正在运行的任务会话（run / repl / pip），用于停止时正确通知前端收尾
@@ -28,7 +27,6 @@ impl Default for PythonState {
         Self {
             proc: Mutex::new(None),
             repl_stdin: Mutex::new(None),
-            python_path: Mutex::new(None),
             selected_python: Mutex::new(None),
             current_session: Mutex::new(None),
         }
@@ -55,6 +53,8 @@ pub struct PythonVersion {
     label: String,
     /// 启动命令拆分（首元素为可执行文件，后续为固定参数，如 ["py", "-3.13"]）
     command: Vec<String>,
+    /// 解释器可执行文件绝对路径（供选择器辨认；探测不到时为空串）
+    path: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -75,17 +75,15 @@ fn no_console(cmd: &mut Command) {
 #[cfg(not(windows))]
 fn no_console(_cmd: &mut Command) {}
 
-fn detect_version(cmd: &str) -> Option<String> {
+// 探测解释器：一次调用同时取回版本号与可执行文件绝对路径（选择器里需要展示路径辨认）
+fn probe_interpreter(parts: &[String]) -> Option<(String, String)> {
     use std::io::Read;
 
-    let mut c = Command::new(cmd);
-    c.arg("--version");
+    let mut c = command_from_parts(parts);
+    c.arg("-c").arg("import sys;print(sys.version.split()[0]);print(sys.executable)");
     no_console(&mut c);
     c.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = match c.spawn() {
-        Ok(ch) => ch,
-        Err(_) => return None,
-    };
+    let mut child = c.spawn().ok()?;
 
     // 限定等待时间（3s），防止异常 python 启动器（商店占位/杀软拦截）让引擎检测永久挂起
     let deadline = SystemTime::now() + Duration::from_millis(3000);
@@ -101,61 +99,108 @@ fn detect_version(cmd: &str) -> Option<String> {
         std::thread::sleep(Duration::from_millis(30));
     };
 
-    let mut text = String::new();
-    if let Some(status) = status {
-        if status.success() {
-            let mut buf = String::new();
-            if let Some(mut so) = child.stdout.take() {
-                let _ = so.read_to_string(&mut buf);
-            }
-            if buf.trim().is_empty() {
-                if let Some(mut se) = child.stderr.take() {
-                    let _ = se.read_to_string(&mut buf);
-                }
-            }
-            text = buf.trim().to_string();
+    let mut buf = String::new();
+    let success = status.map(|s| s.success()).unwrap_or(false);
+    if success {
+        if let Some(mut so) = child.stdout.take() {
+            let _ = so.read_to_string(&mut buf);
         }
     }
     // 无论如何确保子进程被回收，避免残留
     let _ = child.kill();
     let _ = child.wait();
-
-    // 过滤 Windows 商店的 "Python was not found" 占位桩
-    if text.contains("Python") && !text.to_lowercase().contains("not found") {
-        return Some(text);
+    if !success {
+        return None;
     }
-    None
+
+    let mut lines = buf.lines().map(str::trim).filter(|line| !line.is_empty());
+    let version = lines.next()?.to_string();
+    let path = lines.next().unwrap_or("").to_string();
+    Some((version, path))
 }
 
-// 扫描本机所有可用 Python 解释器（python / python3 / py 启动器及其具体版本）
+// 用户手动添加的解释器（持久化到应用数据目录，scan_python_versions 会并入列表）
+#[derive(Clone, Serialize, Deserialize)]
+struct CustomPython {
+    path: String,
+    version: String,
+}
+
+static CUSTOM_PYTHONS: OnceLock<Mutex<Vec<CustomPython>>> = OnceLock::new();
+
+fn custom_pythons() -> &'static Mutex<Vec<CustomPython>> {
+    CUSTOM_PYTHONS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+fn custom_store_file(app: &AppHandle) -> Option<PathBuf> {
+    app.path()
+        .app_data_dir()
+        .ok()
+        .map(|dir| dir.join("custom_interpreters.json"))
+}
+
+fn load_custom_pythons(app: &AppHandle) {
+    let Some(file) = custom_store_file(app) else { return };
+    let Ok(text) = std::fs::read_to_string(&file) else { return };
+    if let Ok(list) = serde_json::from_str::<Vec<CustomPython>>(&text) {
+        *custom_pythons().lock().unwrap() = list;
+    }
+}
+
+fn save_custom_pythons(app: &AppHandle) {
+    let Some(file) = custom_store_file(app) else { return };
+    if let Some(dir) = file.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Ok(text) = serde_json::to_string_pretty(&*custom_pythons().lock().unwrap()) {
+        let _ = std::fs::write(&file, text);
+    }
+}
+
+// 扫描本机所有可用 Python 解释器（python / python3 / py 启动器及其具体版本 + 用户自定义）
 fn scan_python_versions() -> Vec<PythonVersion> {
     let mut out: Vec<PythonVersion> = Vec::new();
     for cmd in ["python", "python3"] {
-        if let Some(ver) = detect_version(cmd) {
+        if let Some((ver, path)) = probe_interpreter(&[cmd.to_string()]) {
             out.push(PythonVersion {
                 id: cmd.to_string(),
-                version: ver.clone(),
-                label: format!("{} ({})", ver, cmd),
+                version: format!("Python {ver}"),
+                label: format!("Python {ver} ({cmd})"),
                 command: vec![cmd.to_string()],
+                path,
             });
         }
     }
     // py 启动器本身 + py -0 枚举的具体版本
-    if let Some(ver) = detect_version("py") {
+    if let Some((ver, path)) = probe_interpreter(&["py".to_string()]) {
         out.push(PythonVersion {
             id: "py".to_string(),
-            version: ver.clone(),
-            label: format!("{} (py)", ver),
+            version: format!("Python {ver}"),
+            label: format!("Python {ver} (py)"),
             command: vec!["py".to_string()],
+            path,
         });
         for v in list_py_versions() {
+            let parts = vec!["py".to_string(), format!("-{v}")];
+            let probed = probe_interpreter(&parts);
             out.push(PythonVersion {
-                id: format!("py-{}", v),
-                version: format!("Python {}", v),
-                label: format!("Python {} (py -{})", v, v),
-                command: vec!["py".to_string(), format!("-{}", v)],
+                id: format!("py-{v}"),
+                version: format!("Python {v}"),
+                label: format!("Python {v} (py -{v})"),
+                command: parts,
+                path: probed.map(|(_, p)| p).unwrap_or_default(),
             });
         }
+    }
+    // 用户手动添加的解释器
+    for custom in custom_pythons().lock().unwrap().iter() {
+        out.push(PythonVersion {
+            id: format!("custom:{}", custom.path),
+            version: custom.version.clone(),
+            label: format!("{}（自定义）", custom.version),
+            command: vec![custom.path.clone()],
+            path: custom.path.clone(),
+        });
     }
     out
 }
@@ -367,7 +412,8 @@ fn write_temp_script(code: &str) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-pub fn python_detect(state: State<PythonState>) -> PythonInfo {
+pub fn python_detect(app: AppHandle, state: State<PythonState>) -> PythonInfo {
+    load_custom_pythons(&app);
     let all = scan_python_versions();
     if all.is_empty() {
         return PythonInfo {
@@ -603,5 +649,73 @@ pub fn python_pip_install(app: AppHandle, state: State<PythonState>, pkg: String
         cmd.arg("--user");
     }
     cmd.arg(&pkg);
+    spawn_streaming(app, &state, cmd, None, "pip", true)
+}
+
+// 添加自定义解释器：探测所选的 Python 可执行文件，成功后持久化并返回可直接使用的条目
+#[tauri::command]
+pub fn python_add_interpreter(app: AppHandle, path: String) -> Result<PythonVersion, String> {
+    if !PathBuf::from(&path).is_file() {
+        return Err("所选文件不存在".to_string());
+    }
+    let parts = vec![path.clone()];
+    let (ver, exe) = probe_interpreter(&parts)
+        .ok_or_else(|| "该文件不是可用的 Python 解释器".to_string())?;
+    let exe = if exe.is_empty() { path } else { exe };
+    let entry = PythonVersion {
+        id: format!("custom:{exe}"),
+        version: format!("Python {ver}"),
+        label: format!("Python {ver}（自定义）"),
+        command: vec![exe.clone()],
+        path: exe.clone(),
+    };
+
+    load_custom_pythons(&app);
+    {
+        let mut list = custom_pythons().lock().unwrap();
+        if !list.iter().any(|c| c.path == exe) {
+            list.push(CustomPython { path: exe, version: entry.version.clone() });
+        }
+    }
+    save_custom_pythons(&app);
+    Ok(entry)
+}
+
+// 本机已安装包名列表：运行前的依赖检查用
+#[tauri::command]
+pub fn python_pip_list(state: State<PythonState>) -> Result<Vec<String>, String> {
+    let py_parts = resolve_python(&state)?;
+    let mut cmd = command_from_parts(&py_parts);
+    cmd.arg("-m").arg("pip").arg("list").arg("--format=json").arg("--disable-pip-version-check");
+    no_console(&mut cmd);
+    let out = cmd.output().map_err(|e| format!("读取已安装包失败: {e}"))?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    let list: Vec<serde_json::Value> =
+        serde_json::from_slice(&out.stdout).map_err(|e| format!("解析 pip list 输出失败: {e}"))?;
+    Ok(list
+        .into_iter()
+        .filter_map(|item| item.get("name").and_then(|n| n.as_str()).map(str::to_lowercase))
+        .collect())
+}
+
+// 从本地文件安装扩展包（wheel / sdist）：与在线安装共用 pip 会话与输出通道
+#[tauri::command]
+pub fn python_pip_install_file(
+    app: AppHandle,
+    state: State<PythonState>,
+    path: String,
+) -> Result<(), String> {
+    if !PathBuf::from(&path).is_file() {
+        return Err("所选安装包文件不存在".to_string());
+    }
+    let py_parts = resolve_python(&state)?;
+    let mut cmd = command_from_parts(&py_parts);
+    cmd.arg("-m").arg("pip").arg("install").arg("--no-input");
+    if !is_venv(&py_parts) {
+        cmd.arg("--user");
+    }
+    cmd.arg(&path);
     spawn_streaming(app, &state, cmd, None, "pip", true)
 }

@@ -36,6 +36,8 @@ class NativePythonRunner {
   public versions = ref<PythonVersion[]>([]);
   // 是否允许使用原生引擎：config.interpreter === 'pyodide' 时由 App.vue 关闭
   public enabled = true;
+  // 应用在用户目录生成文件时的提示通道（App 接上 snackbar，告知保存位置）
+  public onNotice?: (message: string) => void;
 
   get supported(): boolean {
     return nativeApi.available();
@@ -107,6 +109,7 @@ class NativePythonRunner {
     }));
     const path = await nativeApi.materializeWorkspace(items);
     this.tempWorkspacePath = path;
+    this.onNotice?.(tf('tempWorkspaceSaved', { path }));
     return path;
   }
 
@@ -214,15 +217,15 @@ class NativePythonRunner {
     return undefined;
   }
 
-  async loadPackage(
-    pkgName: string,
+  // pip 会话共用：进度片段只喂后台指示器、其余输出进终端，done 事件结算成败
+  private runPipSession(
+    start: () => Promise<void>,
+    label: string,
     onOutput: (out: ConsoleOutput) => void,
     onProgress?: (progress: number | null) => void
   ): Promise<boolean> {
     const session: Session = 'pip';
-    await this.ensureListener();
-
-    return new Promise(async (resolve) => {
+    return new Promise<boolean>((resolve) => {
       this.listeners[session] = (kind, text) => {
         if (kind === 'stdout' || kind === 'stderr') {
           // FR-5.6：进度条片段只用于后台任务指示器，不进终端（否则每次刷新都是一行）
@@ -246,15 +249,14 @@ class NativePythonRunner {
           onOutput({
             id: uid(),
             type: 'system',
-            text: ok ? tf('pipInstalledOk', { name: pkgName }) : tf('pipInstallFailed', { name: pkgName, code: text }),
+            text: ok ? tf('pipInstalledOk', { name: label }) : tf('pipInstallFailed', { name: label, code: text }),
             timestamp: now(),
           });
+          this.pipListCache = null;
           resolve(ok);
         }
       };
-      try {
-        await nativeApi.pipInstall(pkgName);
-      } catch (err: any) {
+      start().catch((err: any) => {
         this.listeners[session] = null;
         onOutput({
           id: uid(),
@@ -263,8 +265,51 @@ class NativePythonRunner {
           timestamp: now(),
         });
         resolve(false);
-      }
+      });
     });
+  }
+
+  async loadPackage(
+    pkgName: string,
+    onOutput: (out: ConsoleOutput) => void,
+    onProgress?: (progress: number | null) => void
+  ): Promise<boolean> {
+    await this.ensureListener();
+    return this.runPipSession(() => nativeApi.pipInstall(pkgName), pkgName, onOutput, onProgress);
+  }
+
+  // 从本地文件安装（wheel / sdist），与在线安装共用 pip 会话与输出通道
+  async installFromFile(
+    filePath: string,
+    fileName: string,
+    onOutput: (out: ConsoleOutput) => void,
+    onProgress?: (progress: number | null) => void
+  ): Promise<boolean> {
+    await this.ensureListener();
+    return this.runPipSession(() => nativeApi.pipInstallFile(filePath), fileName, onOutput, onProgress);
+  }
+
+  // 已安装包名（小写）集合：会话内缓存，安装后失效；读取失败返回 null（调用方跳过依赖检查）
+  private pipListCache: Set<string> | null = null;
+
+  async installedPackages(): Promise<Set<string> | null> {
+    if (this.pipListCache) return this.pipListCache;
+    try {
+      const names = await nativeApi.pipList();
+      this.pipListCache = new Set(names.map((name) => name.toLowerCase()));
+      return this.pipListCache;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // 添加自定义解释器：探测成功后并入可选列表
+  async addInterpreter(path: string): Promise<PythonVersion> {
+    const entry = await nativeApi.addInterpreter(path);
+    if (!this.versions.value.some((v) => v.id === entry.id)) {
+      this.versions.value = [...this.versions.value, entry];
+    }
+    return entry;
   }
 
   // 杀掉当前子进程。注意：不要清除 run 监听器，让 "done" 事件正常收尾 Promise。

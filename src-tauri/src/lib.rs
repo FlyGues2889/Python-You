@@ -21,6 +21,11 @@ pub fn run() {
             fs::fs_read_file,
             fs::fs_write_file,
             fs::fs_stat_mtime,
+            fs::fs_scan_workspace,
+            fs::fs_export_file,
+            python::python_add_interpreter,
+            python::python_pip_list,
+            python::python_pip_install_file,
             fs::fs_create_file,
             fs::fs_create_dir,
             fs::fs_rename,
@@ -40,11 +45,13 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
-            // 应用退出时杀掉仍存活的 Python 子进程（REPL / 脚本 / pip），避免留下孤儿进程
+            // 应用退出时杀掉仍存活的 Python 子进程（REPL / 脚本 / pip），避免留下孤儿进程；
+            // 并清理运行期落盘的临时工作区（NFR-5.7）
             if let tauri::RunEvent::Exit = event {
                 if let Some(state) = app.try_state::<python::PythonState>() {
                     python::shutdown(state.inner());
                 }
+                fs::cleanup_temp_workspaces();
             }
         });
 }
