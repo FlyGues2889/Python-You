@@ -119,6 +119,9 @@ export const nativeApi = {
   pipInstall(pkg: string): Promise<void> {
     return invoke('python_pip_install', { pkg });
   },
+  pipUninstall(pkg: string): Promise<void> {
+    return invoke('python_pip_uninstall', { pkg });
+  },
   pipList(): Promise<string[]> {
     return invoke('python_pip_list');
   },

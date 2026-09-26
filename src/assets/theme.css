@@ -129,10 +129,12 @@
   --surface-variant: var(--md-sys-color-surface-2); /* 沿用应用取值（surface-2），避免深色下视觉漂移 */
   --text-color: var(--md-sys-color-on-background);
   --text-secondary: var(--md-sys-color-on-surface-variant);
-  --text-tertiary: var(--md-sys-color-outline);
+  /* 第三级文字色原本取 outline（neutral-variant 50）：实测在纸面 #fdfcff 上 4.40:1、
+     卡片 #f1f5fb 上 4.11:1，都不满足小字 4.5:1。M3 的文字角色只有 on-surface /
+     on-surface-variant 两个，层级由字号字重承担 —— 这里对齐到 on-surface-variant。 */
+  --text-tertiary: var(--md-sys-color-on-surface-variant);
   --primary: var(--md-sys-color-primary);
   --primary-rgb: var(--md-sys-color-primary-rgb);
-  --primary-hover: #004d80;
   --primary-container: var(--md-sys-color-primary-container);
   --on-primary: var(--md-sys-color-on-primary);
   --on-primary-container: var(--md-sys-color-on-primary-container);
@@ -149,50 +151,27 @@
   --outline: var(--md-sys-color-outline);
   --outline-variant: var(--md-sys-color-outline-variant);
   --error: var(--md-sys-color-error);
-  --success: #1a7f37; /* 亮色成功绿：GitHub 同款，比 #16a34a 深、沉稳不刺眼 */
+  --success: #1a7f37;
   --on-error: var(--md-sys-color-on-error);
   --error-container: var(--md-sys-color-error-container);
   --on-error-container: var(--md-sys-color-on-error-container);
-  --background: var(--md-sys-color-background);
   --surface: var(--md-sys-color-surface);
   --on-surface: var(--md-sys-color-on-surface);
-  --shadow-rgb: var(--md-sys-color-shadow-rgb);
-  --on-background: var(--md-sys-color-on-background);
   --on-surface-variant: var(--md-sys-color-on-surface-variant);
   --inverse-surface: var(--md-sys-color-inverse-surface);
   --inverse-on-surface: var(--md-sys-color-inverse-on-surface);
-  --on-inverse-surface: var(--md-sys-color-inverse-on-surface);
-  --surface-0: var(--md-sys-color-surface-0);
-  --surface-1: var(--md-sys-color-surface-1);
   --surface-2: var(--md-sys-color-surface-2);
-  --surface-3: var(--md-sys-color-surface-3);
-  --surface-4: var(--md-sys-color-surface-4);
-  --surface-5: var(--md-sys-color-surface-5);
-
-  /* 统一焦点叠加 */
-  --focus-overlay: rgba(var(--md-sys-color-primary-rgb), 0.08);
 
   /* MD3 抬升色调 */
-  --surface-tint: var(--md-sys-color-primary);
-  --surface-container-lowest: var(--md-sys-color-surface-container-lowest);
   --surface-container-low: var(--md-sys-color-surface-container-low);
   --surface-container: var(--md-sys-color-surface-container);
   --surface-container-high: var(--md-sys-color-surface-container-high);
   --surface-container-highest: var(--md-sys-color-surface-container-highest);
 
   /* 语义强调色（accent）：indigo/amber 走 MD3 色系，emerald 为固定品牌绿（亮色值） */
-  --accent-indigo-bg: var(--primary-container);
-  --accent-indigo-text: var(--on-primary-container);
-  --accent-indigo-border: var(--primary);
-  --accent-amber-bg: var(--tertiary-container);
   --accent-amber-text: var(--on-tertiary-container);
-  --accent-amber-border: var(--tertiary);
-  --accent-emerald-bg: #e8f5e9;
   --accent-emerald-text: #1b5e20;
   --accent-emerald-border: #2e7d32;
-  --accent-rose-bg: var(--error-container);
-  --accent-rose-text: var(--on-error-container);
-  --accent-rose-border: var(--error);
 }
 
 /* ---------- 深色主题 ---------- */
@@ -305,10 +284,10 @@
   --surface-variant: var(--md-sys-color-surface-2); /* 沿用应用取值（surface-2），避免深色下视觉漂移 */
   --text-color: var(--md-sys-color-on-background);
   --text-secondary: var(--md-sys-color-on-surface-variant);
-  --text-tertiary: var(--md-sys-color-outline);
+  /* 同 secondary：M3 只有两级文字角色，理由见浅色主题 */
+  --text-tertiary: var(--md-sys-color-on-surface-variant);
   --primary: var(--md-sys-color-primary);
   --primary-rgb: var(--md-sys-color-primary-rgb);
-  --primary-hover: #7db4ff;
   --primary-container: var(--md-sys-color-primary-container);
   --on-primary: var(--md-sys-color-on-primary);
   --on-primary-container: var(--md-sys-color-on-primary-container);
@@ -329,46 +308,23 @@
   --on-error: var(--md-sys-color-on-error);
   --error-container: var(--md-sys-color-error-container);
   --on-error-container: var(--md-sys-color-on-error-container);
-  --background: var(--md-sys-color-background);
   --surface: var(--md-sys-color-surface);
   --on-surface: var(--md-sys-color-on-surface);
-  --shadow-rgb: var(--md-sys-color-shadow-rgb);
-  --on-background: var(--md-sys-color-on-background);
   --on-surface-variant: var(--md-sys-color-on-surface-variant);
   --inverse-surface: var(--md-sys-color-inverse-surface);
   --inverse-on-surface: var(--md-sys-color-inverse-on-surface);
-  --on-inverse-surface: var(--md-sys-color-inverse-on-surface);
-  --surface-0: var(--md-sys-color-surface-0);
-  --surface-1: var(--md-sys-color-surface-1);
   --surface-2: var(--md-sys-color-surface-2);
-  --surface-3: var(--md-sys-color-surface-3);
-  --surface-4: var(--md-sys-color-surface-4);
-  --surface-5: var(--md-sys-color-surface-5);
-
-  /* 统一焦点叠加 */
-  --focus-overlay: rgba(var(--md-sys-color-primary-rgb), 0.12);
 
   /* MD3 抬升色调 */
-  --surface-tint: var(--md-sys-color-primary);
-  --surface-container-lowest: var(--md-sys-color-surface-container-lowest);
   --surface-container-low: var(--md-sys-color-surface-container-low);
   --surface-container: var(--md-sys-color-surface-container);
   --surface-container-high: var(--md-sys-color-surface-container-high);
   --surface-container-highest: var(--md-sys-color-surface-container-highest);
 
   /* 语义强调色（accent）：emerald 品牌绿深色值 */
-  --accent-indigo-bg: var(--primary-container);
-  --accent-indigo-text: var(--on-primary-container);
-  --accent-indigo-border: var(--primary);
-  --accent-amber-bg: var(--tertiary-container);
   --accent-amber-text: var(--on-tertiary-container);
-  --accent-amber-border: var(--tertiary);
-  --accent-emerald-bg: #1b5e20;
   --accent-emerald-text: #e8f5e9;
   --accent-emerald-border: #81c784;
-  --accent-rose-bg: var(--error-container);
-  --accent-rose-text: var(--on-error-container);
-  --accent-rose-border: var(--error);
 }
 
 /* =========================================================

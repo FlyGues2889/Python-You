@@ -255,6 +255,79 @@ const updateCursorPosition = () => {
   if (completionVisible.value && !isCompletionRangeCurrent()) closeCompletions();
 };
 
+/* ==================== 行号点选整行 ==================== */
+// 与常见 IDE 一致：点行号选中整行，按住拖动按行扩展（Shift + 点从当前行扩选）
+let lineDragAnchor = 0;        // 拖动起点行（1 基）
+let lineDragging = false;
+
+const editorLineHeight = () => (props.config.fontSize || 15) * 1.5;
+
+// 每行起始处的字符偏移（用于把行号换算成 textarea 的选区）
+const lineStartOffsets = (text: string): number[] => {
+  const offsets = [0];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '\n') offsets.push(i + 1);
+  }
+  return offsets;
+};
+
+// 选中 [from, to] 覆盖的整行：含行尾换行（末行无换行时到文本末尾），
+// 这样复制多行得到的是完整行，粘贴进新文件不会粘连
+const selectLineRange = (from: number, to: number) => {
+  const el = textareaRef.value;
+  if (!el) return;
+  const text = el.value;
+  const offsets = lineStartOffsets(text);
+  const last = offsets.length;
+  const startLine = Math.min(Math.max(1, Math.min(from, to)), last);
+  const endLine = Math.min(Math.max(1, Math.max(from, to)), last);
+  const selStart = offsets[startLine - 1];
+  const selEnd = endLine < last ? offsets[endLine] : text.length;
+
+  el.focus();
+  el.setSelectionRange(selStart, selEnd);
+  updateCursorPosition();
+};
+
+// 指针落在第几行：行号列与正文行高一致（1.5 倍字号），每行一个显示行（正文不折行）
+const lineAtPointerY = (clientY: number): number => {
+  const col = lineNumbersRef.value;
+  if (!col) return 1;
+  const rect = col.getBoundingClientRect();
+  const padTop = parseFloat(getComputedStyle(col).paddingTop) || 0;
+  const offsetY = clientY - rect.top - padTop + col.scrollTop;
+  const line = Math.floor(offsetY / editorLineHeight()) + 1;
+  return Math.min(Math.max(1, line), linesCount.value);
+};
+
+const handleLineSelectMove = (e: MouseEvent) => {
+  if (!lineDragging) return;
+  e.preventDefault();
+  selectLineRange(lineDragAnchor, lineAtPointerY(e.clientY));
+};
+
+const stopLineSelect = () => {
+  lineDragging = false;
+  document.removeEventListener('mousemove', handleLineSelectMove);
+  document.removeEventListener('mouseup', stopLineSelect);
+};
+
+const startLineSelect = (e: MouseEvent, line: number) => {
+  if (e.button !== 0) return;
+  e.preventDefault(); // 别让行号列开始原生文本选择
+  if (e.shiftKey) {
+    // Shift + 点：从当前所在行扩选到点的这一行
+    lineDragAnchor = cursorLine.value;
+    selectLineRange(lineDragAnchor, line);
+    return;
+  }
+  lineDragAnchor = line;
+  lineDragging = true;
+  selectLineRange(line, line);
+  document.addEventListener('mousemove', handleLineSelectMove);
+  document.addEventListener('mouseup', stopLineSelect);
+};
+
 /* ==================== 光标位置记忆 / 会话恢复 ==================== */
 const cursorMemory = ref<Record<string, { line: number; col: number }>>({});
 let cursorSaveTimer: any = null;
@@ -1109,6 +1182,7 @@ onBeforeUnmount(() => {
   editorScrollbarObserver?.disconnect();
   editorScrollbarObserver = null;
   clearTimeout(scrollbarHideTimer);
+  stopLineSelect(); // 卸载时摘掉行号拖选挂在 document 上的监听
 });
 
 </script>
@@ -1202,7 +1276,7 @@ onBeforeUnmount(() => {
             'active-line-num': n === cursorLine,
             'matched-line-num': matchedLineNumbers.has(n) && n !== currentMatchedLineNumber,
             'current-matched-line-num': n === currentMatchedLineNumber
-          }">
+          }" @mousedown="startLineSelect($event, n)">
             {{ n }}
           </div>
         </div>
@@ -1270,7 +1344,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: 12px;
 }
 
 /* 标签条外框：承载两侧滚动按钮与内部可横向滚动的标签列表 */
@@ -1317,7 +1391,7 @@ onBeforeUnmount(() => {
   color: var(--text-tertiary);
   font-size: 0.8125rem;
   cursor: pointer;
-  transition: background-color 0.15s, color 0.15s;
+  transition: background-color var(--motion-effects-fast), color var(--motion-effects-fast);
 }
 
 .editor-tab-item:hover {
@@ -1439,8 +1513,9 @@ kbd {
   height: 1.5em;
   line-height: 1.5;
   padding-right: 4px;
-  border-radius: 2px;
-  transition: background-color 0.15s, color 0.15s;
+  border-radius: 4px;
+  cursor: pointer; /* 点一下选整行 */
+  transition: background-color var(--motion-effects-fast), color var(--motion-effects-fast);
   opacity: 0.5;
 }
 
@@ -1591,7 +1666,7 @@ kbd {
   z-index: 5;
   border-radius: 9999px;
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--motion-effects);
   pointer-events: none;
 }
 
@@ -1602,7 +1677,7 @@ kbd {
   top: 2px;
   bottom: 2px;
   width: 4px;
-  transition: opacity 0.2s ease, width 0.15s ease;
+  transition: opacity var(--motion-effects), width var(--motion-spatial-fast);
 }
 
 .custom-scrollbar.vertical:hover,
@@ -1615,7 +1690,7 @@ kbd {
   right: 2px;
   bottom: 0;
   height: 4px;
-  transition: opacity 0.2s ease, height 0.15s ease;
+  transition: opacity var(--motion-effects), height var(--motion-spatial-fast);
 }
 
 .custom-scrollbar.horizontal:hover,
@@ -1629,7 +1704,7 @@ kbd {
   height: 100%;
   border-radius: 9999px;
   background: color-mix(in srgb, var(--outline) 30%, transparent);
-  transition: background-color 0.2s ease;
+  transition: background-color var(--motion-effects);
 }
 
 /* 显示状态：滚动中 / 拖拽中 / 悬停 */
@@ -1656,7 +1731,7 @@ kbd {
   color: var(--text-color);
   background-color: var(--surface-container-high);
   border: 1px solid var(--border-color-muted);
-  border-radius: 6px;
+  border-radius: 12px; /* 富提示：M3 RichTooltip.ContainerShape = CornerMedium */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   pointer-events: none;
   white-space: pre-line;

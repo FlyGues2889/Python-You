@@ -1,4 +1,4 @@
-import { TutorialStage, TutorialTopic } from '../tutorialData';
+import { TutorialStage, TutorialTopic } from '../../tutorialData';
 
 export const stage5: TutorialStage = {
 
@@ -14,10 +14,7 @@ export const stage5: TutorialStage = {
       content: {
         overview: '模块（Module）就是一个 .py 文件，把相关的函数和变量放在一起；包（Package）是一组模块的集合。有了模块，代码可以「分门别类」存放，想用哪个就 import 哪个。',
         sections: [
-          { heading: '生活小例子', text: '就像工具箱：螺丝刀、扳手、钳子各有各的抽屉。Python 里 import math 就是打开「数学」抽屉，里面的 sqrt 开平方、pi 圆周率随时能拿。' },
-          {
-            heading: '常见导入语法',
-            text: '• `import module_name`：导入整个模块\n• `from module import xxx`：导入模块中的指定符号\n• `import module as alias`：导入并重命名\n• `from module import *`：导入所有（不推荐，容易命名冲突）',
+          { heading: '常见导入语法', text: '就像工具箱：螺丝刀、扳手、钳子各有各的抽屉。Python 里 import math 就是打开「数学」抽屉，里面的 sqrt 开平方、pi 圆周率随时能拿。\n\n• `import module_name`：导入整个模块\n• `from module import xxx`：导入模块中的指定符号\n• `import module as alias`：导入并重命名\n• `from module import *`：导入所有（不推荐，容易命名冲突）',
             code: `import math as m\nprint("圆周率 π:", m.pi)\n\nfrom random import randint, choice\nprint("随机 1-100 整数:", randint(1, 100))\nprint("随机抽取:", choice(["Apple", "Banana", "Cherry"]))`
           },
           {
@@ -36,10 +33,6 @@ export const stage5: TutorialStage = {
             text: '每个模块都有 `__name__` 属性：\n• 直接运行脚本时，`__name__ == "__main__"`\n• 被其他模块导入时，`__name__ == 模块名`\n\n`if __name__ == "__main__":` 块里的代码只在直接运行时执行，被导入时不执行，常用于写模块测试代码。',
             code: `# 模块入口测试模板\ndef main():\n    print("程序主逻辑")\n\nif __name__ == "__main__":\n    # 直接运行该文件才执行\n    main()\n    print("模块自测代码")`
           },
-          {
-            heading: '小结',
-            text: 'import 模块名 导入整个模块，用 模块名.函数 调用；from 模块 import 函数 可以只导入需要的部分；自己写的 .py 文件也能被 import；__name__ 用于判断是直接运行还是被导入。'
-          }
         ],
         codeExample: `import sys\nprint("Python 模块检索路径 (sys.path):")\nfor path in sys.path[:3]:\n    print(" ->", path)`,
         tips: [
@@ -56,10 +49,7 @@ export const stage5: TutorialStage = {
       content: {
         overview: 'datetime 是 Python 自带的日期时间模块：可以拿到现在的日期时间、算两个日期差多少天、把日期变成指定格式的字符串，是做「时间相关」功能的标准工具。',
         sections: [
-          { heading: '生活小例子', text: '算距离放假还有几天：拿到今天的日期，再拿到放假日期，两者相减就是剩余天数。datetime.date(2026, 1, 1) - datetime.date.today() 一步算出。' },
-          {
-            heading: 'datetime 核心类总览',
-            text: '',
+          { heading: 'datetime 核心类总览', text: '算距离放假还有几天：拿到今天的日期，再拿到放假日期，两者相减就是剩余天数。datetime.date(2026, 1, 1) - datetime.date.today() 一步算出。\n\n',
             table: {
               headers: ['类名', '作用', '常用属性'],
               rows: [
@@ -92,10 +82,6 @@ export const stage5: TutorialStage = {
               ]
             }
           },
-          {
-            heading: '小结',
-            text: 'datetime.now() 获取当前时间；两个日期相减得到 timedelta（时间差）；strftime 把日期转成文字，strptime 把文字解析成日期；记得提前 import datetime。'
-          }
         ],
         codeExample: `from datetime import datetime\nd_str = "2026-07-30 18:00:00"\nd_obj = datetime.strptime(d_str, "%Y-%m-%d %H:%M:%S")\nprint("字符串成功解析为 datetime 对象:", d_obj.year, d_obj.month)`,
         tips: [
@@ -112,10 +98,7 @@ export const stage5: TutorialStage = {
       content: {
         overview: 'math 是 Python 自带的数学模块，像一台随身计算器：开平方、取整、绝对值、三角函数、圆周率等常用数学功能都有，直接用不用自己写。',
         sections: [
-          { heading: '生活小例子', text: '装修算地板面积：房间长 5 米、宽 4 米，面积就是 5 * 4；再比如算圆面积，用 math.pi * r ** 2。数学公式交给 math，省心又准确。' },
-          {
-            heading: 'math 模块分类速查',
-            text: '',
+          { heading: 'math 模块分类速查', text: '装修算地板面积：房间长 5 米、宽 4 米，面积就是 5 * 4；再比如算圆面积，用 math.pi * r ** 2。数学公式交给 math，省心又准确。\n\n',
             table: {
               headers: ['分类', '常用函数/常量', '功能说明'],
               rows: [
@@ -137,10 +120,6 @@ export const stage5: TutorialStage = {
             heading: '注意事项',
             text: '• math 模块只处理浮点数，复数计算请用 cmath 模块\n• 阶乘只能用于非负整数\n• 对数函数参数必须大于 0'
           },
-          {
-            heading: '小结',
-            text: 'math.sqrt() 开平方、math.floor() 向下取整、math.ceil() 向上取整；math.pi 和 math.e 是常用常量；三角函数用的是弧度，不是角度。'
-          }
         ],
         codeExample: `import math\nangle_deg = 45\nangle_rad = math.radians(angle_deg)\nprint(f"45度角的 sin 值: {math.sin(angle_rad):.4f}")`,
         tips: [
@@ -157,10 +136,7 @@ export const stage5: TutorialStage = {
       content: {
         overview: 'JSON 是一种通用的数据格式，很多网站和程序都用它交换数据。Python 的 json 模块负责两件事：把字典/列表「打包」成 JSON 文字，再把 JSON 文字「拆包」回字典/列表。',
         sections: [
-          { heading: '生活小例子', text: '网购下单后，网站把订单信息（姓名、地址、商品）打包成一段 JSON 文字发给商家系统；商家解析这段文字就能看到订单内容。json.dumps 打包，json.loads 解析。' },
-          {
-            heading: 'JSON ↔ Python 类型映射',
-            text: '',
+          { heading: 'JSON ↔ Python 类型映射', text: '网购下单后，网站把订单信息（姓名、地址、商品）打包成一段 JSON 文字发给商家系统；商家解析这段文字就能看到订单内容。json.dumps 打包，json.loads 解析。\n\n',
             table: {
               headers: ['JSON 类型', 'Python 类型', '说明'],
               rows: [
@@ -184,10 +160,6 @@ export const stage5: TutorialStage = {
             text: '• `indent=2`：格式化缩进，输出更美观\n• `ensure_ascii=False`：保留中文，不转义为 \\uXXXX\n• 自定义对象（如 datetime）不能直接序列化，需要自定义转换函数',
             code: `import json\nfrom datetime import datetime\n\n# datetime 不能直接序列化，需先转字符串\ndata = {\n    "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),\n    "status": "ok"\n}\nprint(json.dumps(data, ensure_ascii=False))`
           },
-          {
-            heading: '小结',
-            text: 'json.dumps() 把字典/列表转成 JSON 字符串；json.loads() 把 JSON 字符串转回字典/列表；存配置、传数据都用它；注意 JSON 里的 true/false/null 和 Python 的 True/False/None 不同。'
-          }
         ],
         codeExample: `import json\nraw_json = '{"code": 200, "message": "Success"}'\ndata = json.loads(raw_json)\nprint("响应状态码:", data["code"])`,
         tips: [
@@ -204,10 +176,7 @@ export const stage5: TutorialStage = {
       content: {
         overview: '正则表达式（RegEx）是一套「按规则找文本」的语法，用来在文字里搜索、验证、提取符合模式的内容。比如检查手机号是不是 11 位、从文章里找出所有邮箱。',
         sections: [
-          { heading: '生活小例子', text: '在通讯录里找所有手机号：不用一条条看，用正则表达式 r"d{11}" 就能把 11 位数字全找出来。就像用「放大镜 + 规则尺」扫描文字。' },
-          {
-            heading: '核心匹配函数',
-            text: '• `re.search(pattern, string)`：扫描字符串，返回首个匹配的 Match 对象（找到就停）\n• `re.findall(pattern, string)`：以列表返回所有非重叠匹配文本\n• `re.sub(pattern, repl, string)`：将匹配的子串替换为新文本\n• `re.match(pattern, string)`：只从字符串开头匹配',
+          { heading: '核心匹配函数', text: '在通讯录里找所有手机号：不用一条条看，用正则表达式 r"d{11}" 就能把 11 位数字全找出来。就像用「放大镜 + 规则尺」扫描文字。\n\n• `re.search(pattern, string)`：扫描字符串，返回首个匹配的 Match 对象（找到就停）\n• `re.findall(pattern, string)`：以列表返回所有非重叠匹配文本\n• `re.sub(pattern, repl, string)`：将匹配的子串替换为新文本\n• `re.match(pattern, string)`：只从字符串开头匹配',
             table: {
               headers: ['函数', '功能', '返回值'],
               rows: [
@@ -242,10 +211,6 @@ export const stage5: TutorialStage = {
             heading: '正则最佳实践',
             text: '• 始终用原始字符串 `r"..."` 写正则，避免反斜杠转义噩梦\n• 简单场景用字符串方法，不要强行写正则\n• 正则不要写得过于复杂，可读性优先'
           },
-          {
-            heading: '小结',
-            text: 're.findall() 找出所有匹配，re.search() 找第一个，re.sub() 替换；\d 代表数字、\w 代表字母数字、. 代表任意字符；前面加 r 写成原始字符串，避免转义麻烦。'
-          }
         ],
         codeExample: `import re\ns = "2026-07-30"\nmatch = re.match(r"(\\d{4})-(\\d{2})-(\\d{2})", s)\nif match:\n    print("提取年份:", match.group(1), "月份:", match.group(2))`,
         tips: [
@@ -262,10 +227,7 @@ export const stage5: TutorialStage = {
       content: {
         overview: 'pip 是 Python 官方提供的包管理工具，负责从 PyPI（Python 的「应用商店」）下载安装第三方库。在 Python You 里，用内置的包管理器也能在线安装常用库。',
         sections: [
-          { heading: '生活小例子', text: '想用照片处理库 Pillow，不用自己写图片处理代码，在包管理器里搜 pillow、一键安装，然后 import PIL 就能用了。就像装 App：装好即用。' },
-          {
-            heading: 'pip 常用命令速查',
-            text: '',
+          { heading: 'pip 常用命令速查', text: '想用照片处理库 Pillow，不用自己写图片处理代码，在包管理器里搜 pillow、一键安装，然后 import PIL 就能用了。就像装 App：装好即用。\n\n',
             table: {
               headers: ['命令', '功能', '示例'],
               rows: [
@@ -288,10 +250,6 @@ export const stage5: TutorialStage = {
             heading: '包管理器',
             text: '在 IDE 界面左侧工具栏中点击【包管理器】按钮，即可在线一键搜索安装 NumPy、Pandas、SymPy 等众多第三方库，无需手动敲命令。'
           },
-          {
-            heading: '小结',
-            text: 'pip install 库名 安装，pip list 查看已装；Python You 内置包管理器支持在线安装纯 Python 库；装好的库用 import 导入即可使用；需要联网下载。'
-          }
         ],
         codeExample: `import sys\nprint("当前环境已装载的内嵌路径与模块总数:", len(sys.modules))`,
         tips: [
@@ -308,10 +266,7 @@ export const stage5: TutorialStage = {
       content: {
         overview: '程序运行时会遇到意外，比如用户输入了数字却写成了字母。try/except 就像安全网：把可能出错的代码放进去，出错时不会直接崩溃，而是走「补救」分支。',
         sections: [
-          { heading: '生活小例子', text: '让用户输入年龄：用户手滑输了「abc」，int("abc") 会报错。用 try: age = int(input(...)) except: 提示「请输入数字」。程序不会崩，还能友好提醒。' },
-          {
-            heading: '完整异常结构',
-            text: '`try-except-else-finally` 四部分组成：\n• `try`：可能抛出异常的代码\n• `except 异常类型`：捕获指定异常并处理\n• `else`：没有异常时执行\n• `finally`：无论是否异常都执行，用于资源清理',
+          { heading: '完整异常结构', text: '让用户输入年龄：用户手滑输了「abc」，int("abc") 会报错。用 try: age = int(input(...)) except: 提示「请输入数字」。程序不会崩，还能友好提醒。\n\n`try-except-else-finally` 四部分组成：\n• `try`：可能抛出异常的代码\n• `except 异常类型`：捕获指定异常并处理\n• `else`：没有异常时执行\n• `finally`：无论是否异常都执行，用于资源清理',
             code: `def safe_divide(a, b):\n    try:\n        result = a / b\n    except ZeroDivisionError as e:\n        print(f"捕获异常：除数不能为零 ({e})")\n        return None\n    except TypeError as e:\n        print(f"捕获异常：参数类型错误 ({e})")\n        return None\n    else:\n        print("计算正常无报错")\n        return result\n    finally:\n        print("清理工作执行完毕。")\n\nprint("计算结果:", safe_divide(10, 2))\nprint("计算结果:", safe_divide(10, 0))`
           },
           {
@@ -335,10 +290,6 @@ export const stage5: TutorialStage = {
             text: '继承 Exception 类可以定义业务相关的自定义异常，让错误分类更清晰。',
             code: `class CustomAppError(Exception):\n    \"\"\"自定义业务异常基类\"\"\"\n    pass\n\nclass InsufficientBalanceError(CustomAppError):\n    \"\"\"余额不足异常\"\"\"\n    pass\n\ntry:\n    raise InsufficientBalanceError("账户余额不足，无法扣款")\nexcept CustomAppError as err:\n    print("捕获业务异常:", err)`
           },
-          {
-            heading: '小结',
-            text: 'try 里放可能出错的代码，except 里放出错后的处理；except ValueError 可以只捕获特定错误；finally 里的代码无论是否出错都会执行；try/except 比一堆 if 判断更简洁。'
-          }
         ],
         codeExample: `class CustomAppError(Exception):\n    """自定义业务逻辑异常类"""\n    pass\n\ntry:\n    raise CustomAppError("主动触发自定义业务逻辑异常")\nexcept CustomAppError as err:\n    print("捕获自定义异常:", err)`,
         tips: [
@@ -355,10 +306,7 @@ export const stage5: TutorialStage = {
       content: {
         overview: '程序经常要读写文件，比如保存笔记、读取配置。Python 用 open() 打开文件，读写完后要关闭。用 with 写法可以自动关闭，不用手动记。',
         sections: [
-          { heading: '生活小例子', text: '写日记：open("diary.txt", "w") 打开（w 表示写入模式），把内容写进去，关掉。下次用 with open("diary.txt", "r") as f: 读出来。就像打开笔记本记录、合上。' },
-          {
-            heading: '文件打开模式全解',
-            text: '',
+          { heading: '文件打开模式全解', text: '写日记：open("diary.txt", "w") 打开（w 表示写入模式），把内容写进去，关掉。下次用 with open("diary.txt", "r") as f: 读出来。就像打开笔记本记录、合上。\n\n',
             table: {
               headers: ['模式', '名称', '读写', '文件不存在', '文件存在时'],
               rows: [
@@ -380,10 +328,6 @@ export const stage5: TutorialStage = {
             text: '• `.read()`：一次性读取全部内容\n• `.readline()`：读取一行\n• `.readlines()`：读取所有行，返回列表\n• `.write(s)`：写入字符串\n• `.seek(offset)`：移动文件指针位置\n• `.tell()`：返回当前指针位置',
             code: `with open("demo_output.txt", "r", encoding="utf-8") as f:\n    print("当前指针位置:", f.tell())\n    content = f.read(10)  # 读 10 个字符\n    print("读取内容:", content)\n    print("读取后位置:", f.tell())`
           },
-          {
-            heading: '小结',
-            text: 'open(文件名, 模式) 打开文件，模式有 r（读）、w（写）、a（追加）；with open(...) as f: 自动管理关闭；f.read() 读全部，f.write() 写入；文件用完一定要关，with 最省心。'
-          }
         ],
         codeExample: `import os\nif os.path.exists("demo_output.txt"):\n    print("文件体积 (Bytes):", os.path.getsize("demo_output.txt"))`,
         tips: [

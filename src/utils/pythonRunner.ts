@@ -629,6 +629,38 @@ class PythonRunnerService {
     return false;
   }
 
+  // 手动扫描本机已安装的包（绕过会话缓存，取 pip list 的真实结果）；
+  // 非本机引擎无法枚举，返回 null 由调用方说明原因
+  public async scanInstalledPackages(): Promise<Set<string> | null> {
+    if (nativePython.supported && nativePython.enabled) {
+      const det = await nativePython.detect();
+      if (det.available) return nativePython.installedPackages(true);
+    }
+    return null;
+  }
+
+  // 卸载扩展包：本机引擎走真实 pip 卸载；其他引擎只能移出应用记录（FR-5.4）
+  public async uninstallPackage(
+    pkgName: string,
+    onOutput: (out: ConsoleOutput) => void,
+    onProgress?: (progress: number | null) => void
+  ): Promise<'done' | 'list-only' | 'failed'> {
+    if (nativePython.supported && nativePython.enabled) {
+      const det = await nativePython.detect();
+      if (det.available) {
+        const ok = await nativePython.uninstallPackage(pkgName, onOutput, onProgress);
+        return ok ? 'done' : 'failed';
+      }
+    }
+    onOutput({
+      id: uid(),
+      type: 'system',
+      text: tf('pkgUninstalledListOnly', { name: pkgName }),
+      timestamp: now()
+    });
+    return 'list-only';
+  }
+
   public async stop(): Promise<void> {
     if (nativePython.supported) {
       await nativePython.stop();

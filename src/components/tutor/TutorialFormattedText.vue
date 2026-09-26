@@ -71,7 +71,7 @@ const parsedSegments = computed<TextSegment[]>(() => {
   background-color: var(--secondary-container);
   border: 1px solid var(--border-color-muted);
   padding: 1.5px 6px;
-  border-radius: 5px;
+  border-radius: 4px;
   margin: 0 3px;
   display: inline-block;
   line-height: 1.35;

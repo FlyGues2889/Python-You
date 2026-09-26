@@ -339,7 +339,7 @@ const filteredItems = computed(() => {
   outline: none;
   box-sizing: border-box;
   margin-right: 4px;
-  transition: border-color 0.15s ease, border-width 0.15s ease, background-color 0.15s ease;
+  transition: border-color var(--motion-effects-fast), border-width var(--motion-effects-fast), background-color var(--motion-effects-fast);
 }
 
 .node-inline-input:focus {

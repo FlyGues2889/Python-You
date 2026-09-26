@@ -4,7 +4,14 @@ import { pythonRunner } from '../utils/pythonRunner';
 import { ConsoleOutput, FSItem } from '../types';
 import { useI18n } from '../utils/i18n';
 import PageHeader from './PageHeader.vue';
-import { detectImportedPackages, getStoredInstalledPackages, saveInstalledPackages } from '../utils/packageUtils';
+import {
+  detectImportedPackages,
+  getStoredInstalledPackages,
+  saveInstalledPackages,
+  getRecentPackages,
+  recordPackageInstall,
+  type RecentPackage
+} from '../utils/packageUtils';
 import { addBackendTask, updateBackendTask, finishBackendTask } from '../utils/backendTasks';
 import { nativePython } from '../utils/nativePython';
 import { nativeApi } from '../utils/native';
@@ -31,7 +38,25 @@ const referencedPackages = ref<Set<string>>(new Set());
 const syncPackages = () => {
   installedSet.value = new Set(getStoredInstalledPackages());
   referencedPackages.value = new Set(detectImportedPackages(props.workspaceFiles || []));
+  recentList.value = getRecentPackages();
 };
+
+// 三个页签：最近安装（本应用装过的，按时间倒序）/ 推荐安装（预设包中未装的）/ 已安装
+const activePkgTab = ref<'recent' | 'recommended' | 'installed'>('recent');
+// 页签内容首次访问时构建、之后常驻（配合 v-show 切换）：
+// 每切一次都重建整张列表（已安装列表最大）会明显卡顿
+const visitedPkgTabs = ref<Set<string>>(new Set(['recent']));
+watch(activePkgTab, (tab) => {
+  visitedPkgTabs.value.add(tab);
+});
+const recentList = ref<RecentPackage[]>(getRecentPackages());
+
+const recentPackages = computed(() => {
+  const q = filterQuery.value.trim().toLowerCase();
+  return recentList.value
+    .filter((pkg) => !q || pkg.name.toLowerCase().includes(q))
+    .map((pkg) => ({ name: pkg.name, time: new Date(pkg.at).toLocaleString() }));
+});
 
 onMounted(() => {
   syncPackages();
@@ -114,9 +139,28 @@ function matchesQuery(pkg: { name: string; descZh: string; descEn: string }) {
   );
 }
 
-const installedPackages = computed(() => {
-  return allPackages.value.filter((pkg) => pkg.installed && matchesQuery(pkg));
+// 「已安装」默认只显示与本应用相关的包：经本应用安装过（最近安装记录）或工作区代码 import 过。
+// 其余（发行版预装、被其他依赖顺带装上的）视为环境自带，默认隐藏——扫描 conda 这类环境时列表不会上百项
+const showBuiltin = ref(false);
+
+const relatedInstalledNames = computed(() => {
+  const names = new Set(recentList.value.map((pkg) => pkg.name.toLowerCase()));
+  for (const name of referencedPackages.value) names.add(name.toLowerCase());
+  return names;
 });
+
+const isRelatedInstalled = (name: string) => relatedInstalledNames.value.has(name.toLowerCase());
+
+const installedPackages = computed(() =>
+  allPackages.value.filter(
+    (pkg) => pkg.installed && matchesQuery(pkg) && (showBuiltin.value || isRelatedInstalled(pkg.name))
+  )
+);
+
+// 被默认隐藏的已安装包数量：用于空态提示（列表空不代表真的没装）
+const hiddenInstalledCount = computed(() =>
+  allPackages.value.filter((pkg) => pkg.installed && matchesQuery(pkg) && !isRelatedInstalled(pkg.name)).length
+);
 
 const availablePackages = computed(() => {
   return allPackages.value.filter((pkg) => !pkg.installed && matchesQuery(pkg));
@@ -166,6 +210,8 @@ const handleInstall = async (pkgName: string) => {
   if (ok) {
     installedSet.value.add(cleanName);
     saveInstalledPackages(Array.from(installedSet.value));
+    recordPackageInstall(cleanName);
+    recentList.value = getRecentPackages();
     customPackageName.value = '';
   } else {
     // 失败：错误详情已进终端面板，页面内联摘要 + Toast 双重反馈
@@ -175,6 +221,55 @@ const handleInstall = async (pkgName: string) => {
     customPackageName.value = '';
   }
   installingSet.value.delete(cleanName);
+};
+
+// 扫描本机包列表时的占位指示器：立即显示，并保证至少停留 0.5s——
+// 既不会因为太快而"闪一下"，也不会在慢操作期间让列表空着像卡住
+const packagesLoading = ref(false);
+const PACKAGES_LOADING_MIN_MS = 1000;
+let packagesLoadingStartedAt = 0;
+let packagesLoadingTimer: ReturnType<typeof setTimeout> | null = null;
+
+const beginPackagesLoading = () => {
+  if (packagesLoadingTimer !== null) {
+    clearTimeout(packagesLoadingTimer);
+    packagesLoadingTimer = null;
+  }
+  packagesLoadingStartedAt = Date.now();
+  packagesLoading.value = true;
+};
+
+const endPackagesLoading = () => {
+  const remaining = Math.max(0, PACKAGES_LOADING_MIN_MS - (Date.now() - packagesLoadingStartedAt));
+  if (remaining === 0) {
+    packagesLoading.value = false;
+    return;
+  }
+  if (packagesLoadingTimer !== null) clearTimeout(packagesLoadingTimer);
+  packagesLoadingTimer = setTimeout(() => {
+    packagesLoading.value = false;
+    packagesLoadingTimer = null;
+  }, remaining);
+};
+
+// 手动扫描本机已安装的包：并入已安装列表（仅本机引擎可枚举，其余引擎说明原因）
+const handleRefreshPackages = async () => {
+  const taskId = 'scan-packages';
+  addBackendTask(taskId, t('statusScanningPackages'));
+  beginPackagesLoading();
+  try {
+    const found = await pythonRunner.scanInstalledPackages();
+    if (!found) {
+      emit('show-toast', t('scanPackagesUnsupported'));
+      return;
+    }
+    installedSet.value = new Set([...installedSet.value, ...found]);
+    saveInstalledPackages(Array.from(installedSet.value));
+    emit('show-toast', tf('scanPackagesDone', { count: String(found.size) }));
+  } finally {
+    endPackagesLoading();
+    finishBackendTask(taskId);
+  }
 };
 
 // 从本地文件安装扩展包（wheel / sdist）：仅本机引擎可用，安装后并入已安装列表
@@ -200,6 +295,8 @@ const handleImportPackage = async () => {
     if (distName) {
       installedSet.value.add(distName);
       saveInstalledPackages(Array.from(installedSet.value));
+      recordPackageInstall(distName);
+      recentList.value = getRecentPackages();
     }
     emit('show-toast', tf('importPkgInstalled', { name: fileName }));
   } else {
@@ -207,17 +304,30 @@ const handleImportPackage = async () => {
   }
 };
 
-const handleUninstall = (pkgName: string) => {
+// 卸载：本机引擎走真实 pip 卸载；其他引擎只能移出应用记录（FR-5.4，结果如实告知）
+const handleUninstall = async (pkgName: string) => {
   const cleanName = pkgName.trim();
   if (!cleanName) return;
+
+  const taskId = `uninstall-pkg-${cleanName}`;
+  addBackendTask(taskId, tf('statusUninstallingPkg', { name: cleanName }));
+  const result = await pythonRunner.uninstallPackage(cleanName, (out) => {
+    emit('add-console-output', out);
+  }, (progress) => {
+    updateBackendTask(taskId, { progress });
+  });
+  finishBackendTask(taskId, result === 'failed' ? 'failed' : 'done');
+
+  if (result === 'failed') {
+    // 真实卸载失败：保留在已安装列表，等用户看终端输出
+    emit('show-toast', tf('pkgUninstallFailedMsg', { name: cleanName }));
+    return;
+  }
   installedSet.value.delete(cleanName);
   saveInstalledPackages(Array.from(installedSet.value));
-  // FR-5.4：明示「仅移出列表」，避免用户误解为从 Python 环境真实卸载
-  emit('add-console-output', {
-    type: 'system',
-    text: tf('pkgUninstalledListOnly', { name: cleanName }),
-    timestamp: new Date().toLocaleTimeString()
-  });
+  emit('show-toast', result === 'done'
+    ? tf('pkgUninstalledReal', { name: cleanName })
+    : tf('pkgUninstalledListOnlyToast', { name: cleanName }));
 };
 </script>
 
@@ -241,8 +351,12 @@ const handleUninstall = (pkgName: string) => {
           <span slot="icon" class="material-symbols-rounded">download</span>
           {{ installingSet.has(customPackageName.trim().toLowerCase()) ? t('installing') : t('installPkg') }}
         </m3e-button>
-        <!-- 从本地文件安装（.whl / .tar.gz），与安装按钮留 4dp 间隔 -->
-        <m3e-icon-button class="import-pkg-btn" size="extra-small" :title="t('importPkgTooltip')"
+        <!-- 扫描已安装的扩展包 / 从本地文件安装（.whl / .tar.gz），与相邻按钮各留 4dp 间隔 -->
+        <m3e-icon-button class="pkg-icon-btn" size="extra-small" :title="t('refreshPackagesTooltip')"
+          @click="handleRefreshPackages">
+          <span class="material-symbols-rounded">refresh</span>
+        </m3e-icon-button>
+        <m3e-icon-button class="pkg-icon-btn" size="extra-small" :title="t('importPkgTooltip')"
           @click="handleImportPackage">
           <span class="material-symbols-rounded">upload_file</span>
         </m3e-icon-button>
@@ -250,60 +364,115 @@ const handleUninstall = (pkgName: string) => {
       <p v-if="installError" class="install-error">{{ installError }}</p>
     </div>
 
-    <!-- Package List View with Categorized Sections（与设置界面一致的卡片分组） -->
-    <div class="pkg-list-container">
-      <!-- 1. Installed Packages Category -->
-      <m3e-card variant="outlined">
-        <div slot="header" class="pkg-card-header">
-          <h4 class="pkg-card-title">{{ t('installedSectionTitle') }}</h4>
-          <span class="count-tag">{{ tf('pkgCountText', { count: installedPackages.length }) }}</span>
-        </div>
+    <!-- 包列表：m3e-tabs 三档切换（最近安装 / 推荐安装 / 已安装），不再用卡片分组 -->
+    <m3e-tabs class="pkg-tabs density-3" variant="primary">
+      <m3e-tab selected for="pkg-recent" @click="activePkgTab = 'recent'">
+        {{ t('pkgTabRecent') }}
+      </m3e-tab>
+      <m3e-tab for="pkg-recommended" @click="activePkgTab = 'recommended'">
+        {{ t('pkgTabRecommended') }}
+      </m3e-tab>
+      <m3e-tab for="pkg-installed" @click="activePkgTab = 'installed'">
+        {{ t('pkgTabInstalled') }}
+      </m3e-tab>
 
-        <m3e-list v-if="installedPackages.length > 0" slot="content" class="pkg-m3e-list">
-          <m3e-list-item v-for="pkg in installedPackages" :key="pkg.name" selected>
-            <span slot="leading" class="material-symbols-rounded">extension</span>
-            {{ pkg.name }}
-            <span slot="supporting-text">{{ pkg.descZh }}</span>
-            <div slot="trailing" class="item-actions">
-              <m3e-button variant="outlined" size="extra-small" @click="handleUninstall(pkg.name)">
-                <span slot="icon" class="material-symbols-rounded">delete</span>
-                {{ t('uninstall') }}
-              </m3e-button>
+      <!-- 最近安装（本应用装过的，按时间倒序） -->
+      <m3e-tab-panel id="pkg-recent">
+        <div v-if="visitedPkgTabs.has('recent')" v-show="activePkgTab === 'recent'" class="pkg-tab-body">
+          <div class="pkg-tab-summary">
+            <span class="count-tag">{{ tf('pkgCountText', { count: recentPackages.length }) }}</span>
+          </div>
+          <div v-if="packagesLoading" class="pkg-loading">
+            <m3e-loading-indicator></m3e-loading-indicator>
+            <span>{{ t('pkgListLoading') }}</span>
+          </div>
+          <template v-else>
+            <m3e-list v-if="recentPackages.length > 0" class="pkg-m3e-list">
+              <m3e-list-item v-for="pkg in recentPackages" :key="pkg.name">
+                <span slot="leading" class="material-symbols-rounded">extension</span>
+                {{ pkg.name }}
+                <span slot="supporting-text">{{ tf('pkgInstalledAt', { time: pkg.time }) }}</span>
+                <div slot="trailing" class="item-actions">
+                  <m3e-button v-if="!installedSet.has(pkg.name)" variant="filled" size="extra-small"
+                    @click="requestInstall(pkg.name)">
+                    <span slot="icon" class="material-symbols-rounded">download</span>
+                    {{ t('loadPkg') }}
+                  </m3e-button>
+                </div>
+              </m3e-list-item>
+            </m3e-list>
+            <div v-else class="empty-category-hint">{{ t('pkgRecentEmpty') }}</div>
+          </template>
+        </div>
+      </m3e-tab-panel>
+
+      <!-- 推荐安装（预设包中尚未安装的） -->
+      <m3e-tab-panel id="pkg-recommended">
+        <div v-if="visitedPkgTabs.has('recommended')" v-show="activePkgTab === 'recommended'" class="pkg-tab-body">
+          <div class="pkg-tab-summary">
+            <span class="count-tag">{{ tf('pkgCountText', { count: availablePackages.length }) }}</span>
+          </div>
+          <div v-if="packagesLoading" class="pkg-loading">
+            <m3e-loading-indicator></m3e-loading-indicator>
+            <span>{{ t('pkgListLoading') }}</span>
+          </div>
+          <template v-else>
+            <m3e-list v-if="availablePackages.length > 0" class="pkg-m3e-list">
+              <m3e-list-item v-for="pkg in availablePackages" :key="pkg.name">
+                <span slot="leading" class="material-symbols-rounded">extension</span>
+                {{ pkg.name }}
+                <span slot="supporting-text">{{ pkg.descZh }}</span>
+                <div slot="trailing" class="item-actions">
+                  <span v-if="referencedPackages.has(pkg.name)" class="pkg-ref-tag">{{ t('pkgReferencedHint') }}</span>
+                  <m3e-button variant="filled" size="extra-small"
+                    :disabled="installingSet.has(pkg.name.toLowerCase())" @click="requestInstall(pkg.name)">
+                    <span slot="icon" class="material-symbols-rounded">download</span>
+                    {{ installingSet.has(pkg.name.toLowerCase()) ? t('installing') : t('loadPkg') }}
+                  </m3e-button>
+                </div>
+              </m3e-list-item>
+            </m3e-list>
+            <div v-else class="empty-category-hint">{{ t('pkgNoAvailable') }}</div>
+          </template>
+        </div>
+      </m3e-tab-panel>
+
+      <!-- 已安装 -->
+      <m3e-tab-panel id="pkg-installed">
+        <div v-if="visitedPkgTabs.has('installed')" v-show="activePkgTab === 'installed'" class="pkg-tab-body">
+          <div class="pkg-tab-summary">
+            <m3e-button variant="text" size="extra-small" @click="showBuiltin = !showBuiltin">
+              <span slot="icon" class="material-symbols-rounded">{{ showBuiltin ? 'visibility_off' : 'visibility'
+                }}</span>
+              {{ showBuiltin ? t('pkgHideBuiltin') : t('pkgShowBuiltin') }}
+            </m3e-button>
+            <span class="count-tag">{{ tf('pkgCountText', { count: installedPackages.length }) }}</span>
+          </div>
+          <div v-if="packagesLoading" class="pkg-loading">
+            <m3e-loading-indicator></m3e-loading-indicator>
+            <span>{{ t('pkgListLoading') }}</span>
+          </div>
+          <template v-else>
+            <m3e-list v-if="installedPackages.length > 0" class="pkg-m3e-list">
+              <m3e-list-item v-for="pkg in installedPackages" :key="pkg.name">
+                <span slot="leading" class="material-symbols-rounded">extension</span>
+                {{ pkg.name }}
+                <span slot="supporting-text">{{ pkg.descZh }}</span>
+                <div slot="trailing" class="item-actions">
+                  <m3e-button variant="outlined" size="extra-small" @click="handleUninstall(pkg.name)">
+                    <span slot="icon" class="material-symbols-rounded">delete</span>
+                    {{ t('uninstall') }}
+                  </m3e-button>
+                </div>
+              </m3e-list-item>
+            </m3e-list>
+            <div v-else class="empty-category-hint">
+              {{ hiddenInstalledCount > 0 ? t('pkgInstalledAllHidden') : t('pkgNoInstalled') }}
             </div>
-          </m3e-list-item>
-        </m3e-list>
-        <div v-else slot="content" class="empty-category-hint">
-          <span>{{ t('pkgNoInstalled') }}</span>
+          </template>
         </div>
-      </m3e-card>
-
-      <!-- 2. Available Packages Category -->
-      <m3e-card variant="outlined">
-        <div slot="header" class="pkg-card-header">
-          <h4 class="pkg-card-title">{{ t('availableSectionTitle') }}</h4>
-          <span class="count-tag">{{ tf('pkgCountText', { count: availablePackages.length }) }}</span>
-        </div>
-
-        <m3e-list v-if="availablePackages.length > 0" slot="content" class="pkg-m3e-list">
-          <m3e-list-item v-for="pkg in availablePackages" :key="pkg.name">
-            <span slot="leading" class="material-symbols-rounded">extension</span>
-            {{ pkg.name }}
-            <span slot="supporting-text">{{ pkg.descZh }}</span>
-            <div slot="trailing" class="item-actions">
-              <span v-if="referencedPackages.has(pkg.name)" class="pkg-ref-tag">{{ t('pkgReferencedHint') }}</span>
-              <m3e-button variant="filled" size="extra-small"
-                :disabled="installingSet.has(pkg.name.toLowerCase())" @click="requestInstall(pkg.name)">
-                <span slot="icon" class="material-symbols-rounded">download</span>
-                {{ installingSet.has(pkg.name.toLowerCase()) ? t('installing') : t('loadPkg') }}
-              </m3e-button>
-            </div>
-          </m3e-list-item>
-        </m3e-list>
-        <div v-else slot="content" class="empty-category-hint">
-          <span>{{ t('pkgNoAvailable') }}</span>
-        </div>
-      </m3e-card>
-    </div>
+      </m3e-tab-panel>
+    </m3e-tabs>
 
     <!-- 安装确认（NFR-5.3）：包名、来源与风险提示 -->
     <m3e-dialog :open="!!pendingInstall" @cancel="pendingInstall = null" @closed="pendingInstall = null">
@@ -328,7 +497,7 @@ const handleUninstall = (pkgName: string) => {
   /* 与 REPL 终端卡片一致：surface 色卡片充满整个页面，留 12px 外边距与 10px 圆角；
      背景/圆角/内边距由 m3e-content-pane 的 shadow 内元素绘制，经变量控制 */
   margin: 0 12px 12px;
-  --m3e-content-pane-container-shape: 10px;
+  --m3e-content-pane-container-shape: 12px; /* CornerMedium，与其余主面板一致 */
   --m3e-content-pane-container-color: var(--surface-color);
   --m3e-content-pane-container-padding: 2rem;
 }
@@ -349,7 +518,7 @@ const handleUninstall = (pkgName: string) => {
   padding: 4px 0;
 }
 
-.import-pkg-btn {
+.pkg-icon-btn {
   margin-left: 4px;
 }
 
@@ -364,36 +533,44 @@ const handleUninstall = (pkgName: string) => {
   color: var(--error);
 }
 
-.pkg-list-container {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
+/* 页签容器：与设置界面一致的居中列宽 */
+.pkg-tabs {
   max-width: 72rem;
   margin-left: auto;
   margin-right: auto;
   width: 100%;
 }
 
-/* 分组卡片：与设置界面同款圆角与内边距 */
-.pkg-list-container m3e-card {
-  --m3e-card-padding: 1rem;
+/* density-3 只用来压紧页签条本身。--md-sys-density-scale 是会继承的 CSS 变量，
+   而页签面板是 m3e-tabs 的子元素，不重置就会漏进面板：里面 32px 的 extra-small
+   按钮会被压成 20px（图标 24px 塞不下），列表里的操作按钮高度因此不正常。 */
+.pkg-tabs m3e-tab-panel {
+  --md-sys-density-scale: 0;
 }
 
-.pkg-card-header {
-  h4 {
-    line-height: 2.4rem;
-  }
+.pkg-tab-body {
+  display: flex;
+  flex-direction: column;
+  padding-top: 8px;
+}
 
+.pkg-tab-summary {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 4px 4px;
 }
 
-.pkg-card-title {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--secondary);
-  margin: 0;
+/* 慢操作（扫描本机包列表）时的占位指示器，避免列表空着让人以为卡住 */
+.pkg-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 48px 0;
+  font-size: 0.8125rem;
+  color: var(--text-tertiary);
 }
 
 .count-tag {

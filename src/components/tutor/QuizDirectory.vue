@@ -1,22 +1,26 @@
 ﻿<script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { getTopicQuizScore, type QuizScore } from './quizData';
-import { getLocalizedTutorialStages, type TutorialStage, type TutorialTopic } from './tutorialData';
+import { type TutorialStage, type TutorialTopic } from './tutorialData';
 import TutorialFormattedText from './TutorialFormattedText.vue';
 import { useI18n } from '../../utils/i18n';
 
 const { t } = useI18n();
 
 const props = defineProps<{
+  /** 当前系列的阶段（由 TutorialView 传入，目录只展示该系列） */
+  stages?: TutorialStage[];
+  seriesTitle?: string;
   activeTopicId?: string;
 }>();
 
 const emit = defineEmits<{
   (e: 'open-quiz', topicId: string): void;
   (e: 'back-to-tutorial'): void;
+  (e: 'back-to-home'): void;
 }>();
 
-const stages = computed(() => getLocalizedTutorialStages());
+const stages = computed<TutorialStage[]>(() => props.stages || []);
 const refreshTick = ref(0);
 
 watch(
@@ -39,23 +43,40 @@ const onRowKeydown = (e: KeyboardEvent, topicId: string) => {
   if (getScore(topicId).total > 0) emit('open-quiz', topicId);
 };
 
+// 参考手册（kind: 'reference'）没有测验，不列入测验目录；整段都没有测验的阶段也不出现
 const topicRows = (stage: TutorialStage): TutorialTopic[] => {
-  const rows: TutorialTopic[] = [];
-  if (stage.topics) rows.push(...stage.topics);
+  const withQuiz = (topics?: TutorialTopic[]) => (topics || []).filter(topic => topic.kind !== 'reference');
+  const rows: TutorialTopic[] = withQuiz(stage.topics);
   if (stage.subcategories) {
     for (const sub of stage.subcategories) {
-      if (sub.topics) rows.push(...sub.topics);
+      rows.push(...withQuiz(sub.topics));
     }
   }
   return rows;
 };
+
+const stagesWithRows = computed(() =>
+  stages.value
+    .map(stage => ({ stage, rows: topicRows(stage) }))
+    .filter(item => item.rows.length > 0)
+);
 </script>
 
 <template>
   <m3e-content-pane class="quiz-directory">
     <div class="quiz-dir-wrapper">
+      <!-- 面包屑：学习 / 当前系列 / 测验 / 目录（与文章页同一套层级，只是第三级是「测验」） -->
+      <m3e-breadcrumb class="dir-breadcrumb density-3">
+        <m3e-breadcrumb-item @click="emit('back-to-home')">{{ t('navTutorial') }}</m3e-breadcrumb-item>
+        <m3e-breadcrumb-item @click="emit('back-to-tutorial')">{{ seriesTitle }}</m3e-breadcrumb-item>
+        <m3e-breadcrumb-item disabled>{{ t('quizShort') }}</m3e-breadcrumb-item>
+        <m3e-breadcrumb-item>{{ t('breadcrumbQuizCatalog') }}</m3e-breadcrumb-item>
+      </m3e-breadcrumb>
+
       <div class="quiz-dir-header">
-        <m3e-icon-button size="small" :title="t('backToTutorial')" @click="emit('back-to-tutorial')">
+        <!-- 返回学习首页：与文章正文标题栏、测验题头同一位置同一款式 -->
+        <m3e-icon-button class="dir-back-btn" variant="tonal" :title="t('backToLearnHome')"
+          @click="emit('back-to-home')">
           <span class="material-symbols-rounded">arrow_back</span>
         </m3e-icon-button>
         <div>
@@ -65,14 +86,14 @@ const topicRows = (stage: TutorialStage): TutorialTopic[] => {
       </div>
 
       <div class="dir-stages">
-        <div v-for="stage in stages" :key="stage.id" class="dir-stage-block">
+        <div v-for="({ stage, rows }) in stagesWithRows" :key="stage.id" class="dir-stage-block">
           <div class="dir-stage-header">
             <span class="material-symbols-rounded-fill dir-stage-icon">folder</span>
             <span class="dir-stage-title">{{ stage.title }}</span>
           </div>
 
           <div
-            v-for="topic in topicRows(stage)"
+            v-for="topic in rows"
             :key="topic.id"
             class="dir-topic-row"
             role="button"
@@ -116,10 +137,10 @@ const topicRows = (stage: TutorialStage): TutorialTopic[] => {
      把 host 撑高导致 shadow 内滚动容器失去滚动空间 → 必须显式归零 */
   /* 外边距留在 host 上（露出的空隙由父级 --bg-color 填充 → 边距可见）；
      背景/圆角/内边距由 m3e-content-pane 的 shadow 内元素绘制，经变量控制
-     （与 REPL 终端主体一致:surface 色 + 10px 圆角 + 32px 内边距） */
+     （与测验答题页/文章正文同一套:--bg-color + 1rem + 32px 内边距） */
   margin: 0 12px 12px;
-  --m3e-content-pane-container-shape: 10px;
-  --m3e-content-pane-container-color: var(--surface-color);
+  --m3e-content-pane-container-shape: 1rem;
+  --m3e-content-pane-container-color: var(--bg-color);
   --m3e-content-pane-container-padding: 32px;
   user-select: text;
 }
@@ -129,11 +150,20 @@ const topicRows = (stage: TutorialStage): TutorialTopic[] => {
   margin: 0 auto;
 }
 
+.dir-breadcrumb {
+  margin-bottom: 16px;
+  --m3e-breadcrumb-item-container-height: 32px;
+}
+
 .quiz-dir-header {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-bottom: 24px;
+}
+
+.dir-back-btn {
+  flex-shrink: 0;
 }
 
 .dir-title {
@@ -157,7 +187,7 @@ const topicRows = (stage: TutorialStage): TutorialTopic[] => {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border-radius: 10px;
+  border-radius: 8px;
   margin-bottom: 6px;
 }
 
@@ -178,9 +208,11 @@ const topicRows = (stage: TutorialStage): TutorialTopic[] => {
   gap: 10px;
   margin-left: 1.6rem;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: 4px; /* M3 List：未选中项取 CornerExtraSmall */
+  /* 预留透明描边：选中态只换 border-color，行内内容不会因多出 1px 边框而位移 */
+  border: 1px solid transparent;
   cursor: pointer;
-  transition: background-color 0.15s;
+  transition: background-color var(--motion-effects-fast);
   margin-bottom: 4px;
 }
 
@@ -188,8 +220,10 @@ const topicRows = (stage: TutorialStage): TutorialTopic[] => {
   background-color: var(--surface-variant);
 }
 
+/* 选中态按 M3 List 令牌走填色（与侧栏目录同一套） */
 .dir-topic-row.is-active {
   background-color: var(--secondary-container);
+  border-radius: 16px; /* M3 List：选中项取 CornerLarge */
 }
 
 .dir-topic-row.is-active .dir-topic-title {

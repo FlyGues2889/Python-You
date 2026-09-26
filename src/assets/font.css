@@ -12,7 +12,6 @@
   --text-size-xs: 0.75rem;
   --text-size-sm: 0.9rem;
   --text-size-s: 1rem;
-  --text-size-m: 1.2rem;
   --text-size-l: 1.6rem;
 }
 
@@ -69,17 +68,13 @@ button .material-symbols-rounded-fill {
   font-style: normal;
 }
 
+/* Nunito.ttf 是可变字体（含 fvar 表）。按固定字重声明（400 / 700）会让其它字重落到
+   最近的那个面再由浏览器合成加粗 —— 标题用的 800 就是这么变成糊字的。
+   声明成字重区间，浏览器会取真实的字重实例。 */
 @font-face {
   font-family: 'Nunito';
   src: url('./fonts/Nunito.ttf') format('truetype');
-  font-weight: 400;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'Nunito';
-  src: url('./fonts/Nunito.ttf') format('truetype');
-  font-weight: 700;
+  font-weight: 200 1000;
   font-style: normal;
 }
 

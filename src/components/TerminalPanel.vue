@@ -170,7 +170,8 @@ onUnmounted(() => {
   /* m3e-content-pane 的外观由 shadow 内 .base/.scroll-container 绘制，经变量控制：
      padding 单值（右端自动扣除滚动条宽度）、圆角、背景色 */
   --m3e-content-pane-container-padding: 8px;
-  --m3e-content-pane-container-shape: 1rem;
+  /* 同上：终端显示体与 REPL 主体取同一档 8px（原 16px 比外圈卡片还大） */
+  --m3e-content-pane-container-shape: 8px;
   --m3e-content-pane-container-color: var(--bg-color);
 }
 
@@ -234,7 +235,7 @@ onUnmounted(() => {
   font-family: inherit;
   font-size: 0.75rem;
   cursor: pointer;
-  transition: background-color 0.15s, color 0.15s;
+  transition: background-color var(--motion-effects-fast), color var(--motion-effects-fast);
 }
 
 .log-toggle:hover {

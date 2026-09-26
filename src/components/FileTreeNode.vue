@@ -308,12 +308,14 @@ const cancelInline = () => {
   height: 32px;
   padding-right: 8px;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 4px; /* M3 List：未选中项 ItemContainerExpressiveShape = CornerExtraSmall */
+  /* 预留透明描边：选中态只换 border-color，行内内容不会因多出 1px 边框而位移 */
+  border: 1px solid transparent;
   margin: 1px 4px;
   user-select: none;
   font-size: 0.8125rem;
   color: var(--text-secondary);
-  transition: all 0.15s ease;
+  transition: background-color var(--motion-effects-fast), color var(--motion-effects-fast);
   position: relative;
   border: 1px solid transparent;
 }
@@ -323,12 +325,12 @@ const cancelInline = () => {
   color: var(--text-color);
 }
 
+/* 选中态按 M3 List 令牌走填色（与教程目录同一套） */
 .tree-node-item.is-active {
   background-color: var(--secondary-container);
   color: var(--on-secondary-container);
   font-weight: 600;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 16px; /* M3 List：选中项 ItemSelectedContainerShape = CornerLarge */
 }
 
 .tree-node-item.is-editing {
@@ -338,7 +340,7 @@ const cancelInline = () => {
 .folder-arrow {
   font-size: 1.125rem;
   color: var(--text-tertiary);
-  transition: transform 0.2s ease;
+  transition: transform var(--motion-spatial-fast);
   margin-right: 2px;
   flex-shrink: 0;
 }
@@ -379,7 +381,7 @@ const cancelInline = () => {
   outline: none;
   box-sizing: border-box;
   margin-right: 4px;
-  transition: border-color 0.15s ease, border-width 0.15s ease, background-color 0.15s ease;
+  transition: border-color var(--motion-effects-fast), border-width var(--motion-effects-fast), background-color var(--motion-effects-fast);
 }
 
 .node-inline-input:focus {
@@ -404,7 +406,7 @@ const cancelInline = () => {
 
 .expand-enter-active,
 .expand-leave-active {
-  transition: all 0.2s ease-out;
+  transition: max-height var(--motion-spatial-fast), opacity var(--motion-effects-fast);
   max-height: 500px;
   overflow: hidden;
 }

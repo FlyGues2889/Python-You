@@ -41,6 +41,7 @@ pub fn run() {
             python::python_repl_input,
             python::python_repl_stop,
             python::python_pip_install,
+            python::python_pip_uninstall,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

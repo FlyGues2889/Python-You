@@ -2,6 +2,8 @@ export interface TutorialTopic {
   id: string;
   title: string;
   stage: string;
+  /** 'reference' = 参考手册：只渲染正文与表格（不出小节标题、不显示代码与贴士） */
+  kind?: 'reference';
   summary: string;
   content: {
     overview: string;
@@ -33,40 +35,73 @@ export interface TutorialStage {
   topics?: TutorialTopic[];
 }
 
-import { stage1 } from './data/stage1';
-import { stage2 } from './data/stage2';
-import { stage3 } from './data/stage3';
-import { stage4 } from './data/stage4';
-import { stage5 } from './data/stage5';
-import { stage6 } from './data/stage6';
-import { cmdHelp } from './data/cmdHelp';
+// 文章系列：学习页首页的五个入口，各系列下挂自己的阶段
+export interface TutorialSeries {
+  id: string;
+  title: string;
+  icon: string;
+  summary: string;
+  stages: TutorialStage[];
+}
 
-export const TUTORIAL_STAGES: TutorialStage[] = [
-  stage1,
-  stage2,
-  stage3,
-  stage4,
-  stage5,
-  stage6,
-  cmdHelp,
+// 文章数据按系列分目录：data/<系列 id>/{index,stageN}.ts
+import { pythonStages } from './data/python';
+import { databaseStages } from './data/database';
+import { scrapingStages } from './data/scraping';
+import { webStages } from './data/web';
+import { automationStages } from './data/automation';
+
+// python 系列的阶段（保留旧名，供仅需该系列的调用方使用）
+export const TUTORIAL_STAGES: TutorialStage[] = pythonStages;
+
+export const TUTORIAL_SERIES: TutorialSeries[] = [
+  {
+    id: 'python',
+    title: 'Python教程',
+    icon: 'code',
+    summary: 'Python 从零到进阶：语法、容器、控制流、函数与对象、标准库、数据可视化、参考手册。',
+    stages: TUTORIAL_STAGES,
+  },
+  {
+    id: 'database',
+    title: '数据库',
+    icon: 'database',
+    summary: 'SQL 基础、常见数据库与 Python 连接方式。',
+    stages: databaseStages,
+  },
+  {
+    id: 'scraping',
+    title: '爬虫和数据分析',
+    icon: 'travel_explore',
+    summary: '网络请求、网页解析、数据清洗与可视化分析。',
+    stages: scrapingStages,
+  },
+  {
+    id: 'web',
+    title: 'Web',
+    icon: 'language',
+    summary: 'HTTP 基础、接口与前后端协作。',
+    stages: webStages,
+  },
+  {
+    id: 'automation',
+    title: '自动化',
+    icon: 'smart_toy',
+    summary: '用脚本处理重复工作：文件、表格、定时任务。',
+    stages: automationStages,
+  },
 ];
 
-// 扁平化所有主题，用于全局搜索与上下篇导航
-export function getAllTutorialTopics(): TutorialTopic[] {
-  const topics: TutorialTopic[] = [];
-  for (const stage of TUTORIAL_STAGES) {
-    if (stage.topics) {
-      topics.push(...stage.topics);
-    }
-    if (stage.subcategories) {
-      for (const sub of stage.subcategories) {
-        topics.push(...sub.topics);
-      }
-    }
-  }
-  return topics;
+export function getTutorialSeries(): TutorialSeries[] {
+  return TUTORIAL_SERIES;
 }
 
-export function getLocalizedTutorialStages(): TutorialStage[] {
-  return TUTORIAL_STAGES;
+export function getSeriesById(seriesId: string | null): TutorialSeries | undefined {
+  if (!seriesId) return undefined;
+  return TUTORIAL_SERIES.find((series) => series.id === seriesId);
 }
+
+export function getSeriesStages(seriesId: string | null): TutorialStage[] {
+  return getSeriesById(seriesId)?.stages || [];
+}
+

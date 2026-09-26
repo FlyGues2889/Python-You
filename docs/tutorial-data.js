@@ -1,5 +1,5 @@
 // 教程数据（自动生成，勿手改）
-// 源：src/components/tutor/data/*.ts + quizData.ts（TOPIC_QUIZZES 部分）
+// 源：src/components/tutor/data/<系列>/ + src/components/tutor/quiz/<系列>Quizzes.ts
 // 生成命令：node build-data.mjs
 'use strict';
 

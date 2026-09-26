@@ -49,7 +49,7 @@ defineProps<Props>();
 /* Transitions */
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.3s ease;
+  transition: opacity var(--motion-effects-slow);
 }
 
 .fade-enter-from,

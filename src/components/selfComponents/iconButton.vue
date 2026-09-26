@@ -72,12 +72,14 @@ const handleClick = (e: MouseEvent) => {
   margin: 2px;
   transition:
     background-color 0.18s cubic-bezier(0.2, 0, 0, 1),
-    color 0.18s cubic-bezier(0.2, 0, 0, 1),
-    border-color 0.18s cubic-bezier(0.2, 0, 0, 1),
-    box-shadow 0.18s cubic-bezier(0.2, 0, 0, 1);
+    color var(--motion-effects-fast),
+    border-color var(--motion-effects-fast),
+    box-shadow var(--motion-effects-fast);
 }
 
-/* Sizes according to M3 Icon Button specs */
+/* Sizes according to M3 Icon Button specs：
+   SM 是文件树行内的小按钮（密集布局下的压缩目标），图标取 1rem；
+   S = XSmallIconButton(32dp/图标 20dp)、M = SmallIconButton(40dp/图标 24dp)。 */
 .size-SM {
   height: 20px;
   width: 20px;
@@ -85,7 +87,7 @@ const handleClick = (e: MouseEvent) => {
   margin: 1px;
 }
 .size-SM .icon-glyph {
-  font-size: var(--text-size-sm);
+  font-size: 1rem;
 }
 
 .size-S {
@@ -94,7 +96,7 @@ const handleClick = (e: MouseEvent) => {
   min-width: 32px;
 }
 .size-S .icon-glyph {
-  font-size: var(--text-size-s);
+  font-size: 20px;
 }
 
 .size-M {
@@ -103,7 +105,7 @@ const handleClick = (e: MouseEvent) => {
   min-width: 40px;
 }
 .size-M .icon-glyph {
-  font-size: var(--text-size-m);
+  font-size: 24px;
 }
 
 .size-L {
@@ -131,6 +133,20 @@ const handleClick = (e: MouseEvent) => {
 .variant-standard.is-active {
   background-color: var(--secondary-container, var(--secondary-container, #e8def8));
   color: var(--on-secondary-container, var(--on-secondary-container, #1d192b));
+}
+
+/* 键盘焦点：组件 host 设了 outline: none，必须自己给焦点指示。
+   M3 的焦点指示是 state layer（focus 档 10% 不透明度），不是描边 ——
+   加 outline 会和组件库自绘的焦点环叠成双描边。 */
+.variant-standard:focus-visible,
+.variant-outlined:focus-visible {
+  background-color: color-mix(in srgb, var(--text-color, #49454f) 10%, transparent);
+}
+.variant-filled:focus-visible {
+  background-color: color-mix(in srgb, #ffffff 14%, var(--primary, #6750a4));
+}
+.variant-tonal:focus-visible {
+  background-color: color-mix(in srgb, var(--on-secondary-container, #1d192b) 12%, var(--secondary-container, #e8def8));
 }
 
 /* 2. Filled */

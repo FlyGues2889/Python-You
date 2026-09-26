@@ -274,7 +274,7 @@ const clearLogs = () => {
   /* 主体卡片外边距区域与标题栏同为 surface 色（与工作区背景一致） */
   background-color: var(--surface-color);
   font-family: var(--font-terminal);
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-effects), color var(--motion-effects);
 }
 
 /* 主题背景/前景：index.css 的全局 .theme-* 规则负责主样式（!important 优先）；
@@ -316,7 +316,7 @@ const clearLogs = () => {
   display: flex;
   flex-direction: column;
   margin: 0 12px 12px;
-  border-radius: 10px;
+  border-radius: 12px;
   background-color: var(--surface-color);
   overflow: hidden;
 }
@@ -329,7 +329,8 @@ const clearLogs = () => {
   /* m3e-content-pane 的外观由 shadow 内 .base/.scroll-container 绘制，经变量控制：
      padding 单值（右端自动扣除滚动条宽度）、圆角、背景色 */
   --m3e-content-pane-container-padding: 12px;
-  --m3e-content-pane-container-shape: 6px;
+  /* 嵌在 12px 的 REPL 卡片内：比外圈小一档，别和外层同半径（与终端日志面板统一） */
+  --m3e-content-pane-container-shape: 8px;
   -webkit-user-select: text !important;
   user-select: text !important;
 }
@@ -374,7 +375,7 @@ const clearLogs = () => {
   font-family: inherit;
   font-size: 0.75rem;
   cursor: pointer;
-  transition: background-color 0.15s, color 0.15s;
+  transition: background-color var(--motion-effects-fast), color var(--motion-effects-fast);
 }
 
 .repl-detail-toggle:hover {

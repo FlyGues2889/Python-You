@@ -222,7 +222,8 @@ class NativePythonRunner {
     start: () => Promise<void>,
     label: string,
     onOutput: (out: ConsoleOutput) => void,
-    onProgress?: (progress: number | null) => void
+    onProgress?: (progress: number | null) => void,
+    action: 'install' | 'uninstall' = 'install'
   ): Promise<boolean> {
     const session: Session = 'pip';
     return new Promise<boolean>((resolve) => {
@@ -246,12 +247,10 @@ class NativePythonRunner {
         } else if (kind === 'done') {
           this.listeners[session] = null;
           const ok = text === '0';
-          onOutput({
-            id: uid(),
-            type: 'system',
-            text: ok ? tf('pipInstalledOk', { name: label }) : tf('pipInstallFailed', { name: label, code: text }),
-            timestamp: now(),
-          });
+          const message = action === 'uninstall'
+            ? (ok ? tf('pipUninstalledOk', { name: label }) : tf('pipUninstallFailed', { name: label, code: text }))
+            : (ok ? tf('pipInstalledOk', { name: label }) : tf('pipInstallFailed', { name: label, code: text }));
+          onOutput({ id: uid(), type: 'system', text: message, timestamp: now() });
           this.pipListCache = null;
           resolve(ok);
         }
@@ -267,6 +266,16 @@ class NativePythonRunner {
         resolve(false);
       });
     });
+  }
+
+  // 真实卸载扩展包（本机 pip）
+  async uninstallPackage(
+    pkgName: string,
+    onOutput: (out: ConsoleOutput) => void,
+    onProgress?: (progress: number | null) => void
+  ): Promise<boolean> {
+    await this.ensureListener();
+    return this.runPipSession(() => nativeApi.pipUninstall(pkgName), pkgName, onOutput, onProgress, 'uninstall');
   }
 
   async loadPackage(
@@ -292,8 +301,8 @@ class NativePythonRunner {
   // 已安装包名（小写）集合：会话内缓存，安装后失效；读取失败返回 null（调用方跳过依赖检查）
   private pipListCache: Set<string> | null = null;
 
-  async installedPackages(): Promise<Set<string> | null> {
-    if (this.pipListCache) return this.pipListCache;
+  async installedPackages(force = false): Promise<Set<string> | null> {
+    if (!force && this.pipListCache) return this.pipListCache;
     try {
       const names = await nativeApi.pipList();
       this.pipListCache = new Set(names.map((name) => name.toLowerCase()));

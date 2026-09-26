@@ -475,9 +475,8 @@ const engineLabel = computed(() => nativePython.statusLabel.value);
 // 网页端环境（非 Tauri）：显示环境提示条（FR-6.8：数据仅存本浏览器）
 const isWebEnv = computed(() => !nativeApi.available());
 
-// ---- 标题栏后台任务：指示器按钮 + rich-tooltip 任务列表 ----
+// ---- 标题栏后台任务：指示器按钮 + 弹窗任务列表 ----
 // 任务状态集中在 utils/backendTasks 单例：包安装等子组件可直接登记并更新进度（FR-5.6）
-const isBackendTooltipOpen = ref(false);
 
 // 指示器主显示：由任务列表派生（有运行中任务 → 转圈 + 任务文字；无 → 后台无内容）
 const activeBackendTask = computed(() => backendTasks.value.find((t) => t.status === 'running'));
@@ -485,6 +484,8 @@ const activeBackendTask = computed(() => backendTasks.value.find((t) => t.status
 const visibleBackendTasks = computed(() => backendTasks.value.filter((t) => t.status !== 'done'));
 const backendBusy = computed(() => !!activeBackendTask.value);
 const backendStatus = computed(() => activeBackendTask.value?.label || '');
+// 后台任务列表用弹窗查看（点击标题栏状态栏打开）
+const isBackendTasksOpen = ref(false);
 // 有真实进度时在状态文字后追加百分比（无进度数据不显示，保持不确定态）
 const backendProgressSuffix = computed(() => {
   const p = activeBackendTask.value?.progress;
@@ -492,9 +493,6 @@ const backendProgressSuffix = computed(() => {
 });
 const backendTaskStatusText = (s: BackendTask['status']) =>
   s === 'running' ? t('backendTaskRunning') : s === 'done' ? t('backendTaskDone') : t('backendTaskFailed');
-const toggleBackendTooltip = () => {
-  isBackendTooltipOpen.value = !isBackendTooltipOpen.value;
-};
 
 // 切换解释器（设置页 / 编辑器版本管理器弹窗）：写入配置并应用
 const selectInterpreter = async (id: string) => {
@@ -1725,34 +1723,14 @@ onMounted(() => {
         <div v-else class="title-bar-brand">
           <span>Python You</span>
         </div>
-        <!-- 后台任务指示器按钮：标题栏居中常驻；点击弹出 rich-tooltip 展示后台任务列表 -->
+        <!-- 后台任务指示器按钮：标题栏居中常驻；点击弹出弹窗查看各任务状态与进度 -->
         <div class="titlebar-center">
           <button id="backend-status-trigger" class="titlebar-backend-status" type="button"
-            :title="t('backendTasksTitle')" @click="toggleBackendTooltip">
-            <span class="titlebar-spinner" :class="{ 'is-idle': !backendBusy }"></span>
+            :title="t('backendTasksTitle')" @click="isBackendTasksOpen = true">
+            <m3e-loading-indicator v-show="backendBusy" class="titlebar-loading-indicator"></m3e-loading-indicator>
             <span class="titlebar-status-text">{{ backendStatus || t('statusIdle') }}{{ backendProgressSuffix }}</span>
           </button>
         </div>
-        <m3e-rich-tooltip for="backend-status-trigger" :open="isBackendTooltipOpen"
-          @close="isBackendTooltipOpen = false">
-          <div class="backend-task-panel">
-            <p class="backend-task-panel-title">{{ t('backendTasksTitle') }}</p>
-            <div v-if="visibleBackendTasks.length === 0" class="backend-task-empty">{{ t('backendTasksEmpty') }}</div>
-            <div v-for="task in visibleBackendTasks" :key="task.id" class="backend-task-row">
-              <div class="backend-task-item">
-                <span class="backend-task-dot" :class="`is-${task.status}`"></span>
-                <span class="backend-task-label">{{ task.label }}</span>
-                <span class="backend-task-status">{{ task.status === 'running' && typeof task.progress === 'number' ?
-                  `${task.progress}%` : backendTaskStatusText(task.status) }}</span>
-              </div>
-              <!-- 真实进度的线性进度条（M3：4dp 高、全圆角、primary 活动段） -->
-              <div v-if="task.status === 'running' && typeof task.progress === 'number'" class="backend-task-progress"
-                role="progressbar" :aria-valuenow="task.progress" aria-valuemin="0" aria-valuemax="100">
-                <div class="backend-task-progress-fill" :style="{ width: `${task.progress}%` }"></div>
-              </div>
-            </div>
-          </div>
-        </m3e-rich-tooltip>
 
         <div class="windows-controls">
           <m3e-icon-button id="titlebar-minimize" size="extra-small" :title="t('minimize')" @click="minimizeWindow">
@@ -1944,6 +1922,34 @@ onMounted(() => {
       @toggle="handleSnackbarToggle">
       {{ toastMessage }}
     </m3e-snackbar>
+
+    <!-- 后台任务 Dialog：点击标题栏状态栏弹出，查看各后台任务的状态与进度 -->
+    <m3e-dialog :open="isBackendTasksOpen" @cancel="isBackendTasksOpen = false"
+      @closed="isBackendTasksOpen = false">
+      <span slot="header" class="m3e-dialog-title-row">
+        <span class="material-symbols-rounded m3e-dialog-icon">sync</span>
+        <span class="m3e-dialog-title">{{ t('backendTasksTitle') }}</span>
+      </span>
+      <div class="backend-task-panel">
+        <div v-if="visibleBackendTasks.length === 0" class="backend-task-empty">{{ t('backendTasksEmpty') }}</div>
+        <div v-for="task in visibleBackendTasks" :key="task.id" class="backend-task-row">
+          <div class="backend-task-item">
+            <span class="backend-task-dot" :class="`is-${task.status}`"></span>
+            <span class="backend-task-label">{{ task.label }}</span>
+            <span class="backend-task-status">{{ task.status === 'running' && typeof task.progress === 'number' ?
+              `${task.progress}%` : backendTaskStatusText(task.status) }}</span>
+          </div>
+          <!-- 真实进度的线性进度条（M3：4dp 高、全圆角、primary 活动段） -->
+          <div v-if="task.status === 'running' && typeof task.progress === 'number'" class="backend-task-progress"
+            role="progressbar" :aria-valuenow="task.progress" aria-valuemin="0" aria-valuemax="100">
+            <div class="backend-task-progress-fill" :style="{ width: `${task.progress}%` }"></div>
+          </div>
+        </div>
+      </div>
+      <div slot="actions" class="m3e-dialog-actions">
+        <m3e-button variant="filled" size="small" @click="isBackendTasksOpen = false">{{ t('closeTitle') }}</m3e-button>
+      </div>
+    </m3e-dialog>
 
     <!-- Delete Confirmation Dialog -->
     <m3e-dialog :open="isDeleteDialogOpen" @cancel="isDeleteDialogOpen = false" @closed="isDeleteDialogOpen = false">
@@ -2182,6 +2188,13 @@ onMounted(() => {
 
 <style scoped>
 .app-container {
+  /* 标题栏高度只在这里定义一处：窗口控制按钮层、主工作区的高度都跟着它走。
+     曾经三处各写一个数（标题栏 32px / 控制层 36px / 工作区 100vh-36px），
+     改一处另两处就失配 —— 控制层那个固定盒子会比标题栏矮出一截压在正文上，
+     工作区也会比窗口少 4px 在底部留一条缝。
+     取 36px 而不是 32px：里面的 extra-small 图标按钮本身就有 32px，
+     32px 的标题栏等于零余量，行高/缩放一取整就顶破限制；菜单项也是 36px。 */
+  --titlebar-height: 36px;
   height: 100vh;
   width: 100vw;
   background-color: var(--bg-color);
@@ -2196,7 +2209,7 @@ onMounted(() => {
 /* --- m3e Navigation Rail (replaces MD3Sidebar) --- */
 m3e-nav-rail {
   height: 100vh;
-  background-color: var(--surface-container-high);
+  background-color: var(--surface-container);
 }
 
 .nav-rail-settings {
@@ -2213,7 +2226,7 @@ m3e-nav-rail {
 }
 
 .windows-title-bar {
-  height: 32px;
+  height: var(--titlebar-height);
   background-color: var(--surface-color);
   display: flex;
   align-items: center;
@@ -2242,7 +2255,8 @@ m3e-nav-rail {
   position: fixed;
   top: 0;
   right: 0;
-  height: 36px;
+  /* 与标题栏同高：高出来的部分会让三个按钮的 hover/点击区压到标题栏下面的正文上 */
+  height: var(--titlebar-height);
   z-index: 35000;
 }
 
@@ -2274,7 +2288,7 @@ m3e-nav-rail {
   font-family: inherit;
   background: none;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   -webkit-app-region: no-drag;
 }
@@ -2374,29 +2388,15 @@ m3e-nav-rail {
   height: 100%;
   border-radius: inherit;
   background-color: var(--primary);
-  transition: width 0.2s ease;
+  transition: width var(--motion-spatial-fast);
 }
 
-.titlebar-spinner {
-  width: 11px;
-  height: 11px;
-  border: 2px solid var(--border-color-muted);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: titlebar-spin 0.8s linear infinite;
+/* 标题栏加载指示器：库默认容器 48px / 指示器 38px，放进 36px 标题栏会被裁切，
+   这里按同比例缩到 16px / 13px 显示完整 */
+.titlebar-loading-indicator {
+  --m3e-loading-indicator-container-size: 16px;
+  --m3e-loading-indicator-size: 13px;
   flex-shrink: 0;
-}
-
-/* 空闲态：停止转动，静置为灰色圆环 */
-.titlebar-spinner.is-idle {
-  animation: none;
-  border-color: var(--border-color-muted);
-}
-
-@keyframes titlebar-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .titlebar-status-text {
@@ -2408,7 +2408,7 @@ m3e-nav-rail {
 
 .app-layout-wrapper {
   width: 100%;
-  height: calc(100vh - 36px);
+  height: calc(100vh - var(--titlebar-height));
   overflow: hidden;
   background-color: var(--surface-color);
   display: flex;

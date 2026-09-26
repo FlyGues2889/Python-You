@@ -5,6 +5,7 @@ import {
   getQuizQuestionResult,
   getTopicQuizScore,
   isQuizAllCorrect,
+  isAnswerCorrect,
   loadQuizResults,
   saveQuizResults,
   setQuizQuestionResult,
@@ -12,9 +13,15 @@ import {
   getQuizAnswers,
   setQuizAnswer,
   clearQuizAnswers,
-  type QuizQuestion
+  type QuizQuestion,
+  type QuizInlineQuestion,
+  type QuizMultiQuestion,
+  type QuizBlankQuestion,
+  type QuizOrderQuestion,
+  type QuizCodeQuestion,
+  type QuizAnswerValue
 } from './quizData';
-import { getAllTutorialTopics, type TutorialTopic } from './tutorialData';
+import { type TutorialStage, type TutorialTopic } from './tutorialData';
 import TutorialFormattedText from './TutorialFormattedText.vue';
 import { useI18n } from '../../utils/i18n';
 
@@ -22,35 +29,49 @@ const { t, tf } = useI18n();
 
 const props = defineProps<{
   topicId: string;
+  /** 当前系列的阶段（由 TutorialView 传入；题目与「下一节」都限定在本系列内） */
+  stages?: TutorialStage[];
+  seriesTitle?: string;
 }>();
 
 const emit = defineEmits<{
   (e: 'back-to-tutorial'): void;
+  (e: 'back-to-home'): void;
   (e: 'load-code-to-editor', payload: { code: string; topicId: string; topicTitle: string; isQuiz: boolean; questionId: string; expectedOutput: string }): void;
   (e: 'results-changed'): void;
   (e: 'next-topic', topicId: string): void;
 }>();
 
+const seriesTopics = computed<TutorialTopic[]>(() => {
+  const topics: TutorialTopic[] = [];
+  for (const stage of props.stages || []) {
+    stage.topics?.forEach(topic => topics.push(topic));
+    stage.subcategories?.forEach(sub => sub.topics.forEach(topic => topics.push(topic)));
+  }
+  return topics;
+});
+
 const topic = computed<TutorialTopic | undefined>(() =>
-  getAllTutorialTopics().find(t => t.id === props.topicId)
+  seriesTopics.value.find(t => t.id === props.topicId)
 );
 
 const quiz = computed(() => getTopicQuiz(props.topicId));
 
-const choiceQuestions = computed(() =>
-  (quiz.value?.questions.filter(q => q.type === 'choice') || []) as QuizQuestion[]
+// 在测验页内作答的题目（单选 / 多选 / 填空 / 排序）与代码题分开渲染
+const inlineQuestions = computed(() =>
+  (quiz.value?.questions.filter(q => q.type !== 'code') || []) as QuizInlineQuestion[]
 );
 
 const codeQuestions = computed(() =>
-  (quiz.value?.questions.filter(q => q.type === 'code') || []) as QuizQuestion[]
+  (quiz.value?.questions.filter(q => q.type === 'code') || []) as QuizCodeQuestion[]
 );
 
-const answers = ref<Record<string, number>>({});
+const answers = ref<Record<string, QuizAnswerValue>>({});
 const submitted = ref(false);
 const refreshTick = ref(0);
 
 const syncSubmitted = () => {
-  submitted.value = choiceQuestions.value.some(q => getQuizQuestionResult(props.topicId, q.id));
+  submitted.value = inlineQuestions.value.some(q => getQuizQuestionResult(props.topicId, q.id));
 };
 
 watch(
@@ -75,21 +96,89 @@ const allPassed = computed(() => {
   return isQuizAllCorrect(props.topicId);
 });
 
-// 课程目录中的下一节；已是最后一节时为 null
+// 当前系列目录中的下一节；已是最后一节时为 null
 const nextTopic = computed<TutorialTopic | null>(() => {
-  const topics = getAllTutorialTopics();
+  const topics = seriesTopics.value;
   const idx = topics.findIndex(topic => topic.id === props.topicId);
   return idx >= 0 && idx < topics.length - 1 ? topics[idx + 1] : null;
 });
 
 const answeredCount = computed(() =>
-  choiceQuestions.value.filter(q => answers.value[q.id] !== undefined).length
+  inlineQuestions.value.filter(q => answers.value[q.id] !== undefined).length
 );
 
-const selectAnswer = (questionId: string, optionIndex: number) => {
+const typeLabel = (q: QuizInlineQuestion): string => {
+  switch (q.type) {
+    case 'choice': return t('questionTypeChoice');
+    case 'multi': return t('questionTypeMulti');
+    case 'blank': return t('questionTypeBlank');
+    default: return t('questionTypeOrder');
+  }
+};
+
+const saveAnswer = (questionId: string, value: QuizAnswerValue) => {
+  answers.value[questionId] = value;
+  setQuizAnswer(props.topicId, questionId, value);
+};
+
+// 单选
+const selectChoice = (q: QuizInlineQuestion, optionIndex: number) => {
   if (submitted.value) return;
-  answers.value[questionId] = optionIndex;
-  setQuizAnswer(props.topicId, questionId, optionIndex);
+  saveAnswer(q.id, optionIndex);
+};
+
+// 多选：某选项是否已勾选
+const multiSelected = (q: QuizMultiQuestion, optionIndex: number): boolean => {
+  const value = answers.value[q.id];
+  return Array.isArray(value) && (value as number[]).includes(optionIndex);
+};
+
+// m3e-radio / m3e-checkbox 的 @change：按项目约定用方法引用（内联语句拿不到事件），
+// 题目与选项序号经 data 属性带回
+const onOptionChange = (e: Event) => {
+  const el = e.currentTarget as HTMLElement;
+  const q = inlineQuestions.value.find(item => item.id === el.dataset.qid);
+  const optionIndex = Number(el.dataset.oi);
+  if (!q || Number.isNaN(optionIndex)) return;
+  if (q.type === 'choice') selectChoice(q, optionIndex);
+  else if (q.type === 'multi') toggleMulti(q, optionIndex);
+};
+
+const toggleMulti = (q: QuizMultiQuestion, optionIndex: number) => {
+  if (submitted.value) return;
+  const current = Array.isArray(answers.value[q.id]) ? [...(answers.value[q.id] as number[])] : [];
+  const at = current.indexOf(optionIndex);
+  if (at >= 0) current.splice(at, 1);
+  else current.push(optionIndex);
+  saveAnswer(q.id, current.sort((a, b) => a - b));
+};
+
+// 填空：按空位读写作答文本（未作答时为空串）
+const blankValues = (q: QuizBlankQuestion): string[] => {
+  const value = answers.value[q.id];
+  return Array.isArray(value) ? [...(value as string[])] : [];
+};
+
+const setBlank = (q: QuizBlankQuestion, index: number, text: string) => {
+  if (submitted.value) return;
+  const next = blankValues(q);
+  next[index] = text;
+  saveAnswer(q.id, next);
+};
+
+// 排序：当前顺序（未调整过时为打乱后的原始顺序）
+const orderValues = (q: QuizOrderQuestion): number[] => {
+  const value = answers.value[q.id];
+  return Array.isArray(value) ? [...(value as number[])] : q.items.map((_, i) => i);
+};
+
+const moveOrderItem = (q: QuizOrderQuestion, position: number, delta: number) => {
+  if (submitted.value) return;
+  const order = orderValues(q);
+  const target = position + delta;
+  if (target < 0 || target >= order.length) return;
+  [order[position], order[target]] = [order[target], order[position]];
+  saveAnswer(q.id, order);
 };
 
 // 提交测验的 snackbar 反馈（self-contained，不依赖 App 事件链）
@@ -98,13 +187,12 @@ const showQuizSnack = (msg: string) => {
   quizSnackMsg.value = msg;
 };
 
-const submitChoice = () => {
+const submitAnswers = () => {
   submitted.value = true;
   let correct = 0;
-  const total = choiceQuestions.value.length;
-  for (const q of choiceQuestions.value) {
-    const chosen = answers.value[q.id];
-    const pass = chosen !== undefined && chosen === q.answerIndex;
+  const total = inlineQuestions.value.length;
+  for (const q of inlineQuestions.value) {
+    const pass = isAnswerCorrect(q, answers.value[q.id]);
     if (pass) correct++;
     setQuizQuestionResult(props.topicId, q.id, pass ? 'pass' : 'fail');
   }
@@ -144,15 +232,25 @@ const getCodeStatus = (q: QuizQuestion): 'pass' | 'fail' | null => {
   return getQuizQuestionResult(props.topicId, q.id);
 };
 
-const isChoicePass = (q: QuizQuestion) =>
+const isQuestionPass = (q: QuizQuestion) =>
   getQuizQuestionResult(props.topicId, q.id) === 'pass';
 </script>
 
 <template>
   <m3e-content-pane class="quiz-view">
     <div class="quiz-wrapper">
+      <!-- 面包屑：学习 / 当前系列 / 测验 / 当前题目（与文章页同一套层级） -->
+      <m3e-breadcrumb class="quiz-breadcrumb density-3">
+        <m3e-breadcrumb-item @click="emit('back-to-home')">{{ t('navTutorial') }}</m3e-breadcrumb-item>
+        <m3e-breadcrumb-item @click="emit('back-to-tutorial')">{{ seriesTitle }}</m3e-breadcrumb-item>
+        <m3e-breadcrumb-item disabled>{{ t('quizShort') }}</m3e-breadcrumb-item>
+        <m3e-breadcrumb-item>{{ topic?.title || topicId }}</m3e-breadcrumb-item>
+      </m3e-breadcrumb>
+
       <div class="quiz-header">
-        <m3e-icon-button size="extra-small" :title="t('backToTutorial')" @click="emit('back-to-tutorial')">
+        <!-- 题头返回按钮：直接回学习首页（面包屑的「学习」同效，这里给小屏/习惯图标的人一条明路） -->
+        <m3e-icon-button class="quiz-back-btn" variant="tonal" :title="t('backToLearnHome')"
+          @click="emit('back-to-home')">
           <span class="material-symbols-rounded">arrow_back</span>
         </m3e-icon-button>
         <div class="quiz-title-group">
@@ -175,44 +273,83 @@ const isChoicePass = (q: QuizQuestion) =>
       </div>
 
       <template v-else>
-        <!-- 选择题（卡片与设置界面同款） -->
-        <m3e-card v-for="(q, qi) in choiceQuestions" :key="q.id" variant="outlined" class="quiz-question-card">
+        <!-- 单选 / 多选 / 填空 / 排序（卡片与设置界面同款） -->
+        <m3e-card v-for="(q, qi) in inlineQuestions" :key="q.id" variant="outlined" class="quiz-question-card"
+          :class="{ 'is-passed': submitted && isQuestionPass(q) }">
           <div slot="header" class="quiz-card-header">
             <h4 class="quiz-card-title">
               <span class="q-index">{{ t('questionIndexText').replace('{n}', String(qi + 1)) }}</span>
-              <span class="q-type-chip">{{ t('questionTypeChoice') }}</span>
+              <span class="q-type-chip" :class="`chip-${q.type}`">{{ typeLabel(q) }}</span>
             </h4>
-            <span v-if="submitted" class="q-result-chip" :class="isChoicePass(q) ? 'chip-pass' : 'chip-fail'">
-              {{ isChoicePass(q) ? t('answerCorrect') : t('answerWrong') }}
+            <span v-if="submitted" class="q-result-chip" :class="isQuestionPass(q) ? 'chip-pass' : 'chip-fail'">
+              {{ isQuestionPass(q) ? t('answerCorrect') : t('answerWrong') }}
             </span>
           </div>
           <div slot="content" class="quiz-card-content">
             <p class="question-text">
               <TutorialFormattedText :text="q.question" />
             </p>
-            <div class="option-list">
-              <button v-for="(opt, oi) in q.options" :key="oi" class="option-item" :class="{
+
+            <!-- 单选：整行是 label，点行内任意处都能选中；对错仍由行的 is-correct/is-wrong 配色表达 -->
+            <div v-if="q.type === 'choice'" class="option-list">
+              <label v-for="(opt, oi) in q.options" :key="oi" class="option-item" :class="{
                 'is-selected': answers[q.id] === oi,
                 'is-correct': submitted && oi === q.answerIndex,
                 'is-wrong': submitted && answers[q.id] === oi && oi !== q.answerIndex,
                 'is-locked': submitted
-              }" @click="selectAnswer(q.id, oi)">
-                <span class="option-mark material-symbols-rounded">
-                  {{
-                    submitted && oi === q.answerIndex
-                      ? 'check_circle'
-                      : submitted && answers[q.id] === oi
-                        ? 'cancel'
-                        : answers[q.id] === oi
-                          ? 'radio_button_checked'
-                          : 'radio_button_unchecked'
-                  }}
-                </span>
+              }">
+                <m3e-radio class="option-control" :checked="answers[q.id] === oi" :disabled="submitted"
+                  :data-qid="q.id" :data-oi="oi" @change="onOptionChange" />
                 <span class="option-text">
                   <TutorialFormattedText :text="opt" />
                 </span>
-              </button>
+              </label>
             </div>
+
+            <!-- 多选 -->
+            <div v-else-if="q.type === 'multi'" class="option-list">
+              <label v-for="(opt, oi) in q.options" :key="oi" class="option-item" :class="{
+                'is-selected': multiSelected(q, oi),
+                'is-correct': submitted && q.answerIndexes.includes(oi),
+                'is-wrong': submitted && multiSelected(q, oi) && !q.answerIndexes.includes(oi),
+                'is-locked': submitted
+              }">
+                <m3e-checkbox class="option-control" :checked="multiSelected(q, oi)" :disabled="submitted"
+                  :data-qid="q.id" :data-oi="oi" @change="onOptionChange" />
+                <span class="option-text">
+                  <TutorialFormattedText :text="opt" />
+                </span>
+              </label>
+            </div>
+
+            <!-- 填空 -->
+            <div v-else-if="q.type === 'blank'" class="blank-list">
+              <label v-for="(_, i) in q.blanks" :key="i" class="blank-row">
+                <span class="blank-label">{{ tf('blankLabel', { n: i + 1 }) }}</span>
+                <input class="blank-input" type="text" spellcheck="false" autocomplete="off" :disabled="submitted"
+                  :placeholder="t('blankPlaceholder')" :value="blankValues(q)[i] || ''"
+                  @input="setBlank(q, i, ($event.target as HTMLInputElement).value)" />
+              </label>
+            </div>
+
+            <!-- 排序 -->
+            <div v-else class="order-list">
+              <div v-for="(itemIndex, pos) in orderValues(q)" :key="itemIndex" class="order-item">
+                <span class="order-pos">{{ pos + 1 }}</span>
+                <code class="order-text">{{ q.items[itemIndex] }}</code>
+                <span class="order-actions">
+                  <m3e-icon-button size="extra-small" :disabled="submitted || pos === 0" :title="t('moveUp')"
+                    @click="moveOrderItem(q, pos, -1)">
+                    <span class="material-symbols-rounded">keyboard_arrow_up</span>
+                  </m3e-icon-button>
+                  <m3e-icon-button size="extra-small" :disabled="submitted || pos === orderValues(q).length - 1"
+                    :title="t('moveDown')" @click="moveOrderItem(q, pos, 1)">
+                    <span class="material-symbols-rounded">keyboard_arrow_down</span>
+                  </m3e-icon-button>
+                </span>
+              </div>
+            </div>
+
             <div v-if="submitted && q.explanation" class="explanation-box">
               <span class="material-symbols-rounded">lightbulb</span>
               <span>
@@ -227,7 +364,7 @@ const isChoicePass = (q: QuizQuestion) =>
           :class="{ 'is-passed': getCodeStatus(q) === 'pass' }">
           <div slot="header" class="quiz-card-header">
             <h4 class="quiz-card-title">
-              <span class="q-index">{{ t('questionIndexText').replace('{n}', String(choiceQuestions.length + qi + 1))
+              <span class="q-index">{{ t('questionIndexText').replace('{n}', String(inlineQuestions.length + qi + 1))
                 }}</span>
               <span class="q-type-chip chip-code">{{ t('questionTypeCode') }}</span>
             </h4>
@@ -256,10 +393,11 @@ const isChoicePass = (q: QuizQuestion) =>
 
         <!-- 底部操作 -->
         <div class="quiz-actions">
-          <m3e-button variant="filled" size="medium" :disabled="submitted" @click="submitChoice">
+          <m3e-button v-if="inlineQuestions.length > 0" variant="filled" size="medium" :disabled="submitted"
+            @click="submitAnswers">
             <span slot="icon" class="material-symbols-rounded">task_alt</span>
             {{ submitted ? t('choiceSubmitted') : t('submitQuizText').replace('{answered}',
-              String(answeredCount)).replace('{total}', String(choiceQuestions.length)) }}
+              String(answeredCount)).replace('{total}', String(inlineQuestions.length)) }}
           </m3e-button>
           <m3e-button variant="tonal" size="medium" @click="resetQuiz">
             <span slot="icon" class="material-symbols-rounded">restart_alt</span>
@@ -277,7 +415,7 @@ const isChoicePass = (q: QuizQuestion) =>
   </m3e-content-pane>
 
   <!-- 提交测验 / 重置的 snackbar 反馈 -->
-  <m3e-snackbar :open="!!quizSnackMsg" :duration="3000"
+  <m3e-snackbar :open="!!quizSnackMsg" :duration="4000"
     @toggle="(e: Event) => { if ((e as any).newState === 'closed') quizSnackMsg = ''; }">
     {{ quizSnackMsg }}
   </m3e-snackbar>
@@ -288,14 +426,9 @@ const isChoicePass = (q: QuizQuestion) =>
   flex: 1;
   min-height: 0;
   height: 100%;
-  /* host 自身 overflow 为 visible 时 flex item 的 min-height:auto 会取内容高度，
-     把 host 撑高导致 shadow 内滚动容器失去滚动空间 → 必须显式归零 */
-  /* 外边距留在 host 上（露出的空隙由父级 --bg-color 填充 → 边距可见）；
-     背景/圆角/内边距由 m3e-content-pane 的 shadow 内元素绘制，经变量控制
-     （与 REPL 终端主体一致:surface 色 + 10px 圆角 + 32px 内边距） */
   margin: 0 12px 12px;
-  --m3e-content-pane-container-shape: 10px;
-  --m3e-content-pane-container-color: var(--surface-color);
+  --m3e-content-pane-container-shape: 1rem;
+  --m3e-content-pane-container-color: var(--bg-color);
   --m3e-content-pane-container-padding: 32px;
   user-select: text;
 }
@@ -303,6 +436,11 @@ const isChoicePass = (q: QuizQuestion) =>
 .quiz-wrapper {
   max-width: 860px;
   margin: 0 auto;
+}
+
+.quiz-breadcrumb {
+  margin-bottom: 16px;
+  --m3e-breadcrumb-item-container-height: 32px;
 }
 
 .quiz-header {
@@ -313,8 +451,12 @@ const isChoicePass = (q: QuizQuestion) =>
   align-items: center;
   gap: 12px;
   padding: 16px 0 16px;
-  /* 吸顶时与 surface 卡片底色无缝衔接 */
-  background-color: var(--surface-color);
+  /* 吸顶时与正文底色无缝衔接（跟随 .quiz-view 的 --bg-color） */
+  background-color: var(--bg-color);
+}
+
+.quiz-back-btn {
+  flex-shrink: 0;
 }
 
 .quiz-title-group {
@@ -363,9 +505,12 @@ const isChoicePass = (q: QuizQuestion) =>
   color: var(--text-tertiary);
 }
 
-/* 题目卡片沿用全局 m3e-card 外观（与设置界面一致），这里只留间距 */
+/* 题目卡片沿用全局 m3e-card 外观（描边/圆角/内边距），这里只调底色与间距。
+   底色必须反过来取 --surface-color：正文底已是 --bg-color，卡片再取 --bg-color
+   就和底同色、只剩一道描边（与文章里 .overview-box/.tips-box 在浅色纸面上的取法一致） */
 .quiz-question-card {
   margin-bottom: 20px;
+  --m3e-card-container-color: var(--surface-color);
 }
 
 /* 代码题已通过：绿色描边 + 加粗状态 chip，明确「已通过」 */
@@ -415,6 +560,103 @@ const isChoicePass = (q: QuizQuestion) =>
   color: var(--on-primary-container);
 }
 
+.q-type-chip.chip-multi {
+  background-color: var(--primary-container);
+  color: var(--on-primary-container);
+}
+
+.q-type-chip.chip-blank,
+.q-type-chip.chip-order {
+  background-color: var(--tertiary-container);
+  color: var(--on-tertiary-container);
+}
+
+/* 填空题 */
+.blank-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.blank-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.blank-label {
+  flex-shrink: 0;
+  min-width: 4.5rem;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.blank-input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--text-color);
+  background-color: var(--surface-variant);
+  border: 1px solid var(--border-color-muted);
+  border-radius: 8px;
+  outline: none;
+}
+
+.blank-input:focus {
+  border: 2px solid var(--primary);
+  padding: 0 9px;
+}
+
+.blank-input:disabled {
+  opacity: 0.7;
+}
+
+/* 排序题 */
+.order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.order-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 10px;
+  border: 1px solid var(--border-color-muted);
+  border-radius: 8px;
+  background-color: var(--surface-variant);
+}
+
+.order-pos {
+  flex-shrink: 0;
+  min-width: 1.2rem;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+
+.order-text {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: pre;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--text-color);
+}
+
+.order-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
 .q-result-chip {
   font-family: var(--font-sans);
   font-size: 0.6875rem;
@@ -460,22 +702,23 @@ const isChoicePass = (q: QuizQuestion) =>
   width: 100%;
   text-align: left;
   padding: 10px 14px;
-  border-radius: 12px;
-  border: 1px solid var(--border-color-muted);
+  /* 选项行落在 12px 的题目卡片里：M3 要求 inner = outer − padding，容器与子元素
+     不得用同一半径，否则内圆角会跟着外圆角一起"涨"，取小一档 CornerSmall */
+  border-radius: 8px;
+  border: 1px solid none;
   background-color: var(--bg-color);
   color: var(--text-color);
   font-size: 0.875rem;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color var(--motion-effects-fast), border-color var(--motion-effects-fast),
+    color var(--motion-effects-fast);
 }
 
 .option-item:hover:not(.is-locked) {
-  border-color: var(--primary);
   background-color: var(--surface-variant);
 }
 
 .option-item.is-selected {
-  border-color: var(--primary);
   background-color: var(--primary-container);
   color: var(--on-primary-container);
 }
@@ -496,8 +739,13 @@ const isChoicePass = (q: QuizQuestion) =>
   cursor: default;
 }
 
-.option-mark {
-  font-size: 1.125rem;
+/* m3e-radio / m3e-checkbox：库默认容器 40px（触控尺寸），放在行内会把行撑高，
+   收到 24px 图标仍为 18px，与原先 1.125rem 的字形同高 */
+.option-control {
+  --m3e-radio-container-size: 24px;
+  --m3e-radio-icon-size: 18px;
+  --m3e-checkbox-container-size: 24px;
+  --m3e-checkbox-icon-size: 18px;
   flex-shrink: 0;
 }
 
@@ -512,7 +760,7 @@ const isChoicePass = (q: QuizQuestion) =>
   gap: 8px;
   margin-top: 14px;
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: 8px; /* 落在 12px 题目卡片内，取小一档（inner = outer − padding） */
   background-color: var(--surface-variant);
   font-size: 0.8125rem;
   color: var(--text-secondary);

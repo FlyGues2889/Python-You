@@ -1,4 +1,4 @@
-﻿import { TutorialStage, TutorialTopic } from '../tutorialData';
+﻿import { TutorialStage, TutorialTopic } from '../../tutorialData';
 
 export const stage2: TutorialStage = {
 
@@ -14,10 +14,7 @@ export const stage2: TutorialStage = {
       content: {
         overview: '列表（List）是 Python 里最常用的容器，就像超市的购物车：可以按顺序装很多东西，随时加、删、改、查。列表用方括号 [] 表示，元素之间用逗号隔开。',
         sections: [
-          { heading: '生活小例子', text: '逛超市时，你的购物车清单可能是：shopping = ["牛奶", "面包", "鸡蛋"]。想加一盒酸奶用 append，想拿掉面包用 remove，想看看第几样东西用下标。列表就是这样随手可改的「清单」。' },
-          {
-            heading: '核心 API：增删改查方法',
-            text: '• 增加元素：`.append(x)` 尾部追加、`.extend(iterable)` 批量追加、`.insert(index, x)` 指定位置插入\n• 删除元素：`.remove(x)` 按值删除首个、`.pop(index)` 按索引弹出、`.clear()` 清空\n• 查找统计：`.index(x)` 查找索引、`.count(x)` 统计次数\n• 排序反转：`.sort()` 原位排序、`sorted()` 返回新列表、`.reverse()` 原位反转',
+          { heading: '核心 API：增删改查方法', text: '逛超市时，你的购物车清单可能是：shopping = ["牛奶", "面包", "鸡蛋"]。想加一盒酸奶用 append，想拿掉面包用 remove，想看看第几样东西用下标。列表就是这样随手可改的「清单」。\n\n• 增加元素：`.append(x)` 尾部追加、`.extend(iterable)` 批量追加、`.insert(index, x)` 指定位置插入\n• 删除元素：`.remove(x)` 按值删除首个、`.pop(index)` 按索引弹出、`.clear()` 清空\n• 查找统计：`.index(x)` 查找索引、`.count(x)` 统计次数\n• 排序反转：`.sort()` 原位排序、`sorted()` 返回新列表、`.reverse()` 原位反转',
             table: {
               headers: ['方法', '功能', '返回值', '是否修改原列表'],
               rows: [
@@ -70,10 +67,6 @@ matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
 flattened = [num for row in matrix for num in row]
 print("展平后:", flattened)`
           },
-          {
-            heading: '小结',
-            text: '列表用 [] 定义，可以装任意类型的数据；append() 加元素、remove() 删元素、用下标访问；len() 看长度，sort() 排序，list[1:3] 切片取一部分。'
-          }
         ],
         codeExample: `matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
 flattened = [num for row in matrix for num in row]
@@ -92,10 +85,7 @@ print("二维矩阵展平列表:", flattened)`,
       content: {
         overview: '元组（Tuple）和列表很像，但有个重要区别：创建之后就不能增删改。它适合放那些「说好就不变」的数据，比如一年的 12 个月份、一周的 7 天。',
         sections: [
-          { heading: '生活小例子', text: '就像印刷好的菜单，印出来就不能改了。days = ("一", "二", "三", "四", "五", "六", "日") 表示一周七天，顺序固定、内容不变，程序用起来更安全。' },
-          {
-            heading: '四大容器综合对比',
-            text: '根据功能需求与性能指标精准选择容器：',
+          { heading: '四大容器综合对比', text: '就像印刷好的菜单，印出来就不能改了。days = ("一", "二", "三", "四", "五", "六", "日") 表示一周七天，顺序固定、内容不变，程序用起来更安全。\n\n根据功能需求与性能指标精准选择容器：',
             table: {
               headers: ['容器', '语法', '有序性', '可变性', '允许重复', '查找复杂度', '典型场景'],
               rows: [
@@ -133,10 +123,6 @@ print(f"响应码: {code}, 状态: {status}, 延迟: {latency}s")
 first, *_, last = [1, 2, 3, 4, 5]
 print("只取首尾:", first, last)`
           },
-          {
-            heading: '小结',
-            text: '元组用 () 定义，创建后不可修改；适合存固定不变的常量数据；函数返回多个值时常用元组；单个元素的元组要写成 (1,)，结尾的逗号不能省。'
-          }
         ],
         codeExample: `def get_server_status():
     return 200, "OK", 0.045  # 返回元组
@@ -157,10 +143,7 @@ print(f"响应码: {code}, 状态: {status}, 延迟: {latency}s")`,
       content: {
         overview: '集合（Set）像一袋「不重样」的弹珠：里面不会出现重复的东西，而且没有先后顺序。它最擅长两件事：去重，以及算交集、并集、差集。',
         sections: [
-          { heading: '生活小例子', text: '两个班级选课，想找出同时选了数学课的同学——这就是交集。A = {"小明", "小红"}，B = {"小红", "小刚"}，A & B 就是「两个班都选课的人」。集合就是做这种统计的好帮手。' },
-          {
-            heading: '集合基础特性与创建',
-            text: '• 无序性：元素没有固定顺序，不支持索引访问\n• 唯一性：重复元素会被自动去重\n• 可哈希要求：集合元素必须是不可变类型（可哈希），列表、字典不能放入集合\n• 空集合必须用 `set()` 创建，`{}` 是空字典',
+          { heading: '集合基础特性与创建', text: '两个班级选课，想找出同时选了数学课的同学——这就是交集。A = {"小明", "小红"}，B = {"小红", "小刚"}，A & B 就是「两个班都选课的人」。集合就是做这种统计的好帮手。\n\n• 无序性：元素没有固定顺序，不支持索引访问\n• 唯一性：重复元素会被自动去重\n• 可哈希要求：集合元素必须是不可变类型（可哈希），列表、字典不能放入集合\n• 空集合必须用 `set()` 创建，`{}` 是空字典',
             code: `# 自动去重
 nums = [1, 2, 2, 3, 3, 3, 4]
 unique_nums = set(nums)
@@ -199,10 +182,6 @@ raw_logs = ["192.168.1.1", "10.0.0.1", "192.168.1.1", "172.16.0.1"]
 unique_ips = list(set(raw_logs))
 print("去重后 IP 列表:", unique_ips)`
           },
-          {
-            heading: '小结',
-            text: '集合用 {} 定义，自动去重、没有顺序；set() 可以把列表转成集合去重；& 是交集、| 是并集、- 是差集；用 in 判断元素在不在集合里非常快。'
-          }
         ],
         codeExample: `raw_logs = ["192.168.1.1", "10.0.0.1", "192.168.1.1", "172.16.0.1"]
 unique_ips = list(set(raw_logs))
@@ -221,10 +200,7 @@ print("过滤重复 IP 列表:", unique_ips)`,
       content: {
         overview: '字典（Dict）存的是「键值对」：一个名字对应一个值，就像真正的字典——查「苹果」得到它的释义。找数据时用键，速度快，不用从头翻到尾。',
         sections: [
-          { heading: '生活小例子', text: '通讯录就是字典：contacts = {"小明": 13800000001, "小红": 13900000002}。想找小明的电话，直接 contacts["小明"] 就能拿到，比一页一页翻快多了。' },
-          {
-            heading: '常用字典方法 API',
-            text: '• 访问值：`dict[key]` 直接访问（不存在报错）、`.get(key, default)` 安全访问\n• 添加/修改：直接赋值 `dict[key] = value`、`.update(other_dict)` 批量更新\n• 删除：`.pop(key)` 弹出值、`.popitem()` 弹出最后一对、`.clear()` 清空\n• 遍历视图：`.keys()` 所有键、`.values()` 所有值、`.items()` 所有键值对\n• 合并：Python 3.9+ 支持 `|` 运算符合并字典',
+          { heading: '常用字典方法 API', text: '通讯录就是字典：contacts = {"小明": 13800000001, "小红": 13900000002}。想找小明的电话，直接 contacts["小明"] 就能拿到，比一页一页翻快多了。\n\n• 访问值：`dict[key]` 直接访问（不存在报错）、`.get(key, default)` 安全访问\n• 添加/修改：直接赋值 `dict[key] = value`、`.update(other_dict)` 批量更新\n• 删除：`.pop(key)` 弹出值、`.popitem()` 弹出最后一对、`.clear()` 清空\n• 遍历视图：`.keys()` 所有键、`.values()` 所有值、`.items()` 所有键值对\n• 合并：Python 3.9+ 支持 `|` 运算符合并字典',
             table: {
               headers: ['方法', '功能', '特点'],
               rows: [
@@ -271,10 +247,6 @@ print("元组作为键:", good_dict[(1, 2)])
 
 # bad_dict = {[1,2]: "test"}  # 列表不能当键，会报错`
           },
-          {
-            heading: '小结',
-            text: '字典用 {键: 值} 定义，键不能重复；dict[键] 直接取值，dict.get(键) 安全取值（找不到返回 None）；键必须是字符串、数字这类不可变类型；字典会保持插入顺序。'
-          }
         ],
         codeExample: `scores = {"Math": 95, "Physics": 88, "Chemistry": 92}
 # 字典推导式过滤优秀科目

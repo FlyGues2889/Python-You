@@ -412,28 +412,37 @@ fn write_temp_script(code: &str) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-pub fn python_detect(app: AppHandle, state: State<PythonState>) -> PythonInfo {
-    load_custom_pythons(&app);
-    let all = scan_python_versions();
-    if all.is_empty() {
-        return PythonInfo {
-            available: false,
-            version: None,
-            command: None,
-            versions: Vec::new(),
-        };
-    }
+pub async fn python_detect(app: AppHandle, state: State<'_, PythonState>) -> Result<PythonInfo, String> {
     let selected = state.selected_python.lock().unwrap().clone();
-    let cur = selected
-        .as_ref()
-        .and_then(|id| all.iter().find(|v| v.id == *id))
-        .unwrap_or(&all[0]);
-    PythonInfo {
-        available: true,
-        version: Some(cur.version.clone()),
-        command: Some(cur.command.join(" ")),
-        versions: all,
-    }
+    let detected = tauri::async_runtime::spawn_blocking(move || {
+        load_custom_pythons(&app);
+        let all = scan_python_versions();
+        if all.is_empty() {
+            return PythonInfo {
+                available: false,
+                version: None,
+                command: None,
+                versions: Vec::new(),
+            };
+        }
+        let cur = selected
+            .as_ref()
+            .and_then(|id| all.iter().find(|v| v.id == *id))
+            .unwrap_or(&all[0]);
+        PythonInfo {
+            available: true,
+            version: Some(cur.version.clone()),
+            command: Some(cur.command.join(" ")),
+            versions: all,
+        }
+    })
+    .await;
+    Ok(detected.unwrap_or_else(|_| PythonInfo {
+        available: false,
+        version: None,
+        command: None,
+        versions: Vec::new(),
+    }))
 }
 
 // 前端切换解释器（设置页 / 编辑器版本管理器）；id 为 python_detect 返回的 versions[].id
@@ -652,52 +661,74 @@ pub fn python_pip_install(app: AppHandle, state: State<PythonState>, pkg: String
     spawn_streaming(app, &state, cmd, None, "pip", true)
 }
 
-// 添加自定义解释器：探测所选的 Python 可执行文件，成功后持久化并返回可直接使用的条目
+// 真实卸载扩展包（本机 pip）：与安装共用 pip 会话与输出通道
 #[tauri::command]
-pub fn python_add_interpreter(app: AppHandle, path: String) -> Result<PythonVersion, String> {
-    if !PathBuf::from(&path).is_file() {
-        return Err("所选文件不存在".to_string());
-    }
-    let parts = vec![path.clone()];
-    let (ver, exe) = probe_interpreter(&parts)
-        .ok_or_else(|| "该文件不是可用的 Python 解释器".to_string())?;
-    let exe = if exe.is_empty() { path } else { exe };
-    let entry = PythonVersion {
-        id: format!("custom:{exe}"),
-        version: format!("Python {ver}"),
-        label: format!("Python {ver}（自定义）"),
-        command: vec![exe.clone()],
-        path: exe.clone(),
-    };
-
-    load_custom_pythons(&app);
-    {
-        let mut list = custom_pythons().lock().unwrap();
-        if !list.iter().any(|c| c.path == exe) {
-            list.push(CustomPython { path: exe, version: entry.version.clone() });
-        }
-    }
-    save_custom_pythons(&app);
-    Ok(entry)
-}
-
-// 本机已安装包名列表：运行前的依赖检查用
-#[tauri::command]
-pub fn python_pip_list(state: State<PythonState>) -> Result<Vec<String>, String> {
+pub fn python_pip_uninstall(
+    app: AppHandle,
+    state: State<PythonState>,
+    pkg: String,
+) -> Result<(), String> {
     let py_parts = resolve_python(&state)?;
     let mut cmd = command_from_parts(&py_parts);
-    cmd.arg("-m").arg("pip").arg("list").arg("--format=json").arg("--disable-pip-version-check");
-    no_console(&mut cmd);
-    let out = cmd.output().map_err(|e| format!("读取已安装包失败: {e}"))?;
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
-    }
-    let list: Vec<serde_json::Value> =
-        serde_json::from_slice(&out.stdout).map_err(|e| format!("解析 pip list 输出失败: {e}"))?;
-    Ok(list
-        .into_iter()
-        .filter_map(|item| item.get("name").and_then(|n| n.as_str()).map(str::to_lowercase))
-        .collect())
+    cmd.arg("-m").arg("pip").arg("uninstall").arg("--yes").arg(&pkg);
+    spawn_streaming(app, &state, cmd, None, "pip", true)
+}
+
+// 添加自定义解释器：探测所选的 Python 可执行文件，成功后持久化并返回可直接使用的条目
+#[tauri::command]
+pub async fn python_add_interpreter(app: AppHandle, path: String) -> Result<PythonVersion, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if !PathBuf::from(&path).is_file() {
+            return Err("所选文件不存在".to_string());
+        }
+        let parts = vec![path.clone()];
+        let (ver, exe) = probe_interpreter(&parts)
+            .ok_or_else(|| "该文件不是可用的 Python 解释器".to_string())?;
+        let exe = if exe.is_empty() { path } else { exe };
+        let entry = PythonVersion {
+            id: format!("custom:{exe}"),
+            version: format!("Python {ver}"),
+            label: format!("Python {ver}（自定义）"),
+            command: vec![exe.clone()],
+            path: exe.clone(),
+        };
+
+        load_custom_pythons(&app);
+        {
+            let mut list = custom_pythons().lock().unwrap();
+            if !list.iter().any(|c| c.path == exe) {
+                list.push(CustomPython { path: exe, version: entry.version.clone() });
+            }
+        }
+        save_custom_pythons(&app);
+        Ok(entry)
+    })
+    .await
+    .map_err(|e| format!("探测任务失败: {e}"))?
+}
+
+// 本机已安装包名列表：运行前的依赖检查与包管理界面的手动扫描用。
+// 必须是 async 命令：同步命令跑在主线程，pip list 的等待期间界面会完全冻结（连加载指示器都画不出来）
+#[tauri::command]
+pub async fn python_pip_list(state: State<'_, PythonState>) -> Result<Vec<String>, String> {
+    let py_parts = resolve_python(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut cmd = command_from_parts(&py_parts);
+        cmd.arg("-m").arg("pip").arg("list").arg("--format=json").arg("--disable-pip-version-check");
+        no_console(&mut cmd);
+        let out = cmd.output().map_err(|e| format!("读取已安装包失败: {e}"))?;
+        if !out.status.success() {
+            return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+        }
+        let list: Vec<serde_json::Value> =
+            serde_json::from_slice(&out.stdout).map_err(|e| format!("解析 pip list 输出失败: {e}"))?;
+        Ok(list
+            .into_iter()
+            .filter_map(|item| item.get("name").and_then(|n| n.as_str()).map(str::to_lowercase))
+            .collect())
+    })
+    .await
+    .map_err(|e| format!("扫描任务失败: {e}"))?
 }
 
 // 从本地文件安装扩展包（wheel / sdist）：与在线安装共用 pip 会话与输出通道

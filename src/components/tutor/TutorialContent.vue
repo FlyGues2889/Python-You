@@ -1,10 +1,10 @@
 ﻿<script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
-import { type TutorialTopic, getLocalizedTutorialStages } from './tutorialData';
+import { computed, ref, onMounted, onBeforeUnmount, onUnmounted, watch } from 'vue';
+import { type TutorialTopic, type TutorialStage } from './tutorialData';
 import { getTopicQuiz } from './quizData';
 import { safeStorage } from '../../utils/storage';
 import { copyToClipboard } from '../../utils/clipboard';
-import { paneScroller, watchPaneScroll } from '../../utils/contentPane';
+import { paneScroller, whenPaneScroller } from '../../utils/contentPane';
 import { useI18n } from '../../utils/i18n';
 import { hljs } from '../../utils/highlightSetup';
 import 'highlight.js/styles/github-dark.css';
@@ -13,10 +13,14 @@ import TutorialFormattedText from './TutorialFormattedText.vue';
 const props = defineProps<{
   topic: TutorialTopic;
   isCompleted?: boolean;
+  /** 当前系列的阶段（用于上一节/下一节导航；由 TutorialView 传入） */
+  stages?: TutorialStage[];
+  seriesTitle?: string;
 }>();
 
 const emit = defineEmits<{
   (e: 'select-topic', topicId: string): void;
+  (e: 'back-to-home'): void;
   (e: 'load-code-to-editor', payload: { code: string; topicId: string; topicTitle: string }): void;
   (e: 'toggle-completed'): void;
   (e: 'open-quiz'): void;
@@ -58,9 +62,12 @@ const readingTime = computed(() => {
   return Math.max(1, Math.ceil(text.length / 400));
 });
 
+// 参考手册（Python 参考手册阶段）：只有正文与表格，不出小节标题、不显示目录侧栏
+const isReference = computed(() => props.topic.kind === 'reference');
+
 // m3e-toc 会自动从正文(control)扫描 h1-h6 生成目录并高亮当前段，
 // 这里只判断是否存在分段标题，用于决定是否显示目录侧栏
-const hasSections = computed(() => props.topic.content.sections.some(s => s.heading));
+const hasSections = computed(() => !isReference.value && props.topic.content.sections.some(s => s.heading));
 
 const currentProgress = computed(() => {
   const total = allTopics.value.length;
@@ -72,39 +79,42 @@ const scrollToTop = () => {
   paneScroller(contentViewRef.value)?.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
+const scrollKeyOf = (topicId: string) => `python_you_tutorial_scroll_${topicId}`;
+
+// 离开某篇文章前落盘它的阅读位置（不传 topicId 时存当前这篇）
+const saveScroll = (topicId?: string) => {
+  const id = topicId || props.topic?.id;
+  if (!id) return;
+  const sc = paneScroller(contentViewRef.value);
+  if (sc) safeStorage.setItem(scrollKeyOf(id), sc.scrollTop.toString());
+};
+
 // 滚动发生在 m3e-content-pane 的 shadow 内：直接读 shadow 内滚动容器
 const handleScroll = () => {
   const sc = paneScroller(contentViewRef.value);
   if (!sc || !props.topic?.id) return;
-  safeStorage.setItem(`python_you_tutorial_scroll_${props.topic.id}`, sc.scrollTop.toString());
+  safeStorage.setItem(scrollKeyOf(props.topic.id), sc.scrollTop.toString());
   showBackToTop.value = sc.scrollTop > 400;
 };
 
 const restoreOrResetScroll = (isTopicChanged: boolean) => {
-  // 等待一帧：既等 Vue 渲染完新内容，也等 shadow 内滚动容器渲染完成
-  requestAnimationFrame(() => {
-    const sc = paneScroller(contentViewRef.value);
-    if (!sc) return;
+  // 等滚动容器就绪：既等 Vue 渲染完新内容，也等 shadow 内容器渲染完成
+  whenPaneScroller(contentViewRef.value, (sc) => {
     if (isTopicChanged) {
       sc.scrollTop = 0;
-    } else {
-      const saved = safeStorage.getItem(`python_you_tutorial_scroll_${props.topic?.id}`);
-      if (saved !== null) {
-        sc.scrollTop = parseFloat(saved) || 0;
-      } else {
-        sc.scrollTop = 0;
-      }
+      return;
     }
+    const saved = safeStorage.getItem(scrollKeyOf(props.topic.id));
+    sc.scrollTop = saved === null ? 0 : parseFloat(saved) || 0;
   });
 };
 
 // m3e-toc 通过 for="tutorial-article" 把 host 当作滚动容器（control）：
 // 读取 control.scrollTop 计算当前段、监听 control 的 scroll 事件。实际滚动在 shadow 内，
 // 需要在 host 实例上同步这两个通道（点击跳转用的是 scrollIntoView，不受影响）。
-const syncPaneToToc = () => {
+const syncPaneToToc = (sc: HTMLElement) => {
   const host = contentViewRef.value;
-  const sc = paneScroller(host);
-  if (!host || !sc) return;
+  if (!host) return;
   Object.defineProperty(host, 'scrollTop', {
     configurable: true,
     get: () => sc.scrollTop,
@@ -115,12 +125,14 @@ const syncPaneToToc = () => {
 };
 
 let stopWatchScroll: (() => void) | null = null;
+let stopPendingScroll: (() => void) | null = null;
 
 onMounted(() => {
-  // 等待自定义元素渲染出 shadow 内滚动容器（约一帧）后，再注册滚动监听并同步 TOC 通道
-  requestAnimationFrame(() => {
-    stopWatchScroll = watchPaneScroll(contentViewRef.value, handleScroll);
-    syncPaneToToc();
+  // 等滚动容器渲染出来后再注册滚动监听并同步 TOC 通道
+  stopPendingScroll = whenPaneScroller(contentViewRef.value, (sc) => {
+    sc.addEventListener('scroll', handleScroll);
+    stopWatchScroll = () => sc.removeEventListener('scroll', handleScroll);
+    syncPaneToToc(sc);
   });
   restoreOrResetScroll(false);
   updateTocVisibility();
@@ -130,7 +142,15 @@ onMounted(() => {
   }
 });
 
+onBeforeUnmount(() => {
+  // 卸载前（如切换 tab）落盘：此刻 DOM 还在，能读到真实位置。
+  // 只靠 scroll 事件保存不行——监听器注册赶不上首帧时，一次都没滚动过就离开会丢位置
+  saveScroll();
+});
+
 onUnmounted(() => {
+  stopPendingScroll?.();
+  stopPendingScroll = null;
   stopWatchScroll?.();
   stopWatchScroll = null;
   tocResizeObserver?.disconnect();
@@ -138,9 +158,10 @@ onUnmounted(() => {
 });
 
 watch(() => props.topic?.id, (newId, oldId) => {
-  if (newId !== oldId) {
-    restoreOrResetScroll(true);
-  }
+  if (newId === oldId) return;
+  // 先记下上一篇读到哪儿（watch 在 DOM 更新前触发，此时读到的还是旧内容的位置）
+  if (oldId) saveScroll(oldId);
+  restoreOrResetScroll(true);
 });
 
 const highlightPython = (code: string) => {
@@ -152,7 +173,7 @@ const highlightPython = (code: string) => {
   }
 };
 
-const localizedStages = computed(() => getLocalizedTutorialStages());
+const localizedStages = computed<TutorialStage[]>(() => props.stages || []);
 
 const allTopics = computed(() => {
   const topics: TutorialTopic[] = [];
@@ -173,6 +194,15 @@ const allTopics = computed(() => {
 
 const currentIndex = computed(() => {
   return allTopics.value.findIndex(t => t.id === props.topic.id);
+});
+
+// 面包屑第三级：当前文章所属的阶段（子分类归属其父阶段）
+const stageTitle = computed(() => {
+  for (const stage of localizedStages.value) {
+    if (stage.topics?.some(t => t.id === props.topic.id)) return stage.title;
+    if (stage.subcategories?.some(sub => sub.topics.some(t => t.id === props.topic.id))) return stage.title;
+  }
+  return props.topic.stage || '';
 });
 
 const prevTopic = computed(() => {
@@ -211,16 +241,22 @@ const openInEditor = (code: string) => {
     @contextmenu.prevent="emit('contextmenu-tutorial', $event)">
     <div class="content-wrapper">
       <div class="main-content">
-        <!-- Stage Breadcrumb Tag -->
-        <div class="breadcrumb-bar">
-          <span class="material-symbols-rounded">school</span>
-          <span class="stage-tag">
-            <TutorialFormattedText :text="topic.stage" />
-          </span>
-          <span class="separator">/</span>
-          <span class="topic-tag">
-            <TutorialFormattedText :text="topic.title" />
-          </span>
+        <!-- 正文标题栏：返回学习首页按钮 + 面包屑，与测验页题头同一排法（按钮在左、图标同款）。
+             面包屑：学习 / 当前系列 / 所属阶段 / 当前文章（第一级也可点击返回学习首页）。
+             各标签都必须是不带元素包裹的纯文本：m3e 的 breadcrumb-item 以
+             「插槽内恰好一个元素且其尺寸 ≤28×28」判定图标项，而包裹元素在 slotchange 时
+             尚未布局、量到 0×0 即被判为图标项，该项会被永久压成固定方块并裁掉文字。 -->
+        <div class="article-header">
+          <m3e-icon-button class="article-back-btn" variant="tonal" :title="t('backToLearnHome')"
+            @click="emit('back-to-home')">
+            <span class="material-symbols-rounded">arrow_back</span>
+          </m3e-icon-button>
+          <m3e-breadcrumb class="article-breadcrumb density-3">
+            <m3e-breadcrumb-item @click="emit('back-to-home')">{{ t('navTutorial') }}</m3e-breadcrumb-item>
+            <m3e-breadcrumb-item disabled>{{ seriesTitle || topic.stage }}</m3e-breadcrumb-item>
+            <m3e-breadcrumb-item disabled>{{ stageTitle }}</m3e-breadcrumb-item>
+            <m3e-breadcrumb-item>{{ topic.title }}</m3e-breadcrumb-item>
+          </m3e-breadcrumb>
         </div>
 
         <!-- Meta Info Bar -->
@@ -274,7 +310,7 @@ const openInEditor = (code: string) => {
         <!-- Sections -->
         <div v-for="(section, idx) in topic.content.sections" :key="idx" :id="`section-${topic.id}-${idx}`"
           class="section-block">
-          <h2 class="section-heading">
+          <h2 v-if="section.heading && !isReference" class="section-heading">
             <TutorialFormattedText :text="section.heading" />
           </h2>
           <p class="section-text">
@@ -411,10 +447,12 @@ const openInEditor = (code: string) => {
   height: 100%;
   /* host 自身 overflow 为 visible 时 flex item 的 min-height:auto 会取内容高度，
      把 host 撑高导致 shadow 内滚动容器失去滚动空间 → 必须显式归零 */
-  /* 外边距留在 host 上（露出的空隙由父级 --bg-color 填充）；
+  /* 外边距留在 host 上（露出的空隙由父级 --surface-color 填充）；
      背景/圆角/内边距由 m3e-content-pane 的 shadow 内元素绘制，经变量控制
      （padding 单值，右端自动扣除滚动条宽度） */
-  margin: 0 0.4rem 0.4rem 0.4rem;
+  /* 与学习首页/测验页同一套：0 12px 12px + --bg-color + 1rem 圆角。
+     三处边距不一致时，页面之间来回切会看到纸面大小跳一下 */
+  margin: 0 12px 12px;
   --m3e-content-pane-container-padding: 32px;
   --m3e-content-pane-container-shape: 1rem;
   --m3e-content-pane-container-color: var(--bg-color);
@@ -432,30 +470,30 @@ const openInEditor = (code: string) => {
 }
 
 button,
-.stage-tag,
-.breadcrumb-bar {
+m3e-breadcrumb {
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
   user-select: none;
 }
 
-.breadcrumb-bar {
+/* 正文标题栏：返回按钮 + 面包屑同一行，行距由外层给（与测验页题头一致） */
+.article-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 0.8125rem;
-  color: var(--text-tertiary);
+  gap: 12px;
   margin-bottom: 16px;
 }
 
-.stage-tag {
-  color: var(--primary);
-  font-weight: 600;
+.article-back-btn {
+  flex-shrink: 0;
 }
 
-.topic-tag {
-  color: var(--text-secondary);
+/* 面包屑：紧凑行高；窄屏时压缩而不是把标题栏顶高 */
+.article-breadcrumb {
+  flex: 1;
+  min-width: 0;
+  --m3e-breadcrumb-item-container-height: 32px;
 }
 
 .article-title {
@@ -632,7 +670,8 @@ pre code {
   border-radius: 12px;
   cursor: pointer;
   color: var(--text-color);
-  transition: all 0.15s;
+  transition: background-color var(--motion-effects-fast), border-color var(--motion-effects-fast),
+    color var(--motion-effects-fast);
   max-width: 45%;
   text-align: left;
 }
@@ -731,7 +770,11 @@ pre code {
   position: sticky;
   top: 24px;
   align-self: flex-start;
-  max-height: calc(100vh - 48px);
+  /* 上限要按「正文区看得见的高度」算：视口里还压着标题栏、正文区底部边距，
+     面板自己又吸顶下移了 24px。原来只减 48px 时，上限比可视高度还高，
+     目录一长（条目多到顶到上限）底部就伸出滚动容器，最后几项点不到。
+     --titlebar-height 由 App.vue 定义，标题栏改高度这里自动跟。 */
+  max-height: calc(100vh - var(--titlebar-height) - 48px);
   overflow-y: auto;
   background-color: var(--surface-color);
   border: 1px solid var(--border-color-muted);
@@ -750,7 +793,7 @@ pre code {
 /* 自动显隐过渡：淡入 + 从右侧滑入 */
 .toc-slide-enter-active,
 .toc-slide-leave-active {
-  transition: opacity 0.25s ease, transform 0.25s ease;
+  transition: opacity var(--motion-effects), transform var(--motion-spatial-fast);
 }
 
 .toc-slide-enter-from,
@@ -800,7 +843,8 @@ pre code {
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color var(--motion-effects), border-color var(--motion-effects),
+    color var(--motion-effects);
 }
 
 .completed-btn:hover {

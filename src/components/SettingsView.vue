@@ -247,7 +247,7 @@ const clearLocalData = () => {
                   </m3e-option>
                 </m3e-optgroup>
               </m3e-select>
-              <m3e-icon-button size="extra-small" :title="t('interpreterAdd')" @click="handleAddInterpreter">
+              <m3e-icon-button width="narrow" :title="t('interpreterAdd')" @click="handleAddInterpreter">
                 <span class="material-symbols-rounded">add</span>
               </m3e-icon-button>
             </div>
@@ -266,7 +266,7 @@ const clearLocalData = () => {
             {{ t('aboutApp') }}
             <span slot="supporting-text">{{ t('aboutAppDesc') }}</span>
             <div slot="trailing" class="settings-trailing">
-              v0.3.52
+              v0.3.6
             </div>
           </m3e-list-item>
 
@@ -324,7 +324,7 @@ const clearLocalData = () => {
   /* 与 REPL 终端卡片一致：surface 色卡片充满整个页面，留 12px 外边距与 10px 圆角；
      背景/圆角/内边距由 m3e-content-pane 的 shadow 内元素绘制，经变量控制 */
   margin: 0 12px 12px;
-  --m3e-content-pane-container-shape: 10px;
+  --m3e-content-pane-container-shape: 12px; /* CornerMedium，与其余主面板一致 */
   --m3e-content-pane-container-color: var(--surface-color);
   --m3e-content-pane-container-padding: 2rem;
 }

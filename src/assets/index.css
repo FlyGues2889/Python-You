@@ -19,11 +19,18 @@ input, textarea, [contenteditable="true"], [contenteditable] {
   user-select: text;
 }
 
-/* 全局设计 token（字体/字号见 font.css，主题色见 theme.css，此处仅过渡动画） */
+/* 全局动效 token（字体/字号见 font.css，主题色见 theme.css）
+   M3 Expressive 把动效分成两类，曲线不能混用：
+   - effects（颜色、透明度）：阻尼恒为 1.0，**永不过冲**，指数变化加弹跳会读成故障；
+   - spatial（位移、尺寸、圆角）：允许过冲，那点回弹就是 expressive 的观感。
+   曲线是官方给的 web 回退值（真弹簧优先，浏览器侧无法直接写弹簧参数）。 */
 :root {
-  --transition-fast: 0.15s ease;
-  --transition-normal: 0.25s ease;
-  --transition-slow: 0.35s ease;
+  --motion-effects-fast: 150ms cubic-bezier(0.31, 0.94, 0.34, 1.00);
+  --motion-effects: 200ms cubic-bezier(0.34, 0.80, 0.34, 1.00);
+  --motion-effects-slow: 300ms cubic-bezier(0.34, 0.88, 0.34, 1.00);
+  --motion-spatial-fast: 350ms cubic-bezier(0.42, 1.67, 0.21, 0.90);
+  --motion-spatial: 500ms cubic-bezier(0.38, 1.21, 0.22, 1.00);
+  --motion-spatial-slow: 650ms cubic-bezier(0.39, 1.29, 0.35, 0.98);
 }
 
 /* --- Global Styles --- */
@@ -43,7 +50,7 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  transition: background-color var(--transition-normal), color var(--transition-normal);
+  transition: background-color var(--motion-effects), color var(--motion-effects);
   overflow-x: hidden;
 }
 
@@ -53,12 +60,14 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 700 !important; /* Bold for Nunito, HarmonyOS Sans SC maps weight 700 to Medium */
 }
 
-/* Base styles for all buttons in the app */
+/* Base styles for all buttons in the app。
+   不再强制品牌字体：M3 的按钮标签走 Plain 字体槽（label-large），品牌字体只给
+   display/headline/title-large；而且这条 !important 会把组件库自己的字体 token 一并压掉。
+   去掉后按钮继承 body 的 --font-sans，组件库本就没写 font-family，行为一致。 */
 button,
 input[type="button"],
 input[type="submit"],
 input[type="reset"] {
-  font-family: var(--font-headings) !important;
   border-radius: 9999px;
 }
 
@@ -141,15 +150,7 @@ input[type="reset"] {
 /* --- Helper Utilities --- */
 code, pre, kbd, samp { font-family: var(--font-mono) !important; }
 
-/* Unified focus outline styles */
-button:focus-visible {
-  outline: 2px solid var(--primary) !important;
-  outline-offset: 2px !important;
-}
-
-/* 自定义可点击行（role="button" 的 div）的键盘焦点指示 */
-[role="button"]:focus-visible {
-  outline: 2px solid var(--primary) !important;
-  outline-offset: 2px !important;
-}
+/* 焦点轮廓不在这里全局加：m3e 的 card / breadcrumb / bottom-sheet 等组件会在自己的
+   host 上设 role="button" 并自绘焦点环，全局再套一圈就成了双描边（Tab 导航时最明显）。
+   需要自己给焦点环的只有「自绘的侧栏菜单行」——见 TutorialTree.vue 里的 scoped 规则。 */
 

@@ -107,6 +107,39 @@ export function collectLocalModules(items: FSItem[]): Set<string> {
   return names;
 }
 
+const RECENT_KEY = 'python_you_recent_packages';
+const RECENT_LIMIT = 20;
+
+export interface RecentPackage {
+  name: string;
+  /** 安装时间（Unix 毫秒） */
+  at: number;
+}
+
+// 本应用经手安装过的包（按时间倒序）：供包管理「最近安装」页签展示
+export function getRecentPackages(): RecentPackage[] {
+  try {
+    const raw = safeStorage.getItem(RECENT_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((p) => p && typeof p.name === 'string' && typeof p.at === 'number');
+      }
+    }
+  } catch (e) {}
+  return [];
+}
+
+export function recordPackageInstall(name: string): void {
+  const clean = name.trim().toLowerCase();
+  if (!clean) return;
+  const list = getRecentPackages().filter((pkg) => pkg.name !== clean);
+  list.unshift({ name: clean, at: Date.now() });
+  try {
+    safeStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_LIMIT)));
+  } catch (e) {}
+}
+
 // 工作区代码里 import 的第三方包（只扫描，不写入已装记录）：
 // 已装记录仅由安装/卸载动作修改——若把 import 结果并进去，卸载会被代码里的 import 立即复原
 export function detectImportedPackages(workspaceItems: FSItem[], extraCode?: string): string[] {

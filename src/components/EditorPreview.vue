@@ -69,7 +69,7 @@ const currentThemeClass = computed(() => {
   padding: 8px 0;
   font-family: var(--font-mono);
   position: relative;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-effects), color var(--motion-effects);
 }
 
 .preview-line-numbers {

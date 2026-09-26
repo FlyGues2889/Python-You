@@ -30,13 +30,16 @@ m3e-list-item [slot="leading"] {
 
 /* m3e-card 默认样式（全局兜底；各界面可用更高特异性 token 覆盖）：
    - padding/border-radius/背景/描边均经 token 进入组件 shadow（.base 绘制）
-   - 背景与描边用 color-mix 半透明叠加，随主题色联动 */
+   - 背景用 --bg-color（界面底色），不用 surface-container 半透明叠加：卡片多为 outlined，
+     outlined 变体的 --m3e-outlined-card-container-color 缺省就回落到此变量
+   - 描边用 color-mix 半透明叠加，随主题色联动 */
 m3e-card {
   --m3e-card-padding: 1rem;
   --m3e-card-shape: var(--md-sys-shape-corner-medium);
-  --m3e-card-container-color: color-mix(in srgb, var(--md-sys-color-surface-container) 70%, transparent);
+  --m3e-card-container-color: var(--bg-color);
   --m3e-card-outline-color: color-mix(in srgb, var(--md-sys-color-secondary) 10%, transparent);
-  --m3e-outlined-card-outline-thickness: 2px;
+  /* M3 OutlinedCard.OutlineWidth = 1dp；原先的 2px 是规范值的两倍，描边过重 */
+  --m3e-outlined-card-outline-thickness: 1px;
 }
 
 /* m3e-select 选项面板的 optgroup 分组 label：全局统一样式。
@@ -61,7 +64,9 @@ m3e-split-pane {
 
 m3e-button {
   --m3e-button-extra-small-label-text-font-size: var(--text-size-xs);
-  --m3e-button-disabled-container-color: none;
+  /* 禁用态容器 = onSurface 12% 透明度（M3 的 disabled container 规范）；
+     置空会让禁用按钮只剩文字、看不出是按钮 */
+  --m3e-button-disabled-container-color: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
 }
 
 m3e-icon-button {
@@ -70,7 +75,9 @@ m3e-icon-button {
 
 m3e-nav-rail {
   --m3e-nav-bar-height: 100vh;
-  --m3e-nav-rail-top-space: 1rem;
+  /* M3 NavigationRail.TopSpace = 44dp：Rail 横跨整个窗口高度（含标题栏这一行），
+     44dp 让第一个图标落在标题栏下方，与 M3「图标区在 app bar 之下」的布局一致 */
+  --m3e-nav-rail-top-space: 44px;
 }
 
 /* 弹窗统一最大宽度：库默认较宽，长内容（如解释器绝对路径）会把弹窗撑得更大 */
@@ -100,4 +107,8 @@ m3e-option-panel {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   color: var(--text-tertiary);
+}
+
+.density-3 {
+  --md-sys-density-scale: -3;
 }
