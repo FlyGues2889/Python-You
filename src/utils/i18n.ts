@@ -78,6 +78,9 @@ const translations = {
     updatePreparing: '下载完成，即将重启以完成更新…',
     updateNow: '立即更新',
     updateLater: '稍后',
+    updateConfirm: '确定',
+    updateCancelDownload: '取消下载',
+    updateCancelled: '已取消下载',
     updateFailed: '检查更新失败，请检查网络',
     updateUnsupported: '当前环境不支持自动更新，请手动下载新版本',
 

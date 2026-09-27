@@ -413,6 +413,24 @@ const handleKeyDown = (e: KeyboardEvent) => {
     }
   }
 
+  // Ctrl+Z / Cmd+Z => 撤回；Ctrl+Y、Ctrl+Shift+Z => 重做。
+  // 必须自己接管：textarea 的值是 Vue 单向绑定（:value），每次程序化赋值都会让浏览器
+  // 原生撤回栈失效，不接管的话 Ctrl+Z 完全没反应（工具栏按钮走的是同一套自建快照栈）。
+  if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+    const shortcut = e.key.toLowerCase();
+    if (shortcut === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) handleRedo();
+      else handleUndo();
+      return;
+    }
+    if (shortcut === 'y') {
+      e.preventDefault();
+      handleRedo();
+      return;
+    }
+  }
+
   // Ctrl+Space / Cmd+Space => 主动唤起补全
   if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {
     e.preventDefault();
@@ -836,6 +854,7 @@ const canRedo = computed(() => {
 
 const handleUndo = () => {
   if (!activeTab.value) return;
+  flushPendingSnapshot();
   const h = historyMap.value[activeTab.value.id];
   if (h && h.index > 0) {
     h.index--;
@@ -852,6 +871,7 @@ const handleUndo = () => {
 
 const handleRedo = () => {
   if (!activeTab.value) return;
+  flushPendingSnapshot();
   const h = historyMap.value[activeTab.value.id];
   if (h && h.index < h.stack.length - 1) {
     h.index++;
@@ -867,6 +887,27 @@ const handleRedo = () => {
 };
 
 // Track content changes to record undo/redo history snapshots
+// 把「防抖中待记录」的快照立即入栈。撤回/重做前必须先调：
+// 否则刚敲完 250ms 内按 Ctrl+Z，这一段还没入栈，会直接跳回更早的状态、把刚写的丢掉。
+const flushPendingSnapshot = () => {
+  clearTimeout(historyDebounceTimer);
+  historyDebounceTimer = null;
+  const tabId = props.activeTabId;
+  const current = activeTab.value?.content;
+  if (!tabId || current === undefined) return;
+  const h = historyMap.value[tabId];
+  if (!h) {
+    historyMap.value[tabId] = { stack: [current], index: 0 };
+    return;
+  }
+  if (current === h.stack[h.index]) return;
+
+  const newStack = h.stack.slice(0, h.index + 1);
+  newStack.push(current);
+  if (newStack.length > 50) newStack.shift();
+  historyMap.value[tabId] = { stack: newStack, index: newStack.length - 1 };
+};
+
 watch(
   () => [props.activeTabId, activeTab.value?.content],
   ([newTabId, newContent]) => {
@@ -878,24 +919,10 @@ watch(
       historyMap.value[tabId] = { stack: [content], index: 0 };
       return;
     }
-
-    const h = historyMap.value[tabId];
-    if (content === h.stack[h.index]) return;
+    if (content === historyMap.value[tabId].stack[historyMap.value[tabId].index]) return;
 
     clearTimeout(historyDebounceTimer);
-    historyDebounceTimer = setTimeout(() => {
-      if (!historyMap.value[tabId]) return;
-      const curH = historyMap.value[tabId];
-      if (content === curH.stack[curH.index]) return;
-
-      const newStack = curH.stack.slice(0, curH.index + 1);
-      newStack.push(content);
-      if (newStack.length > 50) newStack.shift();
-      historyMap.value[tabId] = {
-        stack: newStack,
-        index: newStack.length - 1
-      };
-    }, 250);
+    historyDebounceTimer = setTimeout(flushPendingSnapshot, 250);
   },
   { immediate: true }
 );

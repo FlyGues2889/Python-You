@@ -2,13 +2,20 @@
 //!
 //! 不用 tauri-plugin-updater：它在 Windows 上只支持 NSIS/MSI 安装包，本项目只发单文件 exe。
 //! 仓库地址在构建期由 build.rs 从 `git remote get-url origin` 取（终端用户机器上不一定有 git）。
+//! 新旧判定看 release 的发布时间与本地构建时间，**不比较版本号大小** —— 本项目的版本号
+//! 是 0.3.5 / 0.3.51 / 0.3.52 / 0.3.6 / 0.3.62 这种「系列号 + 修订号」写法，数值与字符串
+//! 都排不出正确顺序，按号比迟早会判错方向。
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
+
+/// 取消标志：设置页点「取消下载」时置位，下载循环每个分块检查一次
+static CANCEL_DOWNLOAD: AtomicBool = AtomicBool::new(false);
 
 /// 构建期固化（见 build.rs）
 const REPO: &str = env!("PYTHON_YOU_REPO");
@@ -22,6 +29,8 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// 下载中的临时文件与替换脚本都放系统临时目录
 const NEW_EXE_NAME: &str = "python-you-new.exe";
 const SCRIPT_NAME: &str = "python-you-update.bat";
+/// 取消下载时返回的固定文案，前端据此区分「用户取消」与「真失败」
+const CANCELLED: &str = "已取消下载";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,13 +43,18 @@ pub struct UpdateInfo {
     pub expected_sha256: Option<String>,
 }
 
-/// 是否有新版：发布版本与本地版本号不同即视为有。
-///
-/// 不按数字大小比。本项目的补丁号是 0.3.51 / 0.3.52 这种写法，数值上 0.3.52 > 0.3.6，
-/// 纯数字比较会把 0.3.6 判成「更旧」，正在跑 0.3.52 的用户永远收不到这次更新。
-/// GitHub 的 releases/latest 是按发布时间取的，所以「号不同 = 有另一版」符合这里的发版习惯。
-fn has_update(latest: &str, current: &str) -> bool {
-    latest.trim() != current.trim()
+/// 本程序的构建时间（秒级 epoch，构建期由 build.rs 写入）
+const BUILD_TIME: &str = env!("PYTHON_YOU_BUILD_TIME");
+
+fn build_time_epoch() -> Option<i64> {
+    BUILD_TIME.trim().parse().ok()
+}
+
+/// release 的发布时间（RFC3339）→ epoch 秒
+fn published_epoch(rfc3339: &str) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(rfc3339.trim())
+        .ok()
+        .map(|t| t.timestamp())
 }
 
 /// 从 release notes 首行提取 `sha256: <64 位十六进制>`
@@ -115,8 +129,15 @@ pub async fn check_update() -> Result<UpdateInfo, String> {
         eprintln!("[updater] release notes 首行没有 sha256: <哈希>，本次跳过完整性校验");
     }
 
+    // 新旧按「发布时间 vs 本地构建时间」判定，不看版本号怎么编号：
+    // 同一版本号不必再下一次，其余情况只要这一版发布得比我晚就是新版
+    let published_at = body["published_at"].as_str().unwrap_or("");
+    let published = published_epoch(published_at)
+        .ok_or_else(|| format!("发布信息里的发布时间无法解析：{published_at}"))?;
+    let build_time = build_time_epoch().ok_or_else(|| "本地构建时间缺失，无法比较新旧".to_string())?;
+
     Ok(UpdateInfo {
-        has_update: has_update(&latest_version, CURRENT_VERSION),
+        has_update: latest_version.trim() != CURRENT_VERSION && published > build_time,
         current_version: CURRENT_VERSION.to_string(),
         latest_version,
         notes,
@@ -147,6 +168,7 @@ pub async fn download_update(
         return Err(format!("下载失败：服务器返回 {}", resp.status().as_u16()));
     }
 
+    CANCEL_DOWNLOAD.store(false, Ordering::SeqCst);
     let target = temp_path(NEW_EXE_NAME);
     let mut file = std::fs::File::create(&target).map_err(|e| format!("无法写入临时文件：{e}"))?;
     let total = resp.content_length().unwrap_or(0);
@@ -160,6 +182,11 @@ pub async fn download_update(
         .await
         .map_err(|e| format!("下载中断：{e}"))?
     {
+        if CANCEL_DOWNLOAD.load(Ordering::SeqCst) {
+            drop(file);
+            let _ = std::fs::remove_file(&target);
+            return Err(CANCELLED.to_string());
+        }
         hasher.update(&chunk);
         if let Err(e) = file.write_all(&chunk) {
             drop(file);
@@ -168,7 +195,8 @@ pub async fn download_update(
         }
         downloaded += chunk.len() as u64;
         if total > 0 {
-            let percent = downloaded.saturating_mul(100) / total;
+            // 钳到 0-100：服务端声明长度与实际字节数不一致时不让进度越界
+            let percent = (downloaded.saturating_mul(100) / total).min(100);
             if percent != last_percent {
                 last_percent = percent;
                 let _ = app.emit("download-progress", percent);
@@ -189,6 +217,12 @@ pub async fn download_update(
     }
 
     Ok(target.to_string_lossy().to_string())
+}
+
+/// 取消正在进行的下载（下载循环每个分块检查一次标志）
+#[tauri::command]
+pub fn cancel_update_download() {
+    CANCEL_DOWNLOAD.store(true, Ordering::SeqCst);
 }
 
 /// 换掉正在运行的 exe 并重启。
@@ -250,12 +284,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn any_different_version_counts_as_update() {
-        assert!(has_update("0.3.7", "0.3.6"));
-        // 补丁号写法：0.3.6 在数值上小于 0.3.52，但它是后发布的版本，必须能更新过去
-        assert!(has_update("0.3.6", "0.3.52"));
-        assert!(!has_update("0.3.6", "0.3.6"));
-        assert!(!has_update(" 0.3.6 ", "0.3.6"));
+    fn parses_github_publish_time() {
+        assert_eq!(published_epoch("2026-09-27T12:34:56Z"), Some(1_790_512_496));
+        // 带时区偏移的写法等价
+        assert_eq!(published_epoch("2026-09-27T20:34:56+08:00"), Some(1_790_512_496));
+        assert_eq!(published_epoch("1970-01-01T00:00:00Z"), Some(0));
+        // 解析不了就返回 None，调用方报错而不是猜
+        assert_eq!(published_epoch(""), None);
+        assert_eq!(published_epoch("2026-09-27"), None);
+    }
+
+    #[test]
+    fn newer_means_published_after_this_build() {
+        let build = 1_790_512_496i64;
+        assert!(1_790_512_497 > build); // 比构建时间晚一分钟就是新版
+        assert!(!(1_790_512_495 > build)); // 早于构建时间的不算
+        assert!(!(build > build)); // 同一时刻不算
     }
 
     #[test]

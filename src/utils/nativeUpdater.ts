@@ -28,6 +28,11 @@ export const nativeUpdater = {
     return invoke<string>('download_update', { url, expectedSha256 });
   },
 
+  /** 取消正在进行的下载；下载命令会以「已取消下载」失败返回 */
+  cancelDownload(): Promise<void> {
+    return invoke<void>('cancel_update_download');
+  },
+
   replaceAndRestart(): Promise<void> {
     return invoke<void>('replace_and_restart');
   },

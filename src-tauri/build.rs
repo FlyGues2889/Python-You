@@ -28,6 +28,13 @@ fn parse_slug(url: &str) -> Option<String> {
 
 fn main() {
     println!("cargo:rerun-if-changed=../.git/config");
+    // 构建时间（秒级 epoch）：更新器拿它和 release 的发布时间比新旧，
+    // 这样版本号怎么编号都不影响判断。取不到就写 0（客户端会拒绝比较并报错）。
+    let build_time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    println!("cargo:rustc-env=PYTHON_YOU_BUILD_TIME={build_time}");
     let repo = repo_slug().unwrap_or_else(|| "FlyGues2889/Python-You".to_string());
     println!("cargo:rustc-env=PYTHON_YOU_REPO={repo}");
     tauri_build::build()

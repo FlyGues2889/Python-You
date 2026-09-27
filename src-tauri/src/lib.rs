@@ -45,6 +45,7 @@ pub fn run() {
             python::python_pip_uninstall,
             updater::check_update,
             updater::download_update,
+            updater::cancel_update_download,
             updater::replace_and_restart,
         ])
         .build(tauri::generate_context!())

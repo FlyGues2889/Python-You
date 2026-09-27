@@ -2763,8 +2763,9 @@ dependencies = [
 
 [[package]]
 name = "python-you"
-version = "0.3.6"
+version = "0.3.62"
 dependencies = [
+ "chrono",
  "hex",
  "regex",
  "reqwest",

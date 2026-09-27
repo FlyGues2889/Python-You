@@ -1,6 +1,6 @@
 [package]
 name = "python-you"
-version = "0.3.6"
+version = "0.3.62"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -29,4 +29,6 @@ reqwest = { version = "0.13", features = ["json"] }
 sha2 = "0.10"
 hex = "0.4"
 regex = "1"
+# 只用来把 release 的 RFC3339 发布时间转成 epoch 秒
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 

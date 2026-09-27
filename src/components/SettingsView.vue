@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, onBeforeUnmount } from 'vue';
 import { AppConfig } from '../types';
 import { useI18n } from '../utils/i18n';
 import { resolveCodeTheme } from '../utils/theme';
@@ -82,12 +82,14 @@ const handleAddInterpreter = async () => {
 const isUpdaterAvailable = nativeApi.available();
 // 更新过程也登记到标题栏后台任务里（与包安装等长任务同一处，FR-1.3 / FR-5.6）
 const UPDATE_TASK_ID = 'app-update';
-const aboutVersion = ref('0.3.6'); // 兜底值；桌面端启动后从 tauri.conf.json 读真实版本
+const aboutVersion = ref('0.3.62'); // 兜底值；桌面端启动后从 tauri.conf.json 读真实版本
 const isUpdateDialogOpen = ref(false);
 const updateStage = ref<'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'preparing' | 'error'>('idle');
 const updateInfo = ref<UpdateInfo | null>(null);
 const updateError = ref('');
 const updatePercent = ref<number | null>(null); // null = 还没拿到真实进度
+let downloadToken = 0;      // 每次下载的代号：过期的监听与回调一律忽略
+let cancelling = false;     // 是否是「用户点了取消」导致的下载中断
 let stopProgressListener: (() => void) | null = null;
 
 if (isUpdaterAvailable) {
@@ -165,27 +167,60 @@ const handleCheckUpdate = async () => {
 const startUpdate = async () => {
   const info = updateInfo.value;
   if (!info) return;
+  const token = ++downloadToken;
+  cancelling = false;
   updateStage.value = 'downloading';
   updatePercent.value = null;
   stopProgress();
   addBackendTask(UPDATE_TASK_ID, t('statusDownloadingUpdate'));
   try {
     stopProgressListener = await nativeUpdater.onProgress(p => {
-      updatePercent.value = p;
-      updateBackendTask(UPDATE_TASK_ID, { progress: p }); // 标题栏后台任务里的进度同步
+      if (token !== downloadToken) return; // 上一轮下载的残留事件
+      const percent = Math.min(100, Math.max(0, Math.round(p)));
+      // 只接受单调递增：服务端长度与实际字节数不符时不来回跳
+      if (updatePercent.value !== null && percent < updatePercent.value) return;
+      updatePercent.value = percent;
+      updateBackendTask(UPDATE_TASK_ID, { progress: percent });
     });
     await nativeUpdater.download(info.downloadUrl, info.expectedSha256);
+    if (token !== downloadToken) return;
     stopProgress();
     finishBackendTask(UPDATE_TASK_ID, 'done');
     updateStage.value = 'preparing';
     await nativeUpdater.replaceAndRestart();
   } catch (err: any) {
     stopProgress();
+    if (token !== downloadToken) return;
+    if (cancelling) {
+      // 用户主动取消：不当作失败，回到「可更新」状态让用户还能再来一次
+      cancelling = false;
+      updatePercent.value = null;
+      updateStage.value = 'available';
+      finishBackendTask(UPDATE_TASK_ID, 'done');
+      return;
+    }
     finishBackendTask(UPDATE_TASK_ID, 'failed');
     updateStage.value = 'error';
     updateError.value = String(err?.message || err || t('updateFailed'));
   }
 };
+
+const cancelUpdateDownload = async () => {
+  if (updateStage.value !== 'downloading') return;
+  cancelling = true;
+  try {
+    await nativeUpdater.cancelDownload();
+  } catch { /* 取消失败就让下载继续跑完 */ }
+};
+
+// 弹窗动作区：有新版才给「稍后 / 立即更新」，其余状态给「确定」
+const canInstallUpdate = computed(() => updateStage.value === 'available' && !!updateInfo.value?.hasUpdate);
+
+// 离开设置页时摘掉进度监听（下载本身在后端继续，回到标题栏后台任务可见）
+onBeforeUnmount(() => {
+  stopProgress();
+  downloadToken++; // 让在途回调失效
+});
 
 // 清除本地数据（FR-8.2）：删除全部 python_you_* 键（工作区/配置/会话/教程进度）后重置
 const isClearDataDialogOpen = ref(false);
@@ -451,18 +486,29 @@ const clearLocalData = () => {
 
       <div v-if="updateStage === 'downloading'" class="update-progress">
         <!-- 拿到真实百分比才走确定态，否则用不确定态动画（不伪造进度） -->
-        <m3e-linear-progress-indicator v-if="updatePercent !== null" class="update-progress-bar"
+        <m3e-linear-progress-indicator v-if="updatePercent !== null" variant="wavy" class="update-progress-bar"
           :value="updatePercent"></m3e-linear-progress-indicator>
-        <m3e-linear-progress-indicator v-else class="update-progress-bar" mode="indeterminate">
+        <m3e-linear-progress-indicator v-else variant="wavy" class="update-progress-bar" mode="indeterminate">
         </m3e-linear-progress-indicator>
         <span class="update-progress-text">{{ updateStatusText }}</span>
       </div>
 
       <div slot="actions" class="settings-dialog-actions">
-        <m3e-button variant="text" size="small" :disabled="updateStage === 'downloading' || updateStage === 'preparing'"
-          @click="closeUpdateDialog">{{ t('updateLater') }}</m3e-button>
-        <m3e-button v-if="updateInfo?.hasUpdate && updateStage !== 'downloading' && updateStage !== 'preparing'"
-          variant="filled" size="small" @click="startUpdate">{{ t('updateNow') }}</m3e-button>
+        <!-- 下载中只给取消；重启准备中不给动作；有新版给「稍后 / 立即更新」；其余（最新/出错/检查中）给「确定」 -->
+        <template v-if="updateStage === 'downloading'">
+          <m3e-button variant="text" size="small" @click="cancelUpdateDownload">{{ t('updateCancelDownload')
+          }}</m3e-button>
+        </template>
+        <template v-else-if="updateStage === 'preparing'">
+          <m3e-button variant="text" size="small" disabled>{{ t('updatePreparing') }}</m3e-button>
+        </template>
+        <template v-else-if="canInstallUpdate">
+          <m3e-button variant="text" size="small" @click="closeUpdateDialog">{{ t('updateLater') }}</m3e-button>
+          <m3e-button variant="filled" size="small" @click="startUpdate">{{ t('updateNow') }}</m3e-button>
+        </template>
+        <template v-else>
+          <m3e-button variant="filled" size="small" @click="closeUpdateDialog">{{ t('updateConfirm') }}</m3e-button>
+        </template>
       </div>
     </m3e-dialog>
   </m3e-content-pane>
