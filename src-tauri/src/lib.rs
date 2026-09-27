@@ -1,5 +1,6 @@
 mod fs;
 mod python;
+mod updater;
 
 use tauri::Manager;
 
@@ -42,6 +43,9 @@ pub fn run() {
             python::python_repl_stop,
             python::python_pip_install,
             python::python_pip_uninstall,
+            updater::check_update,
+            updater::download_update,
+            updater::replace_and_restart,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

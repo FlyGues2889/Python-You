@@ -67,10 +67,15 @@ const scrollReplToBottom = () => {
   sc.scrollTop = sc.scrollHeight;
 };
 
-// 聚焦/输入时确保提示行可见（终端行为：键入时提示符始终在视野内）
+// 聚焦/输入时确保提示行可见（终端行为：键入时提示符始终在视野内）。
+// 用自身滚动容器滚到底：scrollIntoView 会连带滚动所有可滚动祖先，
+// 把整个 REPL 视图顶上去（同上，overflow:hidden 的容器照样会被滚）
 const ensurePromptVisible = () => {
   nextTick(() => {
-    promptRowRef.value?.scrollIntoView({ block: 'end' });
+    const sc = paneScroller(consoleContainerRef.value);
+    const row = promptRowRef.value;
+    if (!sc || !row) return;
+    sc.scrollTop += row.getBoundingClientRect().bottom - sc.getBoundingClientRect().bottom;
   });
 };
 

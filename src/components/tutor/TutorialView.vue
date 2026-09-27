@@ -319,7 +319,11 @@ const handleLoadCode = (payload: { code: string; topicId: string; topicTitle: st
 
 <style scoped>
 .tutorial-main-view {
-  padding-bottom: 0.4rem;
+  /* 与各面板的 margin-bottom(12px) 对齐：面板 height:100% + margin 12px 会超出容器
+     内容盒，容器是 overflow:hidden 但仍可被脚本滚动 —— 一旦有 scrollIntoView
+     之类的调用落上来，整块视图就被顶上去、面板上圆角被裁掉（表现为圆角越点越小）。
+     padding 正好等于 margin 时不会产生可滚动溢出。 */
+  padding-bottom: 12px;
   display: flex;
   width: 100%;
   height: 100%;

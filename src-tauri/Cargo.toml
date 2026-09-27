@@ -23,4 +23,10 @@ tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# 自更新用：查 GitHub Release、流式下载、校验哈希、解析资产名
+# 默认特性带系统 TLS（Windows 走 SChannel），不引入需要额外 C 工具链的 rustls provider
+reqwest = { version = "0.13", features = ["json"] }
+sha2 = "0.10"
+hex = "0.4"
+regex = "1"
 

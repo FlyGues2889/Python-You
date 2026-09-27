@@ -1939,11 +1939,9 @@ onMounted(() => {
             <span class="backend-task-status">{{ task.status === 'running' && typeof task.progress === 'number' ?
               `${task.progress}%` : backendTaskStatusText(task.status) }}</span>
           </div>
-          <!-- 真实进度的线性进度条（M3：4dp 高、全圆角、primary 活动段） -->
-          <div v-if="task.status === 'running' && typeof task.progress === 'number'" class="backend-task-progress"
-            role="progressbar" :aria-valuenow="task.progress" aria-valuemin="0" aria-valuemax="100">
-            <div class="backend-task-progress-fill" :style="{ width: `${task.progress}%` }"></div>
-          </div>
+          <!-- 只用真实进度：拿到百分比才显示进度条（组件库自带 progressbar 角色与 M3 配色） -->
+          <m3e-linear-progress-indicator v-if="task.status === 'running' && typeof task.progress === 'number'"
+            class="backend-task-progress" :value="task.progress"></m3e-linear-progress-indicator>
         </div>
       </div>
       <div slot="actions" class="m3e-dialog-actions">
@@ -2376,19 +2374,10 @@ m3e-nav-rail {
 }
 
 /* 安装等任务的真实进度条（M3 LinearProgressIndicator：4dp 高、全圆角、primary 活动段） */
+/* 只是给它留位置：厚度/圆角/配色都由 m3e-linear-progress-indicator 自己的 token 决定 */
 .backend-task-progress {
-  height: 4px;
+  display: block;
   margin: 2px 0 4px 16px;
-  border-radius: 9999px;
-  background-color: var(--surface-container-highest);
-  overflow: hidden;
-}
-
-.backend-task-progress-fill {
-  height: 100%;
-  border-radius: inherit;
-  background-color: var(--primary);
-  transition: width var(--motion-spatial-fast);
 }
 
 /* 标题栏加载指示器：库默认容器 48px / 指示器 38px，放进 36px 标题栏会被裁切，

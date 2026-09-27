@@ -3,8 +3,12 @@ import { ref, computed, watch, nextTick } from 'vue';
 import { type TutorialStage, type TutorialTopic } from './tutorialData';
 import { getTopicQuizScore, type QuizScore } from './quizData';
 import { useI18n } from '../../utils/i18n';
+import { paneScroller } from '../../utils/contentPane';
 
 const { t, tf } = useI18n();
+
+// 树列表的滚动容器（用于把当前主题滚进视野，见 scrollToActiveTopic）
+const treeListRef = ref<HTMLElement | null>(null);
 
 const props = defineProps<{
   activeTopicId: string;
@@ -195,10 +199,17 @@ const scrollToActiveTopic = () => {
 
   nextTick(() => {
     setTimeout(() => {
-      const activeEl = document.querySelector('.tutorial-tree-container .topic-item.is-active');
-      if (activeEl) {
-        activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+      const list = treeListRef.value;
+      const activeEl = list?.querySelector<HTMLElement>('.topic-item.is-active');
+      const sc = paneScroller(list);
+      if (!activeEl || !sc) return;
+      // 只滚侧栏自己的滚动容器：scrollIntoView 会连带滚动所有可滚动祖先（含
+      // overflow:hidden 的布局容器），把整块视图顶上去、裁掉面板上圆角
+      const delta = activeEl.getBoundingClientRect().top - sc.getBoundingClientRect().top;
+      sc.scrollTo({
+        top: sc.scrollTop + delta - (sc.clientHeight - activeEl.clientHeight) / 2,
+        behavior: 'smooth'
+      });
     }, 80);
   });
 };
@@ -315,7 +326,7 @@ const filteredStages = computed(() => {
       </div>
 
       <!-- Tree Items List -->
-      <m3e-content-pane class="tree-nodes-list">
+      <m3e-content-pane ref="treeListRef" class="tree-nodes-list">
         <!-- 测验目录：做题时侧栏列本系列的测验（点一行直接换题），行结构与文章目录一致便于复用样式 -->
         <template v-if="isQuizMode">
           <div v-for="({ stage, rows }) in filteredQuizStages" :key="stage.id" class="stage-block">
@@ -574,7 +585,7 @@ const filteredStages = computed(() => {
   /* host 自身 overflow 为 visible 时 flex item 的 min-height:auto 会取内容高度，
      把 host 撑高导致 shadow 内滚动容器失去滚动空间 → 必须显式归零 */
   /* 背景/内边距由 m3e-content-pane 的 shadow 内元素绘制，经变量控制
-     （与父级同色 surface；树列表无圆角；定位当前主题用 scrollIntoView 自动滚入） */
+     （与父级同色 surface；树列表无圆角；定位当前主题只滚本容器，见 scrollToActiveTopic） */
   --m3e-content-pane-container-padding: 4px;
   --m3e-content-pane-container-shape: 0;
   --m3e-content-pane-container-color: var(--surface-color);

@@ -65,8 +65,21 @@ const translations = {
     aboutAppDesc: '基于浏览器 WASM 与 Pyodide 的本地 Python 集成开发环境',
     demoMode: '演示模式',
     demoModeSubtitle: '开启后使用轻量演示引擎，关闭则使用离线完整 Python WASM 引擎',
-    aiEngine: '人工智能项目',
-    aiEngineDesc: '本项目使用人工智能技术协助构建',
+    // 检查更新（桌面端自更新）
+    checkUpdate: '检查更新',
+    updateCurrentVersion: '当前版本 v{version}',
+    updateChecking: '正在检查更新…',
+    updateLatest: '已是最新版本',
+    updateAvailable: '发现新版本 v{version}',
+    updateReleaseNotes: '更新说明',
+    updateDownloading: '正在下载… {percent}%',
+    updateDownloadingPlain: '正在下载，请稍候…',
+    statusDownloadingUpdate: '正在下载更新…',
+    updatePreparing: '下载完成，即将重启以完成更新…',
+    updateNow: '立即更新',
+    updateLater: '稍后',
+    updateFailed: '检查更新失败，请检查网络',
+    updateUnsupported: '当前环境不支持自动更新，请手动下载新版本',
 
     // Code Editor & Tabs
     welcomeTitle: '工作区为空',

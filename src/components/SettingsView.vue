@@ -5,6 +5,9 @@ import { useI18n } from '../utils/i18n';
 import { resolveCodeTheme } from '../utils/theme';
 import { nativePython } from '../utils/nativePython';
 import { nativeApi } from '../utils/native';
+import { nativeUpdater, type UpdateInfo } from '../utils/nativeUpdater';
+import { addBackendTask, updateBackendTask, finishBackendTask } from '../utils/backendTasks';
+import { getVersion } from '@tauri-apps/api/app';
 import PageHeader from './PageHeader.vue';
 import EditorPreview from './EditorPreview.vue';
 
@@ -72,6 +75,115 @@ const handleAddInterpreter = async () => {
     await nativePython.applyInterpreter(entry.id);
   } catch (err: any) {
     interpreterError.value = t('interpreterAddFailed') + (err?.message || err);
+  }
+};
+
+/* ==================== 检查更新 ==================== */
+const isUpdaterAvailable = nativeApi.available();
+// 更新过程也登记到标题栏后台任务里（与包安装等长任务同一处，FR-1.3 / FR-5.6）
+const UPDATE_TASK_ID = 'app-update';
+const aboutVersion = ref('0.3.6'); // 兜底值；桌面端启动后从 tauri.conf.json 读真实版本
+const isUpdateDialogOpen = ref(false);
+const updateStage = ref<'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'preparing' | 'error'>('idle');
+const updateInfo = ref<UpdateInfo | null>(null);
+const updateError = ref('');
+const updatePercent = ref<number | null>(null); // null = 还没拿到真实进度
+let stopProgressListener: (() => void) | null = null;
+
+if (isUpdaterAvailable) {
+  getVersion().then(v => { aboutVersion.value = v; }).catch(() => { /* 取不到就用兜底版本号 */ });
+}
+
+// 发布说明首行是 `sha256: <哈希>`，那是给更新器校验用的，不给用户看
+const updateNotesText = computed(() => {
+  const lines = (updateInfo.value?.notes || '').split('\n');
+  if (/^\s*sha256:/i.test(lines[0] || '')) lines.shift();
+  return lines.join('\n').trim();
+});
+
+const updateHeadline = computed(() => {
+  if (updateStage.value === 'checking') return t('updateChecking');
+  if (updateStage.value === 'latest') return t('updateLatest');
+  if (updateStage.value === 'preparing') return t('updatePreparing');
+  if (updateStage.value === 'error') return updateError.value;
+  const info = updateInfo.value;
+  if (!info) return '';
+  return t('updateAvailable').replace('{version}', info.latestVersion);
+});
+
+// 关于卡片里的状态文案：没检查过就显示当前版本
+const updateStatusText = computed(() => {
+  if (!isUpdaterAvailable) return t('updateUnsupported');
+  if (updateStage.value === 'checking') return t('updateChecking');
+  if (updateStage.value === 'latest') return t('updateLatest');
+  if (updateStage.value === 'downloading') {
+    return updatePercent.value === null
+      ? t('updateDownloadingPlain')
+      : t('updateDownloading').replace('{percent}', String(updatePercent.value));
+  }
+  if (updateStage.value === 'preparing') return t('updatePreparing');
+  if (updateInfo.value?.hasUpdate) return t('updateAvailable').replace('{version}', updateInfo.value.latestVersion);
+  return t('updateCurrentVersion').replace('{version}', aboutVersion.value);
+});
+
+const stopProgress = () => {
+  stopProgressListener?.();
+  stopProgressListener = null;
+};
+
+const closeUpdateDialog = () => {
+  if (updateStage.value === 'downloading' || updateStage.value === 'preparing') return; // 下载/重启中不允许关闭
+  isUpdateDialogOpen.value = false;
+  stopProgress();
+};
+
+const handleCheckUpdate = async () => {
+  if (!isUpdaterAvailable) {
+    updateStage.value = 'error';
+    updateError.value = t('updateUnsupported');
+    isUpdateDialogOpen.value = true;
+    return;
+  }
+  updateError.value = '';
+  updatePercent.value = null;
+  updateStage.value = 'checking';
+  isUpdateDialogOpen.value = true;
+  addBackendTask(UPDATE_TASK_ID, t('updateChecking'));
+  try {
+    const info = await nativeUpdater.check();
+    updateInfo.value = info;
+    updateStage.value = info.hasUpdate ? 'available' : 'latest';
+    finishBackendTask(UPDATE_TASK_ID, 'done');
+  } catch (err: any) {
+    updateStage.value = 'error';
+    updateError.value = String(err?.message || err || t('updateFailed'));
+    finishBackendTask(UPDATE_TASK_ID, 'failed');
+  }
+};
+
+// 下载 → 校验通过后后端会给出临时文件路径；随后提示并重启替换
+const startUpdate = async () => {
+  const info = updateInfo.value;
+  if (!info) return;
+  updateStage.value = 'downloading';
+  updatePercent.value = null;
+  stopProgress();
+  addBackendTask(UPDATE_TASK_ID, t('statusDownloadingUpdate'));
+  try {
+    stopProgressListener = await nativeUpdater.onProgress(p => {
+      updatePercent.value = p;
+      updateBackendTask(UPDATE_TASK_ID, { progress: p }); // 标题栏后台任务里的进度同步
+    });
+    await nativeUpdater.download(info.downloadUrl, info.expectedSha256);
+    stopProgress();
+    finishBackendTask(UPDATE_TASK_ID, 'done');
+    updateStage.value = 'preparing';
+    await nativeUpdater.replaceAndRestart();
+  } catch (err: any) {
+    stopProgress();
+    finishBackendTask(UPDATE_TASK_ID, 'failed');
+    updateStage.value = 'error';
+    updateError.value = String(err?.message || err || t('updateFailed'));
   }
 };
 
@@ -266,14 +378,21 @@ const clearLocalData = () => {
             {{ t('aboutApp') }}
             <span slot="supporting-text">{{ t('aboutAppDesc') }}</span>
             <div slot="trailing" class="settings-trailing">
-              v0.3.6
+              v{{ aboutVersion }}
             </div>
           </m3e-list-item>
 
           <m3e-list-item>
-            <span slot="leading" class="material-symbols-rounded" style="color: var(--primary);">auto_awesome</span>
-            {{ t('aiEngine') }}
-            <span slot="supporting-text">{{ t('aiEngineDesc') }}</span>
+            <span slot="leading" class="material-symbols-rounded">system_update_alt</span>
+            {{ t('checkUpdate') }}
+            <span slot="supporting-text">{{ updateStatusText }}</span>
+            <div slot="trailing" class="settings-trailing">
+              <m3e-button variant="outlined" size="small" :disabled="updateStage === 'checking' || updateStage === 'downloading' || updateStage === 'preparing'"
+                @click="handleCheckUpdate">
+                <span slot="icon" class="material-symbols-rounded">refresh</span>
+                {{ t('checkUpdate') }}
+              </m3e-button>
+            </div>
           </m3e-list-item>
         </m3e-list>
       </m3e-card>
@@ -313,6 +432,37 @@ const clearLocalData = () => {
         <m3e-button class="settings-danger-btn" variant="filled" size="small" @click="clearLocalData">
           {{ t('clearDataConfirm') }}
         </m3e-button>
+      </div>
+    </m3e-dialog>
+
+    <!-- 检查更新弹窗（自绘） -->
+    <m3e-dialog :open="isUpdateDialogOpen" @cancel="closeUpdateDialog" @closed="closeUpdateDialog">
+      <span slot="header" class="settings-dialog-title-row">
+        <span class="material-symbols-rounded settings-dialog-icon">system_update_alt</span>
+        <span class="settings-dialog-title">{{ t('checkUpdate') }}</span>
+      </span>
+
+      <p class="settings-dialog-desc">{{ updateHeadline }}</p>
+
+      <div v-if="updateNotesText" class="update-notes">
+        <div class="update-notes-title">{{ t('updateReleaseNotes') }}</div>
+        <pre class="update-notes-body">{{ updateNotesText }}</pre>
+      </div>
+
+      <div v-if="updateStage === 'downloading'" class="update-progress">
+        <!-- 拿到真实百分比才走确定态，否则用不确定态动画（不伪造进度） -->
+        <m3e-linear-progress-indicator v-if="updatePercent !== null" class="update-progress-bar"
+          :value="updatePercent"></m3e-linear-progress-indicator>
+        <m3e-linear-progress-indicator v-else class="update-progress-bar" mode="indeterminate">
+        </m3e-linear-progress-indicator>
+        <span class="update-progress-text">{{ updateStatusText }}</span>
+      </div>
+
+      <div slot="actions" class="settings-dialog-actions">
+        <m3e-button variant="text" size="small" :disabled="updateStage === 'downloading' || updateStage === 'preparing'"
+          @click="closeUpdateDialog">{{ t('updateLater') }}</m3e-button>
+        <m3e-button v-if="updateInfo?.hasUpdate && updateStage !== 'downloading' && updateStage !== 'preparing'"
+          variant="filled" size="small" @click="startUpdate">{{ t('updateNow') }}</m3e-button>
       </div>
     </m3e-dialog>
   </m3e-content-pane>
@@ -394,6 +544,51 @@ const clearLocalData = () => {
   --m3e-button-icon-color: var(--on-error);
   --m3e-button-pressed-state-layer-color: var(--on-error);
   --m3e-button-focus-state-layer-color: var(--on-error);
+}
+
+/* 更新弹窗：发布说明滚动区 + 下载进度条 */
+.update-notes {
+  margin-top: 16px;
+}
+
+.update-notes-title {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.update-notes-body {
+  margin: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 12px;
+  border-radius: 12px;
+  background-color: var(--surface-variant);
+  color: var(--text-color);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.update-progress {
+  margin-top: 16px;
+}
+
+/* 进度条用组件库的 m3e-linear-progress-indicator：厚度 4dp、全圆角、
+   轨道 secondary-container、活动段 primary 都由它自己的 token 决定，这里只占位 */
+.update-progress-bar {
+  display: block;
+  width: 100%;
+}
+
+.update-progress-text {
+  display: block;
+  margin-top: 8px;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
 }
 
 /* 小标题行距收紧 */
