@@ -50,6 +50,14 @@ export const pythonQuizzes: TopicQuiz[] = [
         question: '用 print() 输出两行文本：第一行 Python，第二行 真好学。',
         starterCode: '# 任务：输出两行文本，第一行 Python，第二行 真好学',
         expectedOutput: 'Python\n真好学'
+      },
+      {
+        id: 'p1_syntax_q7',
+        type: 'order',
+        question: '把下面「使用一个变量」的步骤按正确顺序排列。',
+        items: ['先起一个合法的变量名', '用等号给变量赋值', 'print 打印变量查看结果', '在代码里使用这个变量做计算'],
+        correctOrder: [0, 1, 3, 2],
+        explanation: '先命名，再赋值，之后才能在计算里使用，最后打印查看。'
       }
     ]
   },
@@ -106,6 +114,14 @@ export const pythonQuizzes: TopicQuiz[] = [
         question: '定义一个变量 name 存放文本 小派，再把它打印出来。',
         starterCode: '# 任务：定义一个变量 name 存放文本 小派，再把它打印出来',
         expectedOutput: '小派'
+      },
+      {
+        id: 'p1_variables_q4',
+        type: 'multi',
+        question: '下面哪些是合法的 Python 赋值语句？（多选，少选或多选都算错）',
+        options: ['x = 1', 'x == 1', 'x, y = 1, 2', '1 = x'],
+        answerIndexes: [0, 2],
+        explanation: '= 是赋值，把右边的值放进左边变量；x, y = 1, 2 是同时给两个变量赋值；== 是比较，1 = x 语法错误。'
       }
     ]
   },
@@ -162,6 +178,13 @@ export const pythonQuizzes: TopicQuiz[] = [
         question: '打印 10 除以 3 的余数（用 % 运算符）。',
         starterCode: '# 任务：打印 10 除以 3 的余数\n# 提示：用 % 取余运算符',
         expectedOutput: '1'
+      },
+      {
+        id: 'p1_numbers_q4',
+        type: 'blank',
+        question: '补全：求 10 除以 3 的余数要用运算符 ____ ，余数结果是 ____ 。',
+        blanks: [['%'], ['1']],
+        explanation: '% 是取余运算符，10 = 3×3 + 1，所以余数是 1。'
       }
     ]
   },
@@ -218,6 +241,13 @@ export const pythonQuizzes: TopicQuiz[] = [
         question: '把 "学" 和 "Python" 拼接后打印。',
         starterCode: '# 任务：把 学 和 Python 拼在一起输出\n# 提示：字符串可以用 + 拼接',
         expectedOutput: '学Python'
+      },
+      {
+        id: 'p1_strings_q4',
+        type: 'blank',
+        question: '补全：取字符串 "Python" 的第 1 个字符用下标 [____]；把两个字符串拼接用运算符 ____ 。',
+        blanks: [['0'], ['+']],
+        explanation: '字符串下标从 0 开始，第 1 个字符是 [0]；+ 号可以把两个字符串首尾相接。'
       }
     ]
   },
@@ -302,6 +332,22 @@ export const pythonQuizzes: TopicQuiz[] = [
         question: '用 append() 在列表末尾添加一个元素并打印列表。',
         starterCode: '# 任务：在 fruits 末尾添加 "cherry"，再打印整个列表\nfruits = ["apple", "banana"]',
         expectedOutput: "['apple', 'banana', 'cherry']"
+      },
+      {
+        id: 'p2_list_q4',
+        type: 'multi',
+        question: '关于列表（list），下面哪些说法正确？（多选）',
+        options: ['列表用方括号 [] 定义', '列表创建后可以增删元素', '列表里只能放数字', '列表支持用下标访问元素'],
+        answerIndexes: [0, 1, 3],
+        explanation: '列表用 [] 定义、可变、支持下标；列表里什么类型都能放，不局限于数字。'
+      },
+      {
+        id: 'p2_list_q5',
+        type: 'order',
+        question: '把下面「遍历列表并打印」的步骤按正确顺序排列。',
+        items: ['准备好一个列表，如 names = ["小明", "小红"]', '写 for 循环头：for name in names:', '在缩进的循环体里 print(name)', '运行程序逐个看到打印结果'],
+        correctOrder: [0, 1, 2, 3],
+        explanation: '先准备数据，再写 for 循环头，循环体缩进打印，最后运行查看。'
       }
     ]
   },
@@ -386,6 +432,13 @@ export const pythonQuizzes: TopicQuiz[] = [
         question: '从字典中取出姓名和年龄并打印。',
         starterCode: '# 任务：从 student 字典里取出姓名和年龄并打印\nstudent = {"name": "小明", "age": 10}',
         expectedOutput: '小明\n10'
+      },
+      {
+        id: 'p2_dict_q4',
+        type: 'blank',
+        question: '补全：字典 d = {"a": 1}，用 d[____] 取出值 1；再新增一个键 b 并赋值 2，写成 d[____] = 2。',
+        blanks: [['"a"', "'a'", 'a'], ['"b"', "'b'", 'b']],
+        explanation: '字典用 字典名[键] 取值；给新键赋值就直接 字典名[新键] = 值。'
       }
     ]
   },
@@ -414,6 +467,14 @@ export const pythonQuizzes: TopicQuiz[] = [
         question: '判断 age 是否成年（大于等于 18），成年输出文本：成年，否则输出文本：未成年。',
         starterCode: '# 任务：判断 age 是否成年（大于等于 18）\n# 成年输出文本：成年，否则输出文本：未成年\nage = 20',
         expectedOutput: '成年'
+      },
+      {
+        id: 'p3_ifelse_q4',
+        type: 'multi',
+        question: '关于 if / elif / else 条件判断，下面哪些说法正确？（多选）',
+        options: ['if 那一行末尾要写冒号 :', '条件成立时执行缩进的代码块', 'elif 可以写多个，依次判断', 'else 后面必须跟一个条件'],
+        answerIndexes: [0, 1, 2],
+        explanation: 'if/elif 后都要加冒号，缩进表示代码块，elif 可多个；else 是兜底分支，后面不再写条件。'
       }
     ]
   },
@@ -470,6 +531,13 @@ export const pythonQuizzes: TopicQuiz[] = [
         question: '用 for 循环把名单里的名字逐个打印出来。',
         starterCode: '# 任务：用 for 循环把 names 里的名字逐个打印\nnames = ["小明", "小红", "小刚"]',
         expectedOutput: '小明\n小红\n小刚'
+      },
+      {
+        id: 'p3_for_q4',
+        type: 'blank',
+        question: '补全：for i in range(____) 会循环 5 次；range 默认从数字 ____ 开始。',
+        blanks: [['5'], ['0']],
+        explanation: 'range(n) 生成 0 到 n-1 共 n 个数，所以 range(5) 循环 5 次，从 0 开始。'
       }
     ]
   },
@@ -554,6 +622,22 @@ export const pythonQuizzes: TopicQuiz[] = [
         question: '定义一个 greet 函数，传入名字并输出问候语。',
         starterCode: '# 任务：定义函数 greet(name)，让它打印文本：你好，名字\n# 然后调用 greet("小明")',
         expectedOutput: '你好，小明'
+      },
+      {
+        id: 'p4_functions_q4',
+        type: 'multi',
+        question: '关于函数，下面哪些说法正确？（多选）',
+        options: ['用 def 关键字定义函数', '用 return 把结果交还给调用方', '函数可以没有参数', '函数定义后必须立刻调用，否则会报错'],
+        answerIndexes: [0, 1, 2],
+        explanation: 'def 定义、return 返回、可以无参；函数定义后不调用不会报错，只是不执行。'
+      },
+      {
+        id: 'p4_functions_q5',
+        type: 'order',
+        question: '把下面「定义并调用一个函数」的步骤按正确顺序排列。',
+        items: ['用 def 写出函数名和参数', '缩进写函数体里的代码', '用 return 返回结果', '在函数外面调用它并接收结果'],
+        correctOrder: [0, 1, 2, 3],
+        explanation: '先 def 定义，再写缩进的函数体，用 return 返回，最后在外部调用。'
       }
     ]
   },
@@ -778,6 +862,14 @@ export const pythonQuizzes: TopicQuiz[] = [
         question: '导入 math，计算 16 的平方根并打印。',
         starterCode: '# 任务：导入 math，打印 16 的平方根',
         expectedOutput: '4.0'
+      },
+      {
+        id: 'p5_modules_q4',
+        type: 'order',
+        question: '把下面「使用一个第三方库」的步骤按正确顺序排列。',
+        items: ['用 pip install 安装这个库', '在代码顶部用 import 导入', '查看文档了解有哪些函数', '用 模块名.函数名() 调用'],
+        correctOrder: [0, 2, 1, 3],
+        explanation: '先安装，再了解用法，然后 import 导入，最后在代码里调用。'
       }
     ]
   },
@@ -862,6 +954,14 @@ export const pythonQuizzes: TopicQuiz[] = [
         question: '把字典转成 JSON 字符串并打印（保留中文）。',
         starterCode: '# 任务：把 data 字典转成 JSON 字符串并打印（保留中文）\nimport json\ndata = {"name": "小明", "age": 10}',
         expectedOutput: '{"name": "小明", "age": 10}'
+      },
+      {
+        id: 'p5_json_q4',
+        type: 'multi',
+        question: '关于 JSON 格式，下面哪些说法正确？（多选）',
+        options: ['JSON 的字符串必须用双引号', 'JSON 里的 null 对应 Python 的 None', 'JSON 里可以写 // 注释', 'JSON 数组用方括号 [] 表示'],
+        answerIndexes: [0, 1, 3],
+        explanation: 'JSON 用双引号、null 对应 None、数组用 []；JSON 不支持注释。'
       }
     ]
   },
@@ -947,6 +1047,14 @@ export const pythonQuizzes: TopicQuiz[] = [
         question: '捕获除以 0 的异常，输出友好提示。',
         starterCode: '# 任务：捕获除以 0 的异常，输出文本：不能除以 0\n# 提示：用 try / except ZeroDivisionError',
         expectedOutput: '不能除以 0'
+      },
+      {
+        id: 'p5_tryexcept_q4',
+        type: 'order',
+        question: '把下面「try / except 异常处理」的执行顺序排正确。',
+        items: ['try 里的正常代码开始执行', '某一行代码抛出异常', '跳到对应的 except 分支处理', '处理完后继续执行后面的代码'],
+        correctOrder: [0, 1, 2, 3],
+        explanation: '先执行 try 里的代码，出错时跳到 except，处理完再继续往后走。'
       }
     ]
   },
@@ -975,6 +1083,13 @@ export const pythonQuizzes: TopicQuiz[] = [
         question: '把文本 你好 写入 test.txt，再读出来打印。',
         starterCode: '# 任务：把文本 你好 写入 test.txt，再读出来打印\n# 提示：可以用 with open(...) 打开文件',
         expectedOutput: '你好'
+      },
+      {
+        id: 'p5_file_q4',
+        type: 'blank',
+        question: '补全：打开文件用内置函数 ____()；用 ____ 语句打开文件，结束后会自动关闭。',
+        blanks: [['open'], ['with']],
+        explanation: 'open() 打开文件；with open(...) 会在缩进块结束后自动关闭文件，最省心。'
       }
     ]
   },

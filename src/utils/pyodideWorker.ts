@@ -14,6 +14,7 @@ export type WorkerResponse =
   | { type: 'ready' }
   | { type: 'init-error'; text: string }
   | { type: 'stdout' | 'stderr' | 'system' | 'error'; text: string }
+  | { type: 'image'; dataUrl: string }
   | { type: 'need-input'; prompt: string }
   | { type: 'done'; success: boolean; value?: string | null };
 
@@ -37,6 +38,7 @@ self.addEventListener('message', async (event: MessageEvent<WorkerRequest>) => {
             return { loadPyodide: mod.loadPyodide, indexURL: PYODIDE_INDEX_URL };
           },
           onOutput: (kind, text) => post({ type: kind, text }),
+          onImage: (dataUrl) => post({ type: 'image', dataUrl }),
           // Worker 内没有 prompt：请主线程弹窗并回传用户输入
           requestInput: (promptText) =>
             new Promise<string | null>((resolve) => {

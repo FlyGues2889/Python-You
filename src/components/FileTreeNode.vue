@@ -37,6 +37,7 @@ const newChildName = ref('');
 // Custom directive for autofocus & text select
 const vAutofocus = {
   mounted: (el: HTMLElement) => {
+    (el as any).__autofocusMountedAt = Date.now();
     el.focus();
     if (el instanceof HTMLInputElement) {
       el.select();
@@ -102,6 +103,19 @@ const saveRename = () => {
   } else {
     emit('cancel-inline');
   }
+};
+
+// 右键菜单(Teleport 到 body)关闭时会还原焦点，导致刚 autofocus 的 input 立即 blur。
+// 挂载后极短窗口内的 blur 视为菜单关闭副作用，抢回焦点并忽略，保持内联编辑态。
+const onRenameBlur = (e: FocusEvent) => {
+  const el = e.target as HTMLInputElement;
+  const mountedAt = (el as any).__autofocusMountedAt ?? 0;
+  if (mountedAt && Date.now() - mountedAt < 250) {
+    el.focus();
+    el.select();
+    return;
+  }
+  saveRename();
 };
 
 const saveCreateChild = () => {
@@ -170,7 +184,7 @@ const cancelInline = () => {
         class="node-inline-input"
         @keyup.enter="saveRename"
         @keyup.esc="cancelInline"
-        @blur="saveRename"
+        @blur="onRenameBlur"
         @click.stop
       />
       <span v-else class="node-name" :title="item.path">{{ item.name }}</span>

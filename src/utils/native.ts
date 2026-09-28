@@ -110,11 +110,15 @@ export const nativeApi = {
   stopPython(): Promise<void> {
     return invoke('python_stop');
   },
-  replStart(cwd?: string | null): Promise<void> {
-    return invoke('python_repl_start', { cwd: cwd || null });
+  // hook：启动 REPL 时一并执行的 Python 初始化代码（matplotlib 出图钩子等）
+  replStart(cwd?: string | null, hook?: string | null): Promise<void> {
+    return invoke('python_repl_start', { cwd: cwd || null, hook: hook || null });
   },
   replInput(line: string): Promise<void> {
     return invoke('python_repl_input', { line });
+  },
+  runPythonInput(line: string): Promise<void> {
+    return invoke('python_run_input', { line });
   },
   pipInstall(pkg: string): Promise<void> {
     return invoke('python_pip_install', { pkg });

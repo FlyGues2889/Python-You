@@ -244,11 +244,13 @@ const translations = {
     findPrevTitle: '上一个 (Shift+Enter)',
     findNextTitle: '下一个 (Enter)',
     closeTitle: '关闭',
+    chartPreviewTitle: '图表预览',
     completionConfirm: '补全',
     completionInvoke: '唤起',
     quizAnswerCorrectDesc: '已通过，返回测验',
     checkAnswer: '答案',
     outputTerminalTitle: '输出',
+    terminalInputPlaceholder: '等待程序输入…',
     fontSizeIncrease: '增大编辑器字体',
     fontSizeDecrease: '减小编辑器字体',
     tracebackExpand: '展开完整错误信息',
@@ -403,7 +405,7 @@ const translations = {
     startLearning: '开始学习教程',
 
     // 网页端环境提示条
-    webEnvBanner: '网页版：工作区与学习进度仅保存在本浏览器（清除缓存或更换浏览器将丢失），代码在本机浏览器内执行',
+    webEnvBanner: '当前处于网页模式！工作区与学习进度仅保存在本浏览器，清除缓存或更换浏览器将丢失！',
 
     // 设置页数据管理
     dataSettings: '数据',
@@ -431,7 +433,11 @@ const translations = {
     workspaceSearch: '搜索工作区内容',
     workspaceSearchPlaceholder: '搜索文件内容（.py / .txt / .md / .json / .js / .ts）...',
     searchResultCount: '找到 {count} 处匹配',
-    workspaceSearchEmpty: '未找到匹配内容'
+    workspaceSearchEmpty: '未找到匹配内容',
+    otherFilesMatches: '其他文件：{count} 处匹配',
+    jump: '跳转',
+    formatDoc: '格式化文档',
+    formattedDoc: '已格式化文档'
   },
 };
 

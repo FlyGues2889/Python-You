@@ -1,3 +1,4 @@
+import { ref } from 'vue';
 import { ConsoleOutput, FSItem } from '../types';
 import { nativePython } from './nativePython';
 import { t, tf } from './i18n';
@@ -65,6 +66,10 @@ class PythonRunnerService {
     onOutput: (out: ConsoleOutput) => void;
     resolve: (result: { success: boolean; value?: string | null }) => void;
   } | null = null;
+
+  // 终端内 stdin：Pyodide 程序请求输入时置位，由 TerminalPanel 底部输入框回传
+  public stdinWaiting = ref(false);
+  public stdinPrompt = ref('');
 
   // 加载超时：桌面端可能无网络，避免“Connecting to Pyodide...”无限卡死无提示
   private static readonly PYODIDE_TIMEOUT_MS = 15000;
@@ -138,10 +143,13 @@ class PythonRunnerService {
       case 'error':
         if (this.currentOp) emitError(this.currentOp.onOutput, msg.text);
         break;
+      case 'image':
+        this.currentOp?.onOutput({ id: uid(), type: 'stdout', text: '', image: msg.dataUrl, timestamp: now() });
+        break;
       case 'need-input': {
-        // Worker 内没有 prompt：主线程弹窗询问后回传（优先用 Python 侧 input 的提示语）
-        const value = window.prompt(msg.prompt || t('pyodideInputPrompt'), '');
-        this.worker?.postMessage({ type: 'input', value: value === null ? null : String(value) } as WorkerRequest);
+        // 不再弹系统 prompt：点亮终端底部输入框，用户回车后由 submitRunInput 回传 worker
+        this.stdinWaiting.value = true;
+        this.stdinPrompt.value = msg.prompt || '';
         break;
       }
       case 'done':
@@ -661,7 +669,20 @@ class PythonRunnerService {
     return 'list-only';
   }
 
+  // 终端底部输入框提交：优先回传给正在等待的 Pyodide 程序，否则写入本机子进程 stdin
+  public submitRunInput(line: string | null): void {
+    if (this.stdinWaiting.value) {
+      this.stdinWaiting.value = false;
+      this.stdinPrompt.value = '';
+      this.worker?.postMessage({ type: 'input', value: line } as WorkerRequest);
+    } else if (line !== null) {
+      nativePython.writeRunInput(line).catch(() => { /* 程序已退出 */ });
+    }
+  }
+
   public async stop(): Promise<void> {
+    this.stdinWaiting.value = false;
+    this.stdinPrompt.value = '';
     if (nativePython.supported) {
       await nativePython.stop();
     }

@@ -29,6 +29,8 @@ export interface ConsoleOutput {
   timestamp: string;
   // FR-4.5：完整 traceback 等长文本详情，终端中默认折叠、可展开（摘要行仍常显）
   collapsible?: boolean;
+  // matplotlib 图表：data URL（PNG），存在时终端输出区渲染为图片
+  image?: string;
 }
 
 export interface AppConfig {

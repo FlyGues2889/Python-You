@@ -425,7 +425,7 @@ watch(
 
 // App Config State
 const config = ref<AppConfig>({
-  themeMode: 'system',
+  themeMode: 'dark', // 默认深色（用户可在设置里改回浅色/跟随系统）
   fontSize: 15,
   tabSize: 4,
   wordWrap: true,
@@ -801,6 +801,11 @@ const onSearchInput = () => {
 const handleSearchResultClick = (r: { file: FSItem }) => {
   handleSelectFile(r.file);
   isSearchOpen.value = false;
+};
+
+const handleJumpToSearchResult = async (p: { file: FSItem; line: number }) => {
+  await handleSelectFile(p.file);
+  window.setTimeout(() => codeEditorRef.value?.revealLine?.(p.line), 60);
 };
 
 // 首次启动欢迎引导弹窗（FR-1.4）：无教程完成记录时打开
@@ -1422,7 +1427,7 @@ const handleLoadTutorialCodeToEditor = (payload: { code: string; topicId: string
   const existingTab = demoFile ? openTabs.value.find((t) => t.fileId === demoFile.id) : undefined;
   // 同一道题重复载入（编辑器 ↔ 测验来回切换）时保留已写入的作答：
   // 用起始代码覆盖会把用户写好的答案改掉，之后的「检查答案」就会拿起始代码判分
-  const keepAnswer = !!existingTab && demoBufferKey.value === bufferKey;
+  const keepAnswer = isQuiz && !!questionId && !!existingTab && demoBufferKey.value === bufferKey;
   demoBufferKey.value = bufferKey;
 
   if (!demoFile) {
@@ -1815,10 +1820,9 @@ onMounted(() => {
               @click="codeEditorRef?.openReplaceBar()">
               <span class="material-symbols-rounded">find_replace</span>
             </m3e-icon-button>
-            <!-- 工作区内容搜索（不依赖已打开文件） -->
-            <m3e-icon-button class="marginBtn" size="extra-small" :title="t('workspaceSearch')"
-              @click="isSearchOpen = true">
-              <span class="material-symbols-rounded">manage_search</span>
+            <m3e-icon-button size="extra-small" :disabled="!activeTabObject" :title="t('formatDoc')"
+              @click="codeEditorRef?.formatDocument()">
+              <span class="material-symbols-rounded">format_align_left</span>
             </m3e-icon-button>
           </div>
 
@@ -1878,11 +1882,12 @@ onMounted(() => {
                   @cursor-change="handleCursorChange" @select-tab="handleSelectTab" @close-tab="handleCloseTab"
                   @content-change="handleContentChange" @save-tab="handleSaveTab"
                   @add-console-output="out => consoleOutputs.push(out)"
-                  @contextmenu-editor="e => openContextMenu(e, 'editor')" @show-toast="showToast" />
+                  @contextmenu-editor="e => openContextMenu(e, 'editor')" @jump-to-file="handleJumpToSearchResult" @show-toast="showToast" />
               </m3e-card>
 
               <m3e-card slot="end" class="terminal-card">
                 <TerminalPanel :outputs="consoleOutputs" :code-theme="resolvedCodeTheme" @clear="consoleOutputs = []"
+                  @add-console-output="out => consoleOutputs.push(out)"
                   @contextmenu-terminal="e => openContextMenu(e, 'terminal', null, 'run')" />
               </m3e-card>
             </m3e-split-pane>
@@ -2080,35 +2085,6 @@ onMounted(() => {
       </div>
     </m3e-dialog>
 
-    <!-- 工作区内容搜索 Dialog（B-6） -->
-    <m3e-dialog :open="isSearchOpen" @cancel="isSearchOpen = false" @closed="isSearchOpen = false">
-      <span slot="header" class="m3e-dialog-title-row">
-        <span class="material-symbols-rounded m3e-dialog-icon">manage_search</span>
-        <span class="m3e-dialog-title">{{ t('workspaceSearch') }}</span>
-      </span>
-      <div class="workspace-search-body">
-        <input v-model="searchQueryText" class="workspace-search-input" :placeholder="t('workspaceSearchPlaceholder')"
-          @keyup.enter="runWorkspaceSearch" @input="onSearchInput" />
-        <div v-if="searchQueryText.trim()" class="workspace-search-count">
-          {{ tf('searchResultCount', { count: searchResults.length }) }}
-        </div>
-        <div v-if="searchResults.length > 0" class="workspace-search-results">
-          <button v-for="(r, i) in searchResults" :key="i" class="workspace-search-item"
-            @click="handleSearchResultClick(r)">
-            <span class="ws-item-name">{{ r.file.name }}</span>
-            <span class="ws-item-line">{{ r.line }}</span>
-            <span class="ws-item-text">{{ r.text }}</span>
-          </button>
-        </div>
-        <div v-else-if="searchQueryText.trim()" class="workspace-search-empty">
-          {{ t('workspaceSearchEmpty') }}
-        </div>
-      </div>
-      <div slot="actions" class="m3e-dialog-actions">
-        <m3e-button variant="filled" size="small" @click="isSearchOpen = false">{{ t('closeTitle') }}</m3e-button>
-      </div>
-    </m3e-dialog>
-
     <!-- 首次启动欢迎引导 Dialog（FR-1.4） -->
     <m3e-dialog :open="isWelcomeOpen" @cancel="isWelcomeOpen = false" @closed="isWelcomeOpen = false">
       <span slot="header" class="m3e-dialog-title-row">
@@ -2186,13 +2162,7 @@ onMounted(() => {
 
 <style scoped>
 .app-container {
-  /* 标题栏高度只在这里定义一处：窗口控制按钮层、主工作区的高度都跟着它走。
-     曾经三处各写一个数（标题栏 32px / 控制层 36px / 工作区 100vh-36px），
-     改一处另两处就失配 —— 控制层那个固定盒子会比标题栏矮出一截压在正文上，
-     工作区也会比窗口少 4px 在底部留一条缝。
-     取 36px 而不是 32px：里面的 extra-small 图标按钮本身就有 32px，
-     32px 的标题栏等于零余量，行高/缩放一取整就顶破限制；菜单项也是 36px。 */
-  --titlebar-height: 36px;
+  --titlebar-height: 32px;
   height: 100vh;
   width: 100vw;
   background-color: var(--bg-color);
@@ -2424,6 +2394,8 @@ m3e-nav-rail {
 .app-layout-wrapper m3e-split-pane m3e-card.terminal-card {
   --m3e-card-padding: 0;
   --m3e-card-container-color: var(--surface-color);
+  /* 与终端内部（面板/内容区/输入行 16px）同档，避免卡片圆角比内层小、露出灰边 */
+  --m3e-card-shape: 16px;
 }
 
 .main-workspace {
@@ -2441,7 +2413,7 @@ m3e-snackbar.app-snackbar {
   z-index: 40000;
 }
 
-/* 网页端环境提示条：琥珀色信息条，不遮挡操作 */
+/* 网页端环境提示条：无底色/无边框的纯文字信息条，不遮挡操作 */
 .web-env-banner {
   display: flex;
   align-items: center;
@@ -2449,16 +2421,13 @@ m3e-snackbar.app-snackbar {
   margin: 0 0.4rem 0.4rem 0;
   padding: 6px 12px;
   font-size: 0.75rem;
-  color: var(--text-secondary);
-  background-color: color-mix(in srgb, var(--accent-amber, #f5b400) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent-amber, #f5b400) 35%, transparent);
-  border-radius: 8px;
+  color: var(--text-color);
   flex-shrink: 0;
 }
 
 .web-env-icon {
   font-size: 1rem;
-  color: var(--accent-amber, #f5b400);
+  color: var(--secondary);
 }
 
 /* ---- 编辑器操作工具栏：位于三面栏 Split Pane 上方，横贯整个工作区宽度 ---- */

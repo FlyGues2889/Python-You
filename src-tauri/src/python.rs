@@ -16,6 +16,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 pub struct PythonState {
     pub proc: Mutex<Option<Child>>,
     pub repl_stdin: Mutex<Option<ChildStdin>>,
+    // run 会话（python_run 启动的脚本）的 stdin：供 input() 交互写入
+    pub run_stdin: Mutex<Option<ChildStdin>>,
     // 用户选择的解释器 id（"python" / "py" / "py-3.13" / 等），None = 自动选第一个可用
     pub selected_python: Mutex<Option<String>>,
     // 当前正在运行的任务会话（run / repl / pip），用于停止时正确通知前端收尾
@@ -27,6 +29,7 @@ impl Default for PythonState {
         Self {
             proc: Mutex::new(None),
             repl_stdin: Mutex::new(None),
+            run_stdin: Mutex::new(None),
             selected_python: Mutex::new(None),
             current_session: Mutex::new(None),
         }
@@ -329,6 +332,7 @@ fn spawn_streaming(
     script: Option<PathBuf>,
     session: &str,
     split_cr: bool,
+    interactive_stdin: bool,
 ) -> Result<(), String> {
     // 先杀掉上一个进程（运行脚本 / REPL / pip 之间互斥），并通知上一个会话已终止
     let prev_session = {
@@ -344,14 +348,22 @@ fn spawn_streaming(
             }
         }
     }
+    state.run_stdin.lock().unwrap().take();
     *state.current_session.lock().unwrap() = Some(session.to_string());
 
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).stdin(Stdio::null());
+    if interactive_stdin {
+        cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).stdin(Stdio::piped());
+    } else {
+        cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).stdin(Stdio::null());
+    }
     no_console(&mut cmd);
     let mut child = cmd.spawn().map_err(|e| format!("启动 Python 失败: {e}"))?;
 
     let stdout = child.stdout.take().expect("child stdout");
     let stderr = child.stderr.take().expect("child stderr");
+    if interactive_stdin {
+        *state.run_stdin.lock().unwrap() = child.stdin.take();
+    }
 
     stream_reader(app.clone(), stdout, "stdout", session.to_string(), split_cr);
     stream_reader(app.clone(), stderr, "stderr", session.to_string(), split_cr);
@@ -385,6 +397,7 @@ fn spawn_streaming(
                     }
                     {
                         let st = app.state::<PythonState>();
+                        st.run_stdin.lock().unwrap().take();
                         *st.current_session.lock().unwrap() = None;
                     }
                     emit(&app, "done", &code.to_string(), &session_done);
@@ -471,7 +484,7 @@ pub fn python_run(
         crate::fs::validate_cwd(Path::new(dir))?; // 白名单校验（NFR-5.2）
         cmd.current_dir(dir);
     }
-    spawn_streaming(app, &state, cmd, Some(script), "run", false)
+    spawn_streaming(app, &state, cmd, Some(script), "run", false, true)
 }
 
 #[tauri::command]
@@ -489,13 +502,21 @@ pub fn python_stop(app: AppHandle, state: State<PythonState>) -> Result<(), Stri
     if let Ok(mut guard) = state.repl_stdin.lock() {
         guard.take();
     }
+    if let Ok(mut guard) = state.run_stdin.lock() {
+        guard.take();
+    }
     // 通知前端该会话已结束，让 runCode 的 Promise 正常收尾
     emit(&app, "done", "-1", &session);
     Ok(())
 }
 
 #[tauri::command]
-pub fn python_repl_start(app: AppHandle, state: State<PythonState>, cwd: Option<String>) -> Result<(), String> {
+pub fn python_repl_start(
+    app: AppHandle,
+    state: State<PythonState>,
+    cwd: Option<String>,
+    hook: Option<String>,
+) -> Result<(), String> {
     let py_parts = resolve_python(&state)?;
 
     // 清理上一个会话
@@ -534,7 +555,14 @@ def _py_help(obj=None):
     # 非终端通道会变成 iinntt 式重复字符乱码）
     print(pydoc.plain(pydoc.render_doc(obj)))
 builtins.help = _py_help";
-    cmd.arg("-u").arg("-i").arg("-c").arg(REPL_HELP_PATCH);
+    // 前端传进来的 matplotlib 出图钩子：作为交互前的初始化代码，跟 help 包装一起执行，
+    // 这样 REPL 里 plt.show() 也能把图发给终端（脚本运行路径用的是同一份钩子）
+    let init = match hook {
+        Some(h) if !h.trim().is_empty() => format!("{REPL_HELP_PATCH}
+{h}"),
+        _ => REPL_HELP_PATCH.to_string(),
+    };
+    cmd.arg("-u").arg("-i").arg("-c").arg(init);
     if let Some(dir) = &cwd {
         crate::fs::validate_cwd(Path::new(dir))?; // 白名单校验（NFR-5.2）
         cmd.current_dir(dir);
@@ -616,6 +644,20 @@ pub fn python_repl_input(state: State<PythonState>, line: String) -> Result<(), 
     Ok(())
 }
 
+// 向前端正在运行的脚本（run 会话）的 stdin 写一行：供终端内 input() 交互
+#[tauri::command]
+pub fn python_run_input(state: State<PythonState>, line: String) -> Result<(), String> {
+    let mut guard = state.run_stdin.lock().unwrap();
+    let stdin = guard.as_mut().ok_or("没有正在运行的程序")?;
+    let mut buf = line;
+    if !buf.ends_with('\n') {
+        buf.push('\n');
+    }
+    stdin.write_all(buf.as_bytes()).map_err(|e| e.to_string())?;
+    stdin.flush().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn python_repl_stop(app: AppHandle, state: State<PythonState>) -> Result<(), String> {
     python_stop(app, state)
@@ -630,6 +672,9 @@ pub fn shutdown(state: &PythonState) {
         }
     }
     if let Ok(mut guard) = state.repl_stdin.lock() {
+        guard.take();
+    }
+    if let Ok(mut guard) = state.run_stdin.lock() {
         guard.take();
     }
     if let Ok(mut g) = state.current_session.lock() {
@@ -658,7 +703,7 @@ pub fn python_pip_install(app: AppHandle, state: State<PythonState>, pkg: String
         cmd.arg("--user");
     }
     cmd.arg(&pkg);
-    spawn_streaming(app, &state, cmd, None, "pip", true)
+    spawn_streaming(app, &state, cmd, None, "pip", true, false)
 }
 
 // 真实卸载扩展包（本机 pip）：与安装共用 pip 会话与输出通道
@@ -671,7 +716,7 @@ pub fn python_pip_uninstall(
     let py_parts = resolve_python(&state)?;
     let mut cmd = command_from_parts(&py_parts);
     cmd.arg("-m").arg("pip").arg("uninstall").arg("--yes").arg(&pkg);
-    spawn_streaming(app, &state, cmd, None, "pip", true)
+    spawn_streaming(app, &state, cmd, None, "pip", true, false)
 }
 
 // 添加自定义解释器：探测所选的 Python 可执行文件，成功后持久化并返回可直接使用的条目
@@ -748,5 +793,5 @@ pub fn python_pip_install_file(
         cmd.arg("--user");
     }
     cmd.arg(&path);
-    spawn_streaming(app, &state, cmd, None, "pip", true)
+    spawn_streaming(app, &state, cmd, None, "pip", true, false)
 }

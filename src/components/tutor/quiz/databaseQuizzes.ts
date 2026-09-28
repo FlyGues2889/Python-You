@@ -27,6 +27,14 @@ export const databaseQuizzes: TopicQuiz[] = [
         question: '给定书目列表，用列表推导式挑出价格大于等于 40 元的书名并逐行打印。',
         starterCode: '# 任务：打印价格 >= 40 的书名，每行一个\nbooks = [\n    {"title": "西游", "price": 45},\n    {"title": "三国", "price": 60},\n    {"title": "水浒", "price": 38},\n]',
         expectedOutput: '西游\n三国'
+      },
+      {
+        id: 'db_what_q4',
+        type: 'multi',
+        question: '关于关系型数据库的表，下面哪些说法正确？（多选）',
+        options: ['一行就是一条完整记录', '一列就是一个字段（如姓名、年龄）', '主键用来唯一标识每一行', '表里所有列的数据类型必须相同'],
+        answerIndexes: [0, 1, 2],
+        explanation: '行是记录、列是字段、主键唯一；不同列可以有不同类型，比如姓名是文本、年龄是整数。'
       }
     ]
   },
@@ -55,6 +63,13 @@ export const databaseQuizzes: TopicQuiz[] = [
         question: '连接内存数据库，执行 SELECT 1 + 1 并把结果打印出来。',
         starterCode: '# 任务：连接 :memory: 数据库，查询 1+1 并打印结果\nimport sqlite3',
         expectedOutput: '2'
+      },
+      {
+        id: 'db_sqlite_what_q4',
+        type: 'blank',
+        question: '补全：SQLite 整个数据库就是一个 ____ ；连接临时内存数据库时，地址写 ____ 。',
+        blanks: [['文件'], [':memory:']],
+        explanation: 'SQLite 零配置，一个文件就是一个库；":memory:" 在内存里建临时库，程序结束即清空。'
       }
     ]
   },
@@ -83,6 +98,21 @@ export const databaseQuizzes: TopicQuiz[] = [
         question: '建一张商品表：id 整数主键，name 文本类型，price 小数类型。填出 price 的类型：price ____ 。',
         blanks: [['REAL']],
         explanation: 'SQLite 里整数用 INTEGER，小数用 REAL，文本用 TEXT。'
+      },
+      {
+        id: 'db_connect_q4',
+        type: 'blank',
+        question: '补全：建表语句是 CREATE ____ 表名(...)；整数类型写 ____ ，文本类型写 TEXT。',
+        blanks: [['TABLE'], ['INTEGER']],
+        explanation: 'CREATE TABLE 表名(字段 类型) 用来建表；整数用 INTEGER，文本用 TEXT。'
+      },
+      {
+        id: 'db_connect_q5',
+        type: 'order',
+        question: '把下面「连接数据库并建表」的步骤排正确。',
+        items: ['用 sqlite3.connect 连接数据库文件', '创建 cursor 游标', '执行 CREATE TABLE 语句', '调用 commit() 提交'],
+        correctOrder: [0, 1, 2, 3],
+        explanation: '先 connect 连接，再建游标，用游标执行建表语句，最后 commit 保存。'
       }
     ]
   },
@@ -116,6 +146,21 @@ export const databaseQuizzes: TopicQuiz[] = [
         question: '建 fruits 表并插入三种水果（苹果 5.5、香蕉 3.0、橙子 4.2），最后用 COUNT(*) 打印水果种类数。',
         starterCode: '# 任务：插入三种水果后，打印种类数\nimport sqlite3',
         expectedOutput: '3'
+      },
+      {
+        id: 'db_insert_q4',
+        type: 'blank',
+        question: '补全：插入一行数据用 INSERT ____ 表名(...)；插入或修改数据后，必须调用 ____() 才真正写入数据库。',
+        blanks: [['INTO'], ['commit']],
+        explanation: 'INSERT INTO 表(字段) VALUES(值) 插入记录；改完一定要 commit 才生效。'
+      },
+      {
+        id: 'db_insert_q5',
+        type: 'order',
+        question: '把下面「插入数据并查询」的步骤排正确。',
+        items: ['用 cursor.execute 执行 INSERT 语句', '调用 commit() 提交事务', '用 cursor.execute 执行 SELECT 查询', '用 fetchall() 取出所有结果行'],
+        correctOrder: [0, 1, 2, 3],
+        explanation: '先插入并提交，再执行 SELECT，最后 fetchall 取结果。'
       }
     ]
   },
@@ -144,6 +189,22 @@ export const databaseQuizzes: TopicQuiz[] = [
         question: '建 products 表（铅笔 2.0、笔记本 8.5、钢笔 15.0、橡皮 1.5），打印价格小于 10 的商品名和价格。',
         starterCode: '# 任务：打印价格 < 10 的商品，每行：名称 价格\nimport sqlite3',
         expectedOutput: '铅笔 2.0\n笔记本 8.5\n橡皮 1.5'
+      },
+      {
+        id: 'db_select_q4',
+        type: 'multi',
+        question: '关于 SELECT 查询，下面哪些说法正确？（多选）',
+        options: ['WHERE 用来筛选符合条件的行', 'ORDER BY 用来排序', 'LIMIT 用来限制返回的行数', 'SELECT * 表示只查第一列'],
+        answerIndexes: [0, 1, 2],
+        explanation: 'WHERE 筛行、ORDER BY 排序、LIMIT 限量；SELECT * 是查所有列，不是第一列。'
+      },
+      {
+        id: 'db_select_q5',
+        type: 'order',
+        question: '把下面「查询并打印数据」的步骤排正确。',
+        items: ['写好 SELECT ... WHERE ... 语句', '用 cursor.execute 执行这条 SQL', '用 fetchall() 拿到所有结果行', '用 for 循环逐行打印'],
+        correctOrder: [0, 1, 2, 3],
+        explanation: '先写 SQL，再 execute 执行，然后 fetchall 取结果，最后循环打印。'
       }
     ]
   },
@@ -172,6 +233,13 @@ export const databaseQuizzes: TopicQuiz[] = [
         question: '建 books 表（西游 45、三国 60、水浒 38），把水浒价格改成 42，再按插入顺序打印所有书名和价格。',
         starterCode: '# 任务：更新水浒价格为 42，然后打印全部书\nimport sqlite3',
         expectedOutput: '西游 45.0\n三国 60.0\n水浒 42.0'
+      },
+      {
+        id: 'db_update_delete_q4',
+        type: 'blank',
+        question: '补全：修改数据用 UPDATE 表名 SET 字段=值 ____ 条件；删除整行用 ____ FROM 表名。',
+        blanks: [['WHERE'], ['DELETE']],
+        explanation: 'UPDATE ... WHERE ... 修改符合条件的行；DELETE FROM 表名 WHERE ... 删除行；一定要带 WHERE。'
       }
     ]
   },
@@ -200,6 +268,14 @@ export const databaseQuizzes: TopicQuiz[] = [
         question: '建 sales 表（上海 300、上海 500、北京 200、北京 400、北京 600），按城市分组打印总销售额。',
         starterCode: '# 任务：按城市分组打印总销售额，格式：城市 总销售额=金额\nimport sqlite3',
         expectedOutput: '上海 总销售额=800.0\n北京 总销售额=1200.0'
+      },
+      {
+        id: 'db_sort_agg_q4',
+        type: 'multi',
+        question: '下面哪些是 SQLite 里的聚合函数？（多选）',
+        options: ['COUNT(*)', 'SUM(列)', 'AVG(列)', 'PRINT(列)'],
+        answerIndexes: [0, 1, 2],
+        explanation: 'COUNT 计数、SUM 求和、AVG 平均，另有 MAX/MIN；没有 PRINT 这个 SQL 函数。'
       }
     ]
   },
@@ -228,6 +304,14 @@ export const databaseQuizzes: TopicQuiz[] = [
         question: '建 books 表（西游 45、三国 60），用占位符 ? 查询价格小于 50 的书，打印书名和价格。',
         starterCode: '# 任务：用 ? 占位符查询 price < 50 的书\nimport sqlite3',
         expectedOutput: '西游 45.0'
+      },
+      {
+        id: 'db_param_q4',
+        type: 'multi',
+        question: '关于 sqlite3 的 ? 占位符参数化查询，下面哪些说法正确？（多选）',
+        options: ['能防止 SQL 注入，更安全', '参数作为元组传给 execute', '引号会被自动处理，不会报错', '占位符只能用于查询，不能用于插入'],
+        answerIndexes: [0, 1, 2],
+        explanation: '占位符既用于查询也用于插入；它自动转义引号，安全且不会因引号出错。'
       }
     ]
   },
@@ -256,6 +340,14 @@ export const databaseQuizzes: TopicQuiz[] = [
         question: '建 wallet 表（甲 200、乙 50），让甲给乙转 100，提交后打印两人余额。',
         starterCode: '# 任务：甲给乙转 100，提交后打印 owner 和 money\nimport sqlite3',
         expectedOutput: '甲 100.0\n乙 150.0'
+      },
+      {
+        id: 'db_transaction_q4',
+        type: 'order',
+        question: '把下面「使用 SQLite 连接」的完整生命周期排正确。',
+        items: ['用 sqlite3.connect 连接数据库', '用 cursor.execute 执行 SQL 语句', '一切正常时调用 commit() 提交', '用完后调用 close() 关闭连接'],
+        correctOrder: [0, 1, 2, 3],
+        explanation: '先连接，再执行 SQL，正常就 commit，最后 close 关闭；出错时改用 rollback。'
       }
     ]
   }

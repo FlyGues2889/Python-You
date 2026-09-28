@@ -443,6 +443,10 @@ const openInEditor = (code: string) => {
 <style scoped>
 .tutorial-content-view {
   flex: 1;
+  /* flex item 的 min-width 默认 auto = 内容最小宽度：宽内容（长表格/不换行的代码行）
+     会把面板钉在最小宽度上不再收缩，窗口变窄时 TOC 的显隐判定（按面板 clientWidth 算）
+     就跟着失灵。与下面的 min-height 同理，归零让它跟窗口收缩 */
+  min-width: 0;
   min-height: 0;
   height: 100%;
   /* host 自身 overflow 为 visible 时 flex item 的 min-height:auto 会取内容高度，

@@ -60,6 +60,14 @@ export const automationQuizzes: TopicQuiz[] = [
         question: '用 Path 构造 documents/report.txt，打印它的文件名（name）和后缀（suffix）。',
         starterCode: '# 任务：打印 p.name 和 p.suffix\nfrom pathlib import Path',
         expectedOutput: '文件名: report.txt\n后缀: .txt'
+      },
+      {
+        id: 'auto_path_q4',
+        type: 'multi',
+        question: '关于 pathlib 的 Path，下面哪些说法正确？（多选）',
+        options: ['可以用 / 运算符拼接路径', '.stem 是不含扩展名的文件名', '.suffix 是文件扩展名', 'Path 只能在 Windows 上用'],
+        answerIndexes: [0, 1, 2],
+        explanation: 'Path 用 / 拼路径、stem 取主名、suffix 取后缀；它跨平台，Windows 和 Mac/Linux 都能用。'
       }
     ]
   },
@@ -88,6 +96,13 @@ export const automationQuizzes: TopicQuiz[] = [
         question: '给定文件列表 ["报告.pdf","笔记.txt","图片.png","账单.txt"]，逐行打印其中的 .txt 文件。',
         starterCode: '# 任务：筛选并逐行打印 txt 文件\nfiles = ["报告.pdf", "笔记.txt", "图片.png", "账单.txt"]',
         expectedOutput: '笔记.txt\n账单.txt'
+      },
+      {
+        id: 'auto_listdir_q4',
+        type: 'blank',
+        question: '补全：遍历一个文件夹里的内容用 Path 对象的 ____() 方法；判断某个路径是否真的存在用 ____() 方法。',
+        blanks: [['iterdir'], ['exists']],
+        explanation: 'iterdir() 列出文件夹里的每一项；exists() 判断路径是否存在。'
       }
     ]
   },
@@ -144,6 +159,22 @@ export const automationQuizzes: TopicQuiz[] = [
         question: '以写入模式打开文件用 open("a.txt", ____, encoding="utf-8")；在末尾追加内容用模式 ____。',
         blanks: [['"w"', "'w'", 'w'], ['"a"', "'a'", 'a']],
         explanation: 'w 覆盖写入，a 在末尾追加，r 读取。'
+      },
+      {
+        id: 'auto_readwrite_q4',
+        type: 'multi',
+        question: '关于用 Python 读写文件，下面哪些说法正确？（多选）',
+        options: ['推荐用 with open(...)，结束后自动关闭文件', '读写中文时显式写 encoding="utf-8"', '"w" 写入模式会覆盖文件原有内容', '"r" 模式是用来往文件里写内容的'],
+        answerIndexes: [0, 1, 2],
+        explanation: 'with 自动关文件、utf-8 防乱码、w 覆盖写；r 是读取模式，不是写入。'
+      },
+      {
+        id: 'auto_readwrite_q5',
+        type: 'order',
+        question: '把下面「读取并处理一个文本文件」的步骤排正确。',
+        items: ['用 with open(...) 打开文件', '调用 read() 把内容读进字符串', '在内存里处理这段文字', 'with 块结束，文件自动关闭'],
+        correctOrder: [0, 1, 2, 3],
+        explanation: '先打开，再读内容，处理完后 with 块结束自动关闭文件。'
       }
     ]
   },
@@ -172,6 +203,14 @@ export const automationQuizzes: TopicQuiz[] = [
         question: '合并两份商品数据（笔 10、本 5 与 笔 7、本 9），打印总销量。',
         starterCode: '# 任务：concat 后打印 数量 列的总和\nimport pandas as pd\nfrom io import StringIO',
         expectedOutput: '总销量: 31'
+      },
+      {
+        id: 'auto_csv_q4',
+        type: 'order',
+        question: '把下面「汇总多个 CSV 报表」的步骤排正确。',
+        items: ['用 pd.read_csv 逐个读入每个 CSV 文件', '用 pd.concat 把它们合并成一张表', '用 groupby 做汇总统计', '用 to_csv 把结果保存成新文件'],
+        correctOrder: [0, 1, 2, 3],
+        explanation: '先读入每个文件，再合并成一张表，接着分组统计，最后保存结果。'
       }
     ]
   },
@@ -200,6 +239,13 @@ export const automationQuizzes: TopicQuiz[] = [
         question: '给定 2026-01-01，打印 30 天后的日期（用 YYYY-MM-DD 格式）。',
         starterCode: '# 任务：date(2026,1,1) 加 timedelta(days=30) 后打印\nfrom datetime import date, timedelta',
         expectedOutput: '2026-01-31'
+      },
+      {
+        id: 'auto_datetime_q4',
+        type: 'blank',
+        question: '补全：表示「7 天之后」用 timedelta(days=____)；把日期对象格式化成字符串用 ____() 方法。',
+        blanks: [['7'], ['strftime']],
+        explanation: 'timedelta(days=n) 表示时间差；strftime 按格式把日期转成字符串。'
       }
     ]
   },
@@ -228,6 +274,13 @@ export const automationQuizzes: TopicQuiz[] = [
         question: '模拟备份流程，逐行打印三步：复制源文件、打包成 zip、完成。',
         starterCode: '# 任务：按顺序打印备份三步动作',
         expectedOutput: '1. 复制源文件到备份目录\n2. 把目录打包成带日期的 zip'
+      },
+      {
+        id: 'auto_shutil_q4',
+        type: 'blank',
+        question: '补全：复制一个文件用 shutil.____()；把一个文件搬到别处用 shutil.____()。',
+        blanks: [['copy'], ['move']],
+        explanation: 'shutil.copy 复制文件，shutil.move 移动（或重命名）文件。'
       }
     ]
   },
@@ -256,6 +309,22 @@ export const automationQuizzes: TopicQuiz[] = [
         question: '配置 INFO 级别后，用 logging.info 打印两行：开始汇总报表、汇总完成共 12 行数据。',
         starterCode: '# 任务：basicConfig 后输出两条 info 日志\nimport logging',
         expectedOutput: '开始汇总报表\n汇总完成，共 12 行数据'
+      },
+      {
+        id: 'auto_logging_q4',
+        type: 'multi',
+        question: '关于 Python 日志级别，下面哪些说法正确？（多选）',
+        options: ['DEBUG 是最详细的级别', 'CRITICAL 是最严重的级别', 'INFO 用来记录一般的运行流程', 'WARNING 比 ERROR 更严重'],
+        answerIndexes: [0, 1, 2],
+        explanation: '级别从低到高：DEBUG < INFO < WARNING < ERROR < CRITICAL；ERROR 比 WARNING 更严重。'
+      },
+      {
+        id: 'auto_logging_q5',
+        type: 'order',
+        question: '把下面「配置并使用日志」的步骤排正确。',
+        items: ['import logging 导入模块', '用 basicConfig 配置日志级别', '在代码里写 logging.info 记录进度', '运行程序查看日志输出'],
+        correctOrder: [0, 1, 2, 3],
+        explanation: '先导入模块，再配置级别，然后在代码里打日志，最后运行查看。'
       }
     ]
   },

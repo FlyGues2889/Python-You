@@ -84,9 +84,9 @@ export const cmdHelp: TutorialStage = {
       title: 'Python 关键字',
       stage: 'Python 参考手册 > 保留关键字',
       kind: 'reference',
-      summary: '关键字是 Python 的「规定动作」，35 个词先混个眼熟。',
+      summary: '关键字是 Python 的「规定动作」，37 个词先混个眼熟。',
       content: {
-        overview: '关键字（Keywords）是 Python 预留的特殊单词，比如 if、for、while、def。它们有固定的语法含义，不能拿来当变量名或函数名。Python 3.11 一共有 35 个。',
+        overview: '关键字（Keywords）是 Python 预留的特殊单词，比如 if、for、while、def。它们有固定的语法含义，不能拿来当变量名或函数名。按下方分类合计共有 37 个。',
         sections: [
           {
             text: '通过 `import keyword; print(keyword.kwlist)` 可实时获取完整列表，按功能分类如下：',
@@ -108,7 +108,7 @@ export const cmdHelp: TutorialStage = {
             }
           },
           {
-            text: '关键字是 Python 保留词，不能当变量名；常用关键字：if、for、while、def、return、import、class；用 `keyword.kwlist` 可以查看全部 35 个。'
+            text: '关键字是 Python 保留词，不能当变量名；常用关键字：if、for、while、def、return、import、class；用 `keyword.kwlist` 可以查看全部 37 个。'
           }
         ]
       }
@@ -130,9 +130,10 @@ export const cmdHelp: TutorialStage = {
                 ['数值计算', 'abs, divmod, pow, round, sum, max, min', '绝对值、商余、乘方、四舍五入、求和、极值'],
                 ['类型转换', 'int, float, str, bool, list, tuple, set, dict, bytes, chr, ord, hex, oct, bin', '标量与容器类型转换、进制转换'],
                 ['对象反射', 'type, isinstance, issubclass, id, hash, getattr, setattr, hasattr, dir, vars, callable, repr', '类型检测、内存地址、动态属性访问'],
-                ['迭代容器', 'len, range, enumerate, zip, map, filter, sorted, reversed, all, any, slice', '容器长度、索引配对、映射过滤、排序'],
+                ['迭代容器', 'len, range, enumerate, zip, map, filter, iter, next, sorted, reversed, all, any, slice', '容器长度、索引配对、迭代器创建与取下一个、映射过滤、排序'],
                 ['输入输出', 'print, input, open, help, format', '控制台打印、输入、文件、格式化'],
-                ['代码执行', 'eval, exec, compile, globals, locals, super, breakpoint', '动态执行、作用域、继承调用']
+                ['代码执行', 'eval, exec, compile, globals, locals, super, breakpoint', '动态执行、作用域、继承调用'],
+                ['类与描述符', 'property, classmethod, staticmethod', '把方法当属性访问、定义类方法与静态方法']
               ]
             }
           },
@@ -140,7 +141,68 @@ export const cmdHelp: TutorialStage = {
             text: '易混淆函数对比：`sorted()` 返回新列表、不修改原数据，`list.sort()` 原位修改；`map()` 与列表推导式相比后者可读性更好，多数场景推荐推导式；类型判断优先用 `isinstance()`，它会考虑继承关系。'
           },
           {
+            text: '安全警告：`eval()` 和 `exec()` 会把字符串当作 Python 代码直接执行。不要对不可信输入使用，有代码注入风险——只要字符串来自用户、文件或网络，攻击者就可以借它执行任意代码。学习调试时只在自己写死的字符串上使用。'
+          },
+          {
             text: 'print() 输出、len() 长度、type() 查类型、int()/str() 转换、max()/min() 求最值；全部内置函数用 `dir(builtins)` 或 `help()` 查看。'
+          }
+        ]
+      }
+    },
+    {
+      id: 'cmd_pip',
+      title: 'pip 包管理',
+      stage: 'Python 参考手册 > 包管理',
+      kind: 'reference',
+      summary: '用 pip 安装、卸载、查看第三方包。',
+      content: {
+        overview: 'pip 是 Python 自带的包管理器，用来从网上下载别人写好的第三方库，比如 pip install requests 就能装上 requests 库。用法是 pip 后面跟一个子命令，再跟上包名。',
+        sections: [
+          {
+            text: '最常用的 pip 子命令：',
+            table: {
+              headers: ['子命令', '示例', '功能说明'],
+              rows: [
+                ['install', 'pip install requests', '安装第三方包；加 ==版本号 可指定版本'],
+                ['uninstall', 'pip uninstall requests', '卸载已安装的包'],
+                ['list', 'pip list', '列出当前环境里已安装的所有包'],
+                ['show', 'pip show requests', '查看某个包的详情：版本、安装位置、依赖'],
+                ['freeze', 'pip freeze > requirements.txt', '把当前环境已装的包导出成依赖清单文件'],
+                ['install -r', 'pip install -r requirements.txt', '按依赖清单批量安装，换电脑时还原环境用'],
+                ['install -U', 'pip install -U requests', '把已装的包升级到最新版']
+              ]
+            }
+          },
+          {
+            text: '日常流程：pip install 装包、pip list 看装了啥、pip show 查详情、pip freeze 导出清单，换环境时用 pip install -r 还原。'
+          }
+        ]
+      }
+    },
+    {
+      id: 'cmd_repl',
+      title: 'REPL 交互模式',
+      stage: 'Python 参考手册 > 交互模式',
+      kind: 'reference',
+      summary: '直接敲 python 进入 >>>，一行一行试代码。',
+      content: {
+        overview: '在终端里直接输入 python（不带文件名）回车，就进入了 REPL 交互模式：屏幕上出现 >>> 提示符，你输一行代码它立刻执行一行，特别适合临时试一小段语法、查个函数用法。',
+        sections: [
+          {
+            text: 'REPL 常用操作：',
+            table: {
+              headers: ['操作', '做法', '说明'],
+              rows: [
+                ['进入交互模式', '终端输入 python 回车', '出现 >>> 提示符，等待输入'],
+                ['执行一行', '在 >>> 后输入表达式回车', '立刻打印结果，比如输入 1+2 回车显示 3'],
+                ['退出交互模式', '输入 exit() 回车', 'Windows / Mac / Linux 通用'],
+                ['快捷键退出', 'Windows 按 Ctrl+Z 再回车；Mac/Linux 按 Ctrl+D', '不想敲 exit() 时用快捷键'],
+                ['多行代码', '输完以冒号结尾后自动出现 ...', 'for、if、def 等块语句续行，空行结束']
+              ]
+            }
+          },
+          {
+            text: '记住：终端里只敲 python 就是交互模式；用 exit() 或 Ctrl+Z（Windows）退出。写正式程序请保存成 .py 文件再运行。'
           }
         ]
       }

@@ -40,6 +40,7 @@ pub fn run() {
             python::python_stop,
             python::python_repl_start,
             python::python_repl_input,
+            python::python_run_input,
             python::python_repl_stop,
             python::python_pip_install,
             python::python_pip_uninstall,

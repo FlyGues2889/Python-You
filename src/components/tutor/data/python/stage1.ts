@@ -3,13 +3,13 @@ import { TutorialStage, TutorialTopic } from '../../tutorialData';
 export const stage1: TutorialStage = {
 
   id: 'stage1',
-  title: 'Python 教程',
+  title: 'Python 基础语法',
   icon: 'auto_stories',
   topics: [
     {
       id: 'p1_home',
-      title: 'Python 教程首页',
-      stage: 'Python 教程',
+      title: 'Python 概览',
+      stage: 'Python 基础语法',
       summary: '欢迎来到 Python 世界！先认识这门语言，再一步步学会用它写程序。',
       content: {
         overview: '欢迎来到 Python 入门教程！这一课会带你认识 Python 是什么、能做什么，以及怎么开始写代码。别紧张，我们像学一门新外语一样从头开始：先认识字母，再学单词，最后写句子。每一课都有通俗的例子和要点提示，帮你轻轻松松上手。',
@@ -49,8 +49,8 @@ export const stage1: TutorialStage = {
     },
     {
       id: 'p1_intro',
-      title: 'Python 简介',
-      stage: 'Python 教程',
+      title: 'Python 是什么',
+      stage: 'Python 基础语法',
       summary: 'Python 为什么流行？了解它的来历、特点和能做什么。',
       content: {
         overview: 'Python 诞生于 1989 年，是一位荷兰程序员在圣诞节期间写出来的小工具，没想到后来成了全世界最流行的编程语言之一。它最大的特点就是：代码读起来像英语，写起来简单，新手也能很快看懂。',
@@ -84,7 +84,7 @@ export const stage1: TutorialStage = {
     {
       id: 'p1_setup',
       title: 'Python 入门',
-      stage: 'Python 教程',
+      stage: 'Python 基础语法',
       summary: '在 Python You 里写第一个 Python 程序，理解程序是怎么运行的。',
       content: {
         overview: '在 Python You 里写 Python 不用安装任何东西：内置的解释器会把你的代码「翻译」成计算机能听懂的话并立刻执行。这一课我们就来写第一个程序，亲眼看看代码变成结果的过程。',
@@ -104,6 +104,11 @@ export const stage1: TutorialStage = {
             text: '`print()` 是最基础的输出函数，用于在控制台打印内容。\n• 字符串内容需要用单引号或双引号包裹，两者效果一致\n• 多条 print 语句按顺序逐行输出\n• print 会自动在结尾添加换行符',
             code: `# 经典入门程序 Hello World\nprint("Hello, Python!")\nprint("欢迎来到 Python You 编程世界")\nprint("100 + 200 =", 100 + 200)  # 支持直接输出计算结果`
           },
+          {
+            heading: 'print() 的 sep 与 end 参数',
+            text: 'print() 可以一次输出多个值，值之间默认用空格隔开，结尾默认自动换行。这两个默认行为都能改：\n• sep：控制多个值之间的分隔符，默认是一个空格\n• end：控制输出结尾的字符，默认是换行符 \\n\n比如打印日期想用横杠连接、打印进度时不想换行，就靠这两个参数。',
+            code: `# sep 控制多个值之间的分隔符\nprint("2026", "09", "28", sep="-")   # 输出 2026-09-28\n\n# end 控制结尾字符，默认换行，这里改成空格不换行\nprint("加载中", end=" -> ")\nprint("完成")\n\n# end 设为空字符串，彻底去掉换行\nprint("同一行", end="")\nprint("紧接着")`
+          },
         ],
         codeExample: `# 基础公式验证\na, b, c = 3, 4, 5\nis_right_triangle = (a**2 + b**2 == c**2)\nprint(f"边长 {a},{b},{c} 是否构成直角三角形: {is_right_triangle}")`,
         tips: [
@@ -115,7 +120,7 @@ export const stage1: TutorialStage = {
     {
       id: 'p1_syntax',
       title: 'Python 语法',
-      stage: 'Python 教程',
+      stage: 'Python 基础语法',
       summary: 'Python 靠缩进划分代码块，学会这个规则就不容易踩坑。',
       content: {
         overview: '很多编程语言用大括号 {} 表示「这段代码属于谁」，Python 不用大括号，而是靠缩进（行首的空格）来区分层级。缩进既是规则也是风格，写对了代码整整齐齐，像书架一样一目了然。',
@@ -124,7 +129,7 @@ export const stage1: TutorialStage = {
             code: `# 多行条件拼接推荐格式（圆括号包裹）\ntotal = (\n    1 + 2 + 3 +\n    4 + 5 + 6\n)\n\nif total > 10:\n    print(f"累加计算结果为: {total}")\n    print("同一逻辑块保持统一的 4 空格缩进")`
           },
           {
-            heading: '常见缩进错误与避坑指南',
+            heading: '常见缩进错误',
             text: '新手最容易犯的三类缩进错误：\n1. 该缩进的地方没缩进：if、for、def 等语句后冒号下一行必须缩进\n2. 不该缩进的地方乱缩进：顶级代码不能随意加缩进\n3. 同一代码块缩进量不一致：有的用 2 空格，有的用 4 空格',
             table: {
               headers: ['错误写法', '错误原因', '正确写法'],
@@ -140,6 +145,11 @@ export const stage1: TutorialStage = {
             text: 'PEP 8 是 Python 官方代码风格指南，新手从一开始就养成良好习惯：\n• 每行代码不超过 79 个字符\n• 运算符前后、逗号后加空格提升可读性\n• 函数与类之间空两行，方法之间空一行\n• 变量和函数名使用小写蛇形命名法（如 user_name）',
             code: `# 符合 PEP 8 规范的代码示例\ndef calculate_area(radius):\n    pi = 3.14159\n    return pi * radius * radius\n\n\nresult = calculate_area(5)\nprint("圆的面积:", result)`
           },
+          {
+            heading: '反斜杠续行示例',
+            text: '除了用圆括号包裹长表达式，Python 还允许在行尾写一个反斜杠 `\\` 表示「这一行还没结束，下一行接着算」。圆括号方式更推荐，但读懂别人代码里的反斜杠续行也很有必要。注意反斜杠后面不能再有任何空格或注释。',
+            code: `# 反斜杠续行：行尾 \\ 表示下一行继续\ntotal = 1 + 2 + 3 + \\\n        4 + 5 + 6\nprint("反斜杠续行求和:", total)\n\n# if 条件过长时也可续行\nscore = 85\nif score >= 60 and score < 80 \\\n        and score % 2 == 1:\n    print("条件成立")\nelse:\n    print("不满足示例条件")`
+          },
         ],
         codeExample: `def validate_number(num):\n    if num > 0:\n        print("正数测试通过")\n        if num % 2 == 0:\n            print("且该数值为偶数")\n    else:\n        print("非正数")\n\nvalidate_number(16)`,
         tips: [
@@ -151,7 +161,7 @@ export const stage1: TutorialStage = {
     {
       id: 'p1_comments',
       title: 'Python 注释',
-      stage: 'Python 教程',
+      stage: 'Python 基础语法',
       summary: '注释是写给人的说明，学会用 # 和文档字符串给代码做笔记。',
       content: {
         overview: '注释就是写给「人」看的说明文字，计算机运行时会自动跳过。写注释就像在笔记本上做记号，半年后翻回来还能一眼看懂当初的想法。',
@@ -165,7 +175,7 @@ export const stage1: TutorialStage = {
             code: `# • 好的注释：说明为什么这么做\n# 由于浮点数存在精度误差，用差值小于 1e-6 判断相等\nis_equal = abs(a - b) < 1e-6\n\n# • 差的注释：复述代码\n# 把 a 和 b 相加\nresult = a + b`
           },
         ],
-        codeExample: `w, h = 70.0, 1.75\nbmi = calculate_bmi(w, h)\nprint(f"体重 {w}kg, 身高 {h}m 的 BMI 指数为: {bmi:.2f}")`,
+        codeExample: `# 文档字符串写在函数开头，用三引号描述这个函数\ndef calculate_bmi(weight, height):\n    """根据体重(kg)和身高(m)计算 BMI"""\n    return weight / (height ** 2)\n\nw, h = 70.0, 1.75\nbmi = calculate_bmi(w, h)\nprint(f"体重 {w}kg、身高 {h}m 的 BMI 为: {bmi:.2f}")\nprint("函数说明:", calculate_bmi.__doc__)`,
         tips: [
           '保持 Docstring 的清晰格式有利于自动生成 API 手册。',
           '代码本身是最好的注释，优先通过清晰的变量名和结构提升可读性。'
@@ -175,7 +185,7 @@ export const stage1: TutorialStage = {
     {
       id: 'p1_variables',
       title: 'Python 变量',
-      stage: 'Python 教程',
+      stage: 'Python 基础语法',
       summary: '变量就是给数据贴标签，学会命名和赋值的各种写法。',
       content: {
         overview: '变量就是给数据起个名字，方便以后反复使用。可以把它想象成「贴了标签的盒子」：盒子里装着数据，标签写着名字。Python 的变量很自由，不用提前声明，直接赋值就能用。',
@@ -193,7 +203,7 @@ export const stage1: TutorialStage = {
             }
           },
           {
-            heading: '多种赋值方式详解',
+            heading: '多种赋值方式',
             text: 'Python 支持非常灵活的赋值语法：\n1. 基础赋值：`x = 10`\n2. 链式赋值：`a = b = c = 100`，多个变量指向同一个对象\n3. 序列解包：`x, y, z = 10, 20, 30`，一一对应赋值\n4. 扩展解包：`head, *tail = [1,2,3,4]`，用星号接收剩余元素\n5. 变量交换：`a, b = b, a`，无需中间变量直接交换',
             code: `# 1. 链式赋值\na = b = c = 100\nprint("链式赋值:", a, b, c)\n\n# 2. 变量互换（无需中间变量）\nx, y = 100, 200\nx, y = y, x\nprint(f"交换后: x={x}, y={y}")\n\n# 3. 扩展解包\nfirst, *rest, last = [1, 2, 3, 4, 5]\nprint("首元素:", first, "尾元素:", last, "中间部分:", rest)`
           },
@@ -201,6 +211,11 @@ export const stage1: TutorialStage = {
             heading: '变量的引用本质',
             text: 'Python 变量存的不是数据本身，而是数据在内存中的地址。可以用 `id()` 函数查看变量指向的内存地址。\n• 给变量重新赋值，本质是让标签贴到新的对象上，原对象不会被修改\n• 两个变量赋值为同一个小整数/短字符串，可能指向同一个内存地址（缓存机制）',
             code: `# 观察变量内存地址变化\nnum = 1000\nprint("原始地址:", id(num))\nnum = 2000\nprint("重新赋值后地址:", id(num))  # 地址发生了变化`
+          },
+          {
+            heading: '用 del 删除变量',
+            text: '变量不用了可以用 `del` 语句删除，删除后这个名字就不再存在，再访问会报 `NameError`。日常写小程序很少手动删，但理解「名字可以被擦掉」有助于明白变量只是标签。\n• del 删的是标签（名字），不一定立刻删掉内存里的数据\n• 如果一个数据没有任何标签指向它，Python 会自动回收它',
+            code: `book = "Python 入门"\nprint("删除前:", book)\n\ndel book          # 删除变量 book\n\ntry:\n    print(book)   # 已删除，访问会报错\nexcept NameError:\n    print("book 已被删除，访问触发 NameError")`
           },
         ],
         codeExample: `x = 1000\nprint("变量 x 的内存唯一 ID (id()):", id(x))\nx = "Python"\nprint("重新赋值后变量 x 的内存 ID:", id(x))`,
@@ -211,9 +226,33 @@ export const stage1: TutorialStage = {
       }
     },
     {
+      id: 'p1_input',
+      title: 'Python 输入',
+      stage: 'Python 基础语法',
+      summary: '程序怎么读入用户敲的内容？认识 input()，并用写死变量模拟输入。',
+      content: {
+        overview: '前面都是程序自己算出结果，这一课学程序怎么「读」用户敲进来的内容。用到的是内建函数 input()，它会暂停程序，等用户输入一行文字后再继续。注意：本环境运行在浏览器里，无法真正接收键盘输入，所以下面用写死的变量模拟用户输入，看懂逻辑即可。',
+        sections: [
+          { heading: 'input() 的基本行为', text: 'input("提示文字") 会先把提示文字显示出来，然后等待用户回车。它读进来的一律是字符串——哪怕用户敲的是 18，拿到的也是文字 "18"，想做数学必须先用 int() 或 float() 转成数字。这是新手最常见的报错来源。\n• 返回值永远是 str 类型\n• 回车后的内容不包含末尾换行\n• 读到的是用户敲的原始文字，前后空格也会保留',
+            code: `# 模拟用户输入：真实环境里下一行会等待键盘输入\n# user_input = input("请输入你的年龄：")\nuser_input = "18"   # 这里用写死的值代替，方便在浏览器里运行\n\nprint("你输入的内容是:", user_input, "类型是:", type(user_input).__name__)\n\n# 想做计算必须先转换\nage = int(user_input)\nprint(f"你明年 {age + 1} 岁")`
+          },
+          {
+            heading: '读取并转换数字的完整例子',
+            text: '把前面学的类型转换和 input 串起来：读入两个数字，算平均值。真实项目里用户可能敲错，所以常配合 try-except 兜底，这里先看最直接的写法。',
+            code: `# 模拟两段用户输入\nraw_a = "80"\nraw_b = "95"\n\na = int(raw_a)\nb = int(raw_b)\naverage = (a + b) / 2\n\nprint(f"两科成绩 {a}、{b}")\nprint(f"平均分 {average:.1f}")\nprint(f"是否及格: {'是' if average >= 60 else '否'}")`
+          }
+        ],
+        codeExample: `# 模拟用户输入一行日期字符串并拆分\nraw = "2026-09-28"\nparts = raw.split("-")\nprint("年:", parts[0], "月:", parts[1], "日:", parts[2])\nprint("拼接回日期:", "/".join(parts))`,
+        tips: [
+          'input() 拿到的永远是字符串，做算术前一定要 int() 或 float() 转换。',
+          '本教程运行在浏览器中，input() 无法真实等待键盘输入，示例均用写死变量模拟。'
+        ]
+      }
+    },
+    {
       id: 'p1_datatypes',
       title: 'Python 数据类型',
-      stage: 'Python 教程',
+      stage: 'Python 基础语法',
       summary: '数据有不同的种类，学会分辨数字、文字、真假等常见类型。',
       content: {
         overview: '数据有不同「种类」，就像容器有不同的用途：水杯装水、书架放书。Python 里的数据也有类型：数字、文字（字符串）、真假（布尔）等等，不同类型用法不同，先分清类型再动手写。',
@@ -225,6 +264,7 @@ export const stage1: TutorialStage = {
                 ['字符串', 'str', '"Hello"', '不可变', '可哈希', 'Unicode 字符序列，支持切片'],
                 ['整数', 'int', '42', '不可变', '可哈希', '任意精度整数，仅受内存限制'],
                 ['浮点数', 'float', '3.14159', '不可变', '可哈希', 'IEEE 754 双精度浮点数'],
+                ['复数', 'complex', '3+4j', '不可变', '可哈希', '由实部和虚部组成，科学计算常用'],
                 ['列表', 'list', '[1, 2, 3]', '可变', '不可哈希', '动态数组，支持原位增删改'],
                 ['元组', 'tuple', '(1, 2)', '不可变', '可哈希*', '只读序列，含可变元素时不可哈希'],
                 ['字典', 'dict', '{"a": 1}', '可变', '不可哈希', '哈希表实现的键值对映射'],
@@ -245,6 +285,11 @@ export const stage1: TutorialStage = {
             text: '这是 Python 非常重要的底层概念：\n• 不可变类型：对象创建后内容不能修改，修改会生成新对象（如 str、int、tuple）\n• 可变类型：对象创建后可原位修改内容，内存地址不变（如 list、dict、set）',
             code: `# 字符串是不可变类型\ns = "hello"\nprint("修改前地址:", id(s))\ns = s.upper()  # 生成了新字符串\nprint("修改后地址:", id(s))  # 地址变化了\n\n# 列表是可变类型\nlst = [1, 2, 3]\nprint("修改前地址:", id(lst))\nlst.append(4)  # 原位修改\nprint("修改后地址:", id(lst))  # 地址不变`
           },
+          {
+            heading: 'dict() 构造函数快速建字典',
+            text: '字典（stage2 会详细讲）是「键 -> 值」的对照表。除了字面量 `{"a": 1}`，还可以用 `dict()` 构造函数配合关键字参数创建，键名直接写成参数名的形式，更简洁：\n• `dict(a=1, b=2)` 等价于 `{"a": 1, "b": 2}`\n• 注意这种写法的键名必须是合法的 Python 标识符（不能数字开头、不能含空格）',
+            code: `# 用 dict() 关键字参数建字典\nuser = dict(name="小明", age=18, city="柳州")\nprint("字典内容:", user)\nprint("姓名字段:", user["name"])\n\n# 两种写法等价\nprint(dict(a=1, b=2) == {"a": 1, "b": 2})`
+          },
         ],
         codeExample: `a = "Hello"\nprint("字符串属于不可变类型，修改字符将产生新对象:")\nprint("原始地址:", id(a))\na += " World"\nprint("拼接后新地址:", id(a))`,
         tips: [
@@ -256,7 +301,7 @@ export const stage1: TutorialStage = {
     {
       id: 'p1_numbers',
       title: 'Python 数字',
-      stage: 'Python 教程',
+      stage: 'Python 基础语法',
       summary: '整数、小数怎么算？还有一个小知识：小数运算偶尔有误差。',
       content: {
         overview: 'Python 的数字很好用：整数想多大都行，小数直接写，加、减、乘、除、取余都能算。你只需要记住一个小知识：小数的计算偶尔会有极小误差，这是所有编程语言的通病。',
@@ -276,7 +321,7 @@ export const stage1: TutorialStage = {
             }
           },
           {
-            heading: '浮点精度问题详解',
+            heading: '浮点精度问题',
             text: '计算机用二进制存储浮点数，很多十进制小数无法精确表示，会产生微小误差，这不是 Python 的 bug，是所有语言共有的 IEEE 754 标准特性。\n• 普通场景：误差极小，不影响日常使用\n• 金融/会计场景：必须使用 `decimal.Decimal` 进行精确计算',
             code: `from decimal import Decimal\n\n# 传统浮点计算的精度局限\nprint("二进制浮点计算: 0.1 + 0.2 =", 0.1 + 0.2)  # 结果不是 0.3\n\n# Decimal 模块精准金融计算\nd1 = Decimal("0.1")\nd2 = Decimal("0.2")\nprint("Decimal 精准计算: d1 + d2 =", d1 + d2)  # 精确等于 0.3`
           },
@@ -284,6 +329,21 @@ export const stage1: TutorialStage = {
             heading: '运算符优先级速记',
             text: '运算优先级从高到低：括号 > 幂运算 > 正负号 > 乘除取余 > 加减。不确定优先级时，直接加括号最稳妥。',
             code: `# 优先级示例\nresult = 2 + 3 * 4 ** 2  # 先算 4**2=16，再算 3*16=48，最后 2+48=50\nprint("运算结果:", result)\n\n# 用括号改变优先级\nresult2 = (2 + 3) * 4 ** 2  # 先算 2+3=5，再算 4**2=16，最后 5*16=80\nprint("括号改变优先级:", result2)`
+          },
+          {
+            heading: '常用数值内建函数',
+            text: 'Python 自带几个常用数学小工具，不用 import 任何模块就能直接用：\n• `round(x, n)`：四舍五入到 n 位小数；不写 n 则取整\n• `abs(x)`：取绝对值，复数时返回模长\n• `divmod(a, b)`：同时返回商和余数，等于 `(a // b, a % b)`\n• `pow(a, b, mod)`：三参数形式表示 `(a ** b) % mod`，比先算幂再取余更快更省内存',
+            table: {
+              headers: ['函数', '示例', '结果', '说明'],
+              rows: [
+                ['round()', 'round(3.14159, 2)', '3.14', '保留两位小数'],
+                ['round()', 'round(2.5)', '2', '银行家舍入，往偶数方向取整'],
+                ['abs()', 'abs(-7.5)', '7.5', '取绝对值'],
+                ['divmod()', 'divmod(10, 3)', '(3, 1)', '商 3 余 1'],
+                ['pow() 三参', 'pow(2, 10, 100)', '24', '2 的 10 次方后对 100 取余']
+              ]
+            },
+            code: `print("round(3.14159, 2) =", round(3.14159, 2))\nprint("abs(-7.5) =", abs(-7.5))\nprint("divmod(10, 3) =", divmod(10, 3))\nprint("pow(2, 10) =", pow(2, 10))\nprint("pow(2, 10, 100) =", pow(2, 10, 100))  # (2**10) % 100`
           },
         ],
         codeExample: `z = 3 + 4j\nprint(f"复数 {z} -> 实部: {z.real}, 虚部: {z.imag}, 模长: {abs(z)}")`,
@@ -296,7 +356,7 @@ export const stage1: TutorialStage = {
     {
       id: 'p1_casting',
       title: 'Python Casting',
-      stage: 'Python 教程',
+      stage: 'Python 基础语法',
       summary: '把文字变成数字、把数字变成文字，学会类型转换。',
       content: {
         overview: '类型转换就是把一种类型的数据「变」成另一种：比如把文字 "18" 变成数字 18，这样才能做加减法。Python 提供了现成的转换函数，像变形金刚一样想变就变。',
@@ -335,7 +395,7 @@ export const stage1: TutorialStage = {
     {
       id: 'p1_strings',
       title: 'Python 字符串',
-      stage: 'Python 教程',
+      stage: 'Python 基础语法',
       summary: '字符串就是一串文字，学会拼接、截取和常用处理方法。',
       content: {
         overview: '字符串就是一段文字，用引号包起来，比如 "你好"、"Python"。它可以拼接、截取、查找、替换，是日常打交道最多的数据类型。',
@@ -364,6 +424,37 @@ export const stage1: TutorialStage = {
             text: '字符串是不可变类型，所有修改类方法都会返回新字符串，原字符串不变：\n• 大小写转换：`.upper()`、`.lower()`、`.title()`、`.swapcase()`\n• 查找替换：`.find()`、`.index()`、`.replace(old, new)`\n• 拆分连接：`.split(分隔符)`、`分隔符.join(列表)`\n• 清理空白：`.strip()`、`.lstrip()`、`.rstrip()`\n• 判断类：`.startswith()`、`.endswith()`、`.isdigit()`、`.isalpha()`',
             code: `text = "  Python You Python IDE  "\nclean_text = text.strip()\nprint("清除首尾空格:", clean_text)\nprint("全大写:", clean_text.upper())\nprint("是否以 Py 开头:", clean_text.startswith("Py"))\n\n# 分割与连接\nwords = clean_text.split(" ")\nprint("分割成列表:", words)\nprint("下划线拼接:", "_".join(words))`
           },
+          {
+            heading: '字符串拼接、重复与长度 len()',
+            text: '字符串支持两个很直观的运算符：\n• `+` 把两段文字首尾相接\n• `* n` 把一段文字重复 n 次（n 必须是非负整数）\n\n想知道一段文字有多少个字符，用内建函数 `len()`。len 是英文 length（长度）的缩写，它对字符串、列表等凡是「一串东西」的数据都能数个数。',
+            code: `first = "你好"\nsecond = "Python"\n\n# 拼接\nprint("拼接:", first + ", " + second)\n\n# 重复\nprint("重复:", "Ha" * 3)\n\n# len 数字符个数\nprint("len(你好世界) =", len("你好世界"))\nprint("len(abc) =", len("abc"))`
+          },
+          {
+            heading: '用 str.format() 格式化',
+            text: '在 f-string 普及之前，Python 用 `.format()` 方法往字符串里填值，很多老代码里都能见到，必须认识。写法是在字符串里放花括号占位符，再调用 .format() 传入值：\n• 位置参数：`{0}`、`{1}` 按顺序对应 format 里的值\n• 关键字参数：`{name}` 对应 format 里 `name=值`\n• 花括号里还能跟格式说明符，语法和 f-string 完全一致',
+            code: `# 位置参数：按顺序填\nprint("{} 今年 {} 岁".format("小明", 18))\nprint("{0} 的成绩是 {1} 分，{0} 很努力".format("小红", 95))\n\n# 关键字参数：按名字填\nprint("{name} 来自 {city}".format(name="小刚", city="柳州"))\n\n# 格式说明符\nprint("{:.2f}".format(3.14159))`
+          },
+          {
+            heading: 'f-string 格式说明符',
+            text: 'f-string 里 `{表达式:格式}` 的冒号后面是格式说明符，专门控制数字和文字长什么样。记住几个最常用的：\n• `:,.2f`：加千分位逗号，保留两位小数（算钱专用）\n• `:.1%`：转成百分比，保留一位小数\n• `:.2e`：科学计数法\n• `:<10` 左对齐、`:>10` 右对齐、`:^10` 居中，后面数字是总宽度',
+            table: {
+              headers: ['写法', '输入值', '输出效果', '用途'],
+              rows: [
+                ['{:,.2f}', '1234567.89', '1,234,567.89', '金额千分位'],
+                ['{:.1%}', '0.856', '85.6%', '百分比'],
+                ['{:.2e}', '12345', '1.23e+04', '科学计数'],
+                ['{:<10}', '"hi"', 'hi        ', '左对齐宽度 10'],
+                ['{:>10}', '"hi"', '        hi', '右对齐宽度 10'],
+                ['{:^10}', '"hi"', '    hi    ', '居中宽度 10']
+              ]
+            },
+            code: `price = 1234567.89\nrate = 0.856\nbig = 12345\nlabel = "Python"\n\nprint(f"金额: {price:,.2f}")\nprint(f"录取率: {rate:.1%}")\nprint(f"科学计数: {big:.2e}")\nprint(f"居中: [{label:^10}]")`
+          },
+          {
+            heading: '更多字符串方法',
+            text: '字符串还有一批常用方法，配合前面学的那批一起用：\n• 大小写与统计：`.capitalize()` 首字母大写其余小写、`.count(子串)` 数子串出现次数\n• 排版对齐：`.center(宽度)`、`.ljust(宽度)`、`.rjust(宽度)` 把文字撑到指定宽度\n• 内容判断：`.isalnum()` 是否全是字母数字、`.isspace()` 是否全是空白\n• 编码转换：`.encode()` 把字符串转成字节，`.decode()` 把字节转回字符串\n• 字符与编码互查：`ord(字符)` 查编码数字，`chr(数字)` 反查字符',
+            code: `s = "python"\nprint("capitalize:", s.capitalize())\nprint("count(p):", s.count("p"))\nprint("center:", s.center(12, "-"))\nprint("ljust:", s.ljust(10, "."))\nprint("rjust:", s.rjust(10, "."))\nprint("isalnum:", "abc123".isalnum(), " isspace:", "   ".isspace())\n\nb = s.encode("utf-8")\nprint("encode 字节:", b)\nprint("decode 还原:", b.decode("utf-8"))\nprint("ord(A) =", ord("A"), " chr(65) =", chr(65))`
+          },
         ],
         codeExample: `s = "abcdefghijklmnopqrstuvwxyz"\nprint("前5个字符:", s[:5])\nprint("后5个字符:", s[-5:])\nprint("隔一采样 [::2]:", s[::2])`,
         tips: [
@@ -375,7 +466,7 @@ export const stage1: TutorialStage = {
     {
       id: 'p1_booleans',
       title: 'Python 布尔',
-      stage: 'Python 教程',
+      stage: 'Python 基础语法',
       summary: 'True 和 False 表示真假，是程序做判断的基础。',
       content: {
         overview: '布尔类型只有两个值：True（真）和 False（假），用来表示「是」和「不是」。它是程序做判断的基础，比如「今天是否下雨」「分数是否及格」。',
@@ -384,7 +475,7 @@ export const stage1: TutorialStage = {
             code: `def check_truthy(obj):\n    print(f"对象: {repr(obj):<15} | 布尔值: {bool(obj)}")\n\ncheck_truthy("")\ncheck_truthy("Python")\ncheck_truthy([])\ncheck_truthy([1, 2])\ncheck_truthy(0)\ncheck_truthy(None)`
           },
           {
-            heading: '短路求值机制详解',
+            heading: '短路求值',
             text: '逻辑运算符 `and`、`or` 具备短路特性：一旦能确定最终结果，就不再执行后续表达式。\n• `x and y`：x 为假直接返回 x，否则返回 y\n• `x or y`：x 为真直接返回 x，否则返回 y\n• `not x`：取反，始终返回 True 或 False\n\n注意：and/or 不一定返回布尔值，而是返回「决定结果的那个操作数」。',
             table: {
               headers: ['表达式', '结果', '说明'],
@@ -414,7 +505,7 @@ export const stage1: TutorialStage = {
     {
       id: 'p1_operators',
       title: 'Python 运算符',
-      stage: 'Python 教程',
+      stage: 'Python 基础语法',
       summary: '加减乘除、比大小、判断真假，运算符一学就会。',
       content: {
         overview: '运算符就是「动作」：+ 表示相加，== 表示比较是否相等，and 表示「并且」。Python 的运算符读起来很像英文，非常好记。',
@@ -441,6 +532,21 @@ export const stage1: TutorialStage = {
             heading: '运算符优先级总表',
             text: '优先级从高到低排序，同级从左到右计算（赋值运算符除外）：\n1. 括号 `()`\n2. 幂运算 `**`\n3. 正负号 `+x`, `-x`\n4. 乘除模 `*`, `/`, `//`, `%`\n5. 加减 `+`, `-`\n6. 比较运算符 `==`, `>`, `<` 等\n7. 逻辑非 `not`\n8. 逻辑与 `and`\n9. 逻辑或 `or`\n10. 赋值运算符 `=`',
             code: `# 优先级示例\nresult = not 1 + 2 * 3 > 5\n# 运算顺序：先算 2*3=6 → 1+6=7 → 7>5=True → not True=False\nprint("运算结果:", result)`
+          },
+          {
+            heading: '三元表达式（简写的 if-else）',
+            text: '想根据条件二选一时，写完整的 if-else 太啰嗦，可以用一行三元表达式：`值1 if 条件 else 值2`。先判断条件，成立就取「值1」，否则取「值2」。它是表达式（会算出一个值），不是语句，所以能直接放进 print 或赋值。',
+            code: `score = 75\n\n# 传统 if-else\nif score >= 60:\n    result = "及格"\nelse:\n    result = "不及格"\nprint("传统写法:", result)\n\n# 三元表达式一行搞定\nresult2 = "及格" if score >= 60 else "不及格"\nprint("三元写法:", result2)\n\n# 直接放进 print\nage = 20\nprint("成年" if age >= 18 else "未成年")`
+          },
+          {
+            heading: '链式比较',
+            text: '数学里写 `a < b < c` 表示 b 比 a 大、比 c 小，Python 原生支持这种写法！它等价于 `a < b and b < c`，而且 b 只会被计算一次。日常判断「数值是否落在某个区间」时特别好用。',
+            code: `age = 25\n\n# 链式判断：年龄是否在 [18, 60) 之间\nif 18 <= age < 60:\n    print("属于劳动年龄人口")\n\n# 等价于：\nprint("等价结果:", 18 <= age and age < 60)\n\ntemperature = 35\nif temperature < 0 or temperature > 37:\n    print("体温异常")\nelse:\n    print("体温正常")`
+          },
+          {
+            heading: '海象运算符 :=（Python 3.8+）',
+            text: '海象运算符 `:=` 长得像海象的眼睛和獠牙，它能在表达式里一边赋值一边用值：`(变量 := 表达式)`。以前必须先赋值再使用，现在可以合并成一行，常见于循环条件和列表推导里。注意括号在很多情况下不能省。',
+            code: `# 传统写法：先赋值，再判断\ns = "Hello"\nn = len(s)\nif n > 3:\n    print(f"长度 {n} 大于 3")\n\n# 海象写法：在 if 里同时赋值和判断\nif (k := len("Python")) > 3:\n    print(f"海象直接得到长度 k = {k}")\n\n# 计算平方并一次性使用\nprint("x 的平方 =", (x := 5) ** 2, " 且 x =", x)`
           },
         ],
         codeExample: `# 位运算示例\na = 0b1010  # 10\nb = 0b1100  # 12\nprint("按位与 &: ", bin(a & b))\nprint("按位或 |: ", bin(a | b))\nprint("按位异或 ^:", bin(a ^ b))`,

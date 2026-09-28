@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { ConsoleOutput } from '../types';
 import { paneScroller, watchPaneScroll } from '../utils/contentPane';
 import { useI18n } from '../utils/i18n';
+import { pythonRunner } from '../utils/pythonRunner';
+import { nativePython } from '../utils/nativePython';
+import { uid } from '../utils/id';
 
 const props = defineProps<{
   outputs: ConsoleOutput[];
@@ -12,9 +15,39 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'clear'): void;
   (e: 'contextmenu-terminal', event: MouseEvent): void;
+  (e: 'add-console-output', output: ConsoleOutput): void;
 }>();
 
 const { t } = useI18n();
+
+// 底部 stdin 输入框：Pyodide 等待输入，或本机 run 会话进行中（程序可能阻塞在 input()）时可用
+const inputEnabled = computed(() => pythonRunner.stdinWaiting.value || nativePython.runActive.value);
+const inputPlaceholder = computed(() => pythonRunner.stdinPrompt.value || t('terminalInputPlaceholder'));
+const inputLine = ref('');
+// 点击终端里的图表时放大查看（null = 未打开）
+const previewImage = ref<string | null>(null);
+const inputRef = ref<HTMLInputElement | null>(null);
+
+const submitInput = () => {
+  const line = inputLine.value;
+  inputLine.value = '';
+  if (!inputEnabled.value) return;
+  emit('add-console-output', {
+    id: uid(),
+    type: 'input',
+    text: `$ ${line}`,
+    timestamp: new Date().toLocaleTimeString(),
+  });
+  pythonRunner.submitRunInput(line);
+};
+
+const onInputKeydown = (e: KeyboardEvent) => {
+  if (e.isComposing) return;
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    submitInput();
+  }
+};
 
 const terminalContainerRef = ref<HTMLDivElement | null>(null);
 
@@ -94,6 +127,9 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <!-- 主题类挂在这层：theme.css 的 `.theme-*:not(m3e-content-pane) { background-color: … !important }`
+         会把代码主题底色刷到带这个类的元素上。黑卡片只从日志区开始，表头不能在里面 -->
+    <div class="terminal-card" :class="`theme-${props.codeTheme || 'github-dark'}`">
     <m3e-content-pane ref="terminalContainerRef" class="terminal-logs-body"
       :class="`theme-${props.codeTheme || 'github-dark'}`">
       <div v-if="outputs.length === 0" class="terminal-placeholder"></div>
@@ -108,17 +144,47 @@ onUnmounted(() => {
           <pre v-show="expandedLogs.has(out.id)" class="log-text">{{ out.text }}</pre>
         </div>
         <div v-else class="log-line" :class="getLogTypeClass(out)">
-          <pre class="log-text">{{ out.text }}</pre>
+          <pre v-if="!out.image" class="log-text">{{ out.text }}</pre>
+          <img v-else class="terminal-img" :src="out.image" alt="matplotlib chart" title="点击查看大图"
+            @click="previewImage = out.image" />
         </div>
       </template>
     </m3e-content-pane>
+
+    <div class="terminal-input-row">
+      <span class="terminal-input-prompt">>>></span>
+      <input ref="inputRef" v-model="inputLine" class="terminal-input" type="text"
+        :disabled="!inputEnabled" :placeholder="inputPlaceholder" autocomplete="off" autocapitalize="off"
+        spellcheck="false" @keydown="onInputKeydown" />
+    </div>
+    </div>
+
+  <!-- 图表放大查看（终端里高度受限，细节看不清时可以点开） -->
+  <m3e-dialog class="chart-preview-dialog" :open="!!previewImage" @cancel="previewImage = null"
+    @closed="previewImage = null">
+    <span slot="header" class="m3e-dialog-title-row">
+      <span class="m3e-dialog-title">{{ t('chartPreviewTitle') }}</span>
+    </span>
+    <div v-if="previewImage" class="chart-preview-stage">
+      <img class="chart-preview" :src="previewImage" alt="matplotlib chart" />
+    </div>
+    <div slot="actions" class="chart-preview-actions">
+      <m3e-button variant="filled" size="small" @click="previewImage = null">{{ t('closeTitle') }}</m3e-button>
+    </div>
+  </m3e-dialog>
   </div>
 </template>
 
 <style scoped>
+/* 与编辑器区同一套做法（.code-editor-container）：容器自己带圆角并裁剪，
+   否则这层不透明底色会平铺成直角、把外层卡片的圆角整个盖掉 —— 终端看起来就没圆角了 */
 .terminal-panel {
   height: 100%;
   min-height: 0;
+  /* 圆角取 16px，与编辑器区的代码块（.editor-workspace-body）同档。
+     这层是不透明底色且铺满整块，必须自己裁剪，否则它的直角底色会盖住外层卡片的圆角 */
+  border-radius: 16px;
+  overflow: hidden;
   background-color: var(--surface-color);
   display: flex;
   flex-direction: column;
@@ -158,6 +224,15 @@ onUnmounted(() => {
   gap: 4px;
 }
 
+.terminal-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
 .terminal-logs-body {
   flex: 1;
   min-height: 0;
@@ -170,21 +245,21 @@ onUnmounted(() => {
   /* m3e-content-pane 的外观由 shadow 内 .base/.scroll-container 绘制，经变量控制：
      padding 单值（右端自动扣除滚动条宽度）、圆角、背景色 */
   --m3e-content-pane-container-padding: 8px;
-  /* 同上：终端显示体与 REPL 主体取同一档 8px（原 16px 比外圈卡片还大） */
-  --m3e-content-pane-container-shape: 8px;
+  /* 上圆角与编辑器区同档（16px）；下圆角交给下面的输入行，避免两处圆角打架 */
+  --m3e-content-pane-container-shape: 16px 16px 0 0;
   --m3e-content-pane-container-color: var(--bg-color);
 }
 
 /* 背景跟随编辑器主题：背景绘制在 shadow 内，须经 --m3e-content-pane-container-color
    传入（与 index.css 全局 .theme-* 根规则同值）；这里补前景色 */
-.terminal-logs-body.theme-github-dark { --m3e-content-pane-container-color: #0d1117; color: #c9d1d9; }
-.terminal-logs-body.theme-monokai { --m3e-content-pane-container-color: #272822; color: #f8f8f2; }
-.terminal-logs-body.theme-one-dark { --m3e-content-pane-container-color: #282c34; color: #abb2bf; }
-.terminal-logs-body.theme-vs-code { --m3e-content-pane-container-color: #1e1e1e; color: #d4d4d4; }
-.terminal-logs-body.theme-github-light { --m3e-content-pane-container-color: #ffffff; color: #24292e; }
-.terminal-logs-body.theme-one-light { --m3e-content-pane-container-color: #fafafa; color: #383a42; }
-.terminal-logs-body.theme-vs-code-light { --m3e-content-pane-container-color: #ffffff; color: #000000; }
-.terminal-logs-body.theme-solarized-light { --m3e-content-pane-container-color: #fdf6e3; color: #657b83; }
+.terminal-logs-body.theme-github-dark { --m3e-content-pane-container-color: #0d1117; --terminal-bg: #0d1117; color: #c9d1d9; }
+.terminal-logs-body.theme-monokai { --m3e-content-pane-container-color: #272822; --terminal-bg: #272822; color: #f8f8f2; }
+.terminal-logs-body.theme-one-dark { --m3e-content-pane-container-color: #282c34; --terminal-bg: #282c34; color: #abb2bf; }
+.terminal-logs-body.theme-vs-code { --m3e-content-pane-container-color: #1e1e1e; --terminal-bg: #1e1e1e; color: #d4d4d4; }
+.terminal-logs-body.theme-github-light { --m3e-content-pane-container-color: #ffffff; --terminal-bg: #ffffff; color: #24292e; }
+.terminal-logs-body.theme-one-light { --m3e-content-pane-container-color: #fafafa; --terminal-bg: #fafafa; color: #383a42; }
+.terminal-logs-body.theme-vs-code-light { --m3e-content-pane-container-color: #ffffff; --terminal-bg: #ffffff; color: #000000; }
+.terminal-logs-body.theme-solarized-light { --m3e-content-pane-container-color: #fdf6e3; --terminal-bg: #fdf6e3; color: #657b83; }
 
 /* 所有后代均可选中：避免拖选经过 log-line 的空隙/容器时选区被 user-select:none 截断取消 */
 .terminal-logs-body *,
@@ -293,4 +368,95 @@ onUnmounted(() => {
   color: var(--log-error-color, var(--error));
   font-weight: 600;
 }
+
+/* 弹窗宽度取屏幕能给的最宽（全局 m3e-dialog 限到 26rem，图表预览需要更宽），
+   图片只在这个宽度里等比缩放，不反过来决定弹窗有多宽 */
+.chart-preview-dialog {
+  --m3e-dialog-max-width: min(92vw, 1200px);
+  --m3e-dialog-min-width: min(92vw, 1200px);
+}
+
+.chart-preview-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: min(70vh, 720px);
+}
+
+.chart-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.chart-preview-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.terminal-img {
+  max-width: min(100%, 460px);
+  max-height: 240px;
+  margin: 4px 0;
+  border-radius: 8px; /* CornerSmall（原 6px 不在刻度上） */
+  background: #fff; /* 图表本身是白底 PNG，深色主题下给个白底免得透明边发灰 */
+  cursor: zoom-in;
+}
+
+.terminal-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  font-family: var(--font-terminal);
+  font-size: 0.8125rem;
+  background-color: var(--terminal-bg, var(--bg-color));
+  flex-shrink: 0;
+  border-radius: 0 0 16px 16px;
+}
+
+.terminal-input-prompt {
+  color: var(--secondary);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.terminal-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 0;
+  margin: 0;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  caret-color: var(--primary);
+}
+
+.terminal-input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.terminal-input::placeholder {
+  color: var(--text-tertiary);
+  opacity: 0.8;
+}
+
+/* 终端卡片整体背景（含输入行）跟随代码主题 */
+.terminal-card.theme-github-dark { --terminal-bg: #0d1117; }
+.terminal-card.theme-monokai { --terminal-bg: #272822; }
+.terminal-card.theme-one-dark { --terminal-bg: #282c34; }
+.terminal-card.theme-vs-code { --terminal-bg: #1e1e1e; }
+.terminal-card.theme-github-light { --terminal-bg: #ffffff; }
+.terminal-card.theme-one-light { --terminal-bg: #fafafa; }
+.terminal-card.theme-vs-code-light { --terminal-bg: #ffffff; }
+.terminal-card.theme-solarized-light { --terminal-bg: #fdf6e3; }
 </style>

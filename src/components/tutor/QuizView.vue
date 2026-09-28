@@ -424,6 +424,9 @@ const isQuestionPass = (q: QuizQuestion) =>
 <style scoped>
 .quiz-view {
   flex: 1;
+  /* flex item 的 min-width 默认 auto = 内容最小宽度：宽表格/长代码会把它钉在
+     最小宽度上，窗口变窄时面板不收缩（与上面的 min-height 同理） */
+  min-width: 0;
   min-height: 0;
   height: 100%;
   margin: 0 12px 12px;

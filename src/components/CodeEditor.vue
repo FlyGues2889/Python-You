@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { EditorTab, ConsoleOutput, AppConfig, FSItem } from '../types';
 import { pythonRunner } from '../utils/pythonRunner';
@@ -9,7 +9,7 @@ import { getCompletions, getWordAt, getUsage, collectWorkspaceIdentifiers, isIns
 import { hljs } from '../utils/highlightSetup';
 import 'highlight.js/styles/github-dark.css';
 
-const { t } = useI18n();
+const { t, tf } = useI18n();
 
 
 const props = defineProps<{
@@ -30,6 +30,7 @@ const emit = defineEmits<{
   (e: 'contextmenu-editor', event: MouseEvent): void;
   (e: 'cursor-change', payload: { path: string; line: number; col: number }): void;
   (e: 'show-toast', msg: string): void;
+  (e: 'jump-to-file', payload: { file: FSItem; line: number }): void;
 }>();
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
@@ -222,6 +223,10 @@ const handleScroll = () => {
     if (codeHighlightRef.value) {
       codeHighlightRef.value.scrollTop = textareaRef.value.scrollTop;
       codeHighlightRef.value.scrollLeft = textareaRef.value.scrollLeft;
+    }
+    if (warningRef.value) {
+      warningRef.value.scrollTop = textareaRef.value.scrollTop;
+      warningRef.value.scrollLeft = textareaRef.value.scrollLeft;
     }
     updateScrollbarGeometry();
     showScrollbars();
@@ -438,10 +443,10 @@ const handleKeyDown = (e: KeyboardEvent) => {
     return;
   }
 
-  // 自动配对引号（设置项 autoPairQuotes，默认开启）
-  if ((e.key === '"' || e.key === "'") && props.config.autoPairQuotes !== false) {
+  // 自动配对括号/引号（强制开启，不再读设置开关）
+  if (PAIR_OPENS.has(e.key) || PAIR_CLOSERS.has(e.key)) {
     e.preventDefault();
-    handleAutoQuote(e.key);
+    handleAutoPair(e.key);
     return;
   }
 
@@ -477,6 +482,11 @@ const handleKeyDown = (e: KeyboardEvent) => {
   const start = el.selectionStart;
   const end = el.selectionEnd;
   const val = el.value;
+
+  // 轻量自动补空格：运算符两侧、逗号/冒号后（字符串内不处理）
+  if (!e.shiftKey && AUTO_SPACE_KEYS.has(e.key) && start === end && !isInsideString(val, start)) {
+    if (maybeAutoSpace(e, val, start)) return;
+  }
 
   // Tab Key => Insert 4 spaces
   if (e.key === 'Tab') {
@@ -757,8 +767,13 @@ const computeHoverTooltip = (e: MouseEvent) => {
   };
 };
 
-/* 自动配对引号：无选区时插入一对并把光标放中间；有选区时用引号包裹选中的文本 */
-const handleAutoQuote = (quote: string) => {
+/* ==================== 自动配对括号/引号（强制开启） ==================== */
+const PAIR_OPENS = new Set(['(', '[', '{', '"', "'", '`']);
+const PAIR_CLOSERS = new Set([')', ']', '}']);
+const PAIR_MAP: Record<string, string> = { '(': ')', '[': ']', '{': '}', '"': '"', "'": "'", '`': '`' };
+const CLOSE_MATCH: Record<string, string> = { ')': '(', ']': '[', '}': '{' };
+
+const handleAutoPair = (ch: string) => {
   closeCompletions();
   const el = textareaRef.value;
   if (!el || !activeTab.value) return;
@@ -766,34 +781,83 @@ const handleAutoQuote = (quote: string) => {
   const start = el.selectionStart;
   const end = el.selectionEnd;
 
-  // 有选区：两侧包上引号对，光标移到闭合引号后
+  // 有选区：用配对包裹选区，光标移到闭合符之后
   if (start !== end) {
+    const close = PAIR_MAP[ch] ?? ch;
     const selected = val.slice(start, end);
-    const newContent = val.slice(0, start) + quote + selected + quote + val.slice(end);
+    const newContent = val.slice(0, start) + ch + selected + close + val.slice(end);
     emit('content-change', activeTab.value.id, newContent);
     nextTick(() => {
       el.focus();
-      el.setSelectionRange(end + 2, end + 2);
+      el.setSelectionRange(end + ch.length + close.length, end + ch.length + close.length);
       updateCursorPosition();
     });
     return;
   }
 
-  // 无选区：光标后已是同款引号（即将闭合）→ 直接跳过去
-  if (val[start] === quote) {
+  // 闭合符：光标后已是对应闭合符 → 直接跳过，不重复补
+  if (CLOSE_MATCH[ch] && val[start] === ch) {
+    el.setSelectionRange(start + 1, start + 1);
+    updateCursorPosition();
+    return;
+  }
+  // 引号/反引号：光标后已是同款符号 → 跳过
+  if ((ch === '"' || ch === "'" || ch === '`') && val[start] === ch) {
     el.setSelectionRange(start + 1, start + 1);
     updateCursorPosition();
     return;
   }
 
-  // 否则插入引号对，光标落在中间
-  const newContent = val.slice(0, start) + quote + quote + val.slice(end);
+  // 开符：插入一对，光标落在中间
+  const close = PAIR_MAP[ch] ?? ch;
+  const newContent = val.slice(0, start) + ch + close + val.slice(end);
   emit('content-change', activeTab.value.id, newContent);
   nextTick(() => {
     el.focus();
     el.setSelectionRange(start + 1, start + 1);
     updateCursorPosition();
   });
+};
+
+/* ==================== 轻量自动补空格（运算符/逗号/冒号） ==================== */
+const AUTO_SPACE_KEYS = new Set(['=', '+', '-', '*', '/', '%', '<', '>', '!', '&', '|', '^', ',', ':']);
+const OPERATOR_CHARS = new Set(['=', '+', '-', '*', '/', '%', '<', '>', '!', '&', '|', '^']);
+
+// 返回 true 表示已接管本次按键
+const maybeAutoSpace = (e: KeyboardEvent, val: string, pos: number): boolean => {
+  const el = textareaRef.value;
+  if (!el || !activeTab.value) return false;
+  const key = e.key;
+  const prev = val[pos - 1] || '';
+  const next = val[pos] || '';
+
+  let left = '';
+  let right = '';
+  if (key === ',') {
+    if (next && !/[\s)\]}]/.test(next)) right = ' ';
+  } else if (key === ':') {
+    if (next && !/[\s)\]}#]/.test(next)) right = ' ';
+  } else {
+    // 运算符：两侧补空格，但行首/开括号后/已在运算符/闭合符后不补
+    const noLeft = !prev || prev === '\n' || prev === ' ' || prev === '\t' || prev === '(' || prev === '[' || prev === '{' || prev === ',' || prev === ':' || OPERATOR_CHARS.has(prev);
+    const noRight = !next || next === '\n' || next === ' ' || next === '\t' || next === ')' || next === ']' || next === '}' || next === ',' || next === ';';
+    if (!noLeft) left = ' ';
+    if (!noRight) right = ' ';
+  }
+
+  // 不补任何空格就走默认输入，避免无意义拦截
+  if (!left && !right) return false;
+
+  e.preventDefault();
+  const insert = left + key + right;
+  const newContent = val.slice(0, pos) + insert + val.slice(pos);
+  emit('content-change', activeTab.value.id, newContent);
+  nextTick(() => {
+    el.focus();
+    el.setSelectionRange(pos + left.length + 1, pos + left.length + 1);
+    updateCursorPosition();
+  });
+  return true;
 };
 
 const kindLabel = (k: CompletionItem['kind']) => {
@@ -1137,6 +1201,166 @@ const handleReplaceAll = () => {
   emit('content-change', activeTab.value.id, newContent);
 };
 
+/* ==================== 任务5：工作区其它文件匹配内联显示 ==================== */
+const OTHER_FILE_EXTS = ['.py', '.txt', '.md', '.json', '.js', '.ts'];
+const otherFileMatches = computed(() => {
+  const empty = { count: 0, first: null as { file: FSItem; line: number } | null };
+  if (!findText.value || !showFindBar.value || !activeTab.value) return empty;
+  const q = findText.value.toLowerCase();
+  const curPath = activeTab.value.path;
+  let count = 0;
+  let first: { file: FSItem; line: number } | null = null;
+  const walk = (items: FSItem[]) => {
+    for (const it of items) {
+      if (it.isFolder) {
+        if (it.children) walk(it.children);
+        continue;
+      }
+      if (it.path === curPath) continue;
+      const lowerName = it.name.toLowerCase();
+      if (!OTHER_FILE_EXTS.some((ext) => lowerName.endsWith(ext))) continue;
+      const lines = (it.content || '').split('\n');
+      lines.forEach((ln, idx) => {
+        if (ln.toLowerCase().includes(q)) {
+          count++;
+          if (!first) first = { file: it, line: idx + 1 };
+        }
+      });
+    }
+  };
+  walk(props.workspaceFiles);
+  return { count, first };
+});
+
+const jumpToOtherFile = () => {
+  const { first } = otherFileMatches.value;
+  if (first) emit('jump-to-file', { file: first.file, line: first.line });
+};
+
+// 暴露给 App.vue：跳转到指定行并滚动到可视区
+const revealLine = (line: number) => {
+  const el = textareaRef.value;
+  if (!el) return;
+  nextTick(() => {
+    const lines = el.value.split('\n');
+    const targetLine = Math.max(1, Math.min(line, lines.length));
+    let offset = 0;
+    for (let i = 0; i < targetLine - 1; i++) offset += (lines[i]?.length ?? 0) + 1;
+    el.focus();
+    el.setSelectionRange(offset, offset);
+    const fontPx = props.config.fontSize || 15;
+    el.scrollTop = Math.max(0, (targetLine - 4) * fontPx * 1.5);
+    updateCursorPosition();
+    handleScroll();
+  });
+};
+
+/* ==================== 任务6：格式化文档（轻量规则化） ==================== */
+const formatLine = (line: string): string => {
+  const parts: string[] = [];
+  let out = '';
+  let i = 0;
+  while (i < line.length) {
+    const ch = line[i];
+    if (ch === '"' || ch === "'") {
+      let j = i + 1;
+      while (j < line.length && line[j] !== ch) {
+        if (line[j] === '\\') j++;
+        j++;
+      }
+      j = Math.min(j + 1, line.length);
+      parts.push(line.slice(i, j));
+      out += '\0' + (parts.length - 1) + '\0';
+      i = j;
+    } else if (ch === '#') {
+      parts.push(line.slice(i));
+      out += '\0' + (parts.length - 1) + '\0';
+      break;
+    } else {
+      out += ch;
+      i++;
+    }
+  }
+  out = out
+    .replace(/\s*([+\-*/%]=?|==|!=|<=|>=|<<|>>|&&|\|\||\*\*|\/\/)\s*/g, ' $1 ')
+    .replace(/,\s*/g, ', ')
+    .replace(/:\s*/g, ': ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s+([,)\]}])/g, '$1')
+    .replace(/([(\[{])\s+/g, '$1')
+    .trim();
+  return out.replace(/\0(\d+)\0/g, (_, n) => parts[+n]);
+};
+
+const formatDocument = () => {
+  if (!activeTab.value) return;
+  const formatted = activeTab.value.content.split('\n').map(formatLine).join('\n');
+  if (formatted !== activeTab.value.content) {
+    emit('content-change', activeTab.value.id, formatted);
+  }
+  emit('show-toast', t('formattedDoc'));
+};
+
+/* ==================== 任务8：非字符串内中文标点 / 多余括号红色细下划线 ==================== */
+const NON_ASCII_PUNCT = new Set(['“', '”', '‘', '’', '（', '）', '【', '】', '《', '》', '〈', '〉', '，', '。', '；', '：', '！', '？', '、', '…', '·']);
+const warningRef = ref<HTMLPreElement | null>(null);
+
+const warningOverlayHtml = computed(() => {
+  const code = activeTab.value?.content || '';
+  const warned = new Set<number>();
+  let str: string | null = null;
+  let triple: string | null = null;
+  const stack: { ch: string; pos: number }[] = [];
+  let i = 0;
+  while (i < code.length) {
+    const ch = code[i];
+    if (triple) {
+      if (code.startsWith(triple.repeat(3), i)) { triple = null; i += 3; continue; }
+      i++;
+      continue;
+    }
+    if (str) {
+      if (ch === '\\') { i += 2; continue; }
+      if (ch === str) str = null;
+      i++;
+      continue;
+    }
+    if (ch === '#') {
+      const nl = code.indexOf('\n', i);
+      i = nl === -1 ? code.length : nl;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      if (code.startsWith(ch.repeat(3), i)) { triple = ch; i += 3; continue; }
+      str = ch;
+      i++;
+      continue;
+    }
+    if (ch === '(' || ch === '[' || ch === '{') { stack.push({ ch, pos: i }); i++; continue; }
+    if (ch === ')' || ch === ']' || ch === '}') {
+      const match = { ')': '(', ']': '[', '}': '{' }[ch] as string;
+      const top = stack.pop();
+      if (!top || top.ch !== match) warned.add(i);
+      i++;
+      continue;
+    }
+    if (NON_ASCII_PUNCT.has(ch)) { warned.add(i); i++; continue; }
+    i++;
+  }
+  for (const b of stack) warned.add(b.pos);
+
+  let html = '';
+  for (let j = 0; j < code.length; j++) {
+    let c = code[j];
+    if (c === '&') c = '&amp;';
+    else if (c === '<') c = '&lt;';
+    else if (c === '>') c = '&gt;';
+    if (warned.has(j)) html += `<span class="warn-underline">${c}</span>`;
+    else html += c;
+  }
+  return html + '\n';
+});
+
 defineExpose({
   openFindBar,
   openReplaceBar,
@@ -1150,11 +1374,13 @@ defineExpose({
   stopCode: handleStopCode,
   undo: handleUndo,
   redo: handleRedo,
+  formatDocument,
   isExecuting,
   canUndo,
   canRedo,
   cursorLine,
-  cursorCol
+  cursorCol,
+  revealLine
 });
 
 // ---- 标签条横向滚动：两侧滚动按钮 + 溢出状态跟踪 ----
@@ -1229,11 +1455,16 @@ onBeforeUnmount(() => {
           <span class="material-symbols-rounded tab-icon">
             {{ getTabIcon(tab.name) }}
           </span>
-          <span v-if="tab.isDirty" class="dirty-indicator" :title="t('tabUnsavedTitle')">•</span>
           <span class="tab-name">{{ tab.name }}</span>
-          <m3e-icon-button v-if="tab.id === activeTabId" variant="standard" size="extra-small" :title="t('tabCloseTitle')"
-            @click.stop="emit('close-tab', tab.id)">
-            <span class="material-symbols-rounded">close</span> </m3e-icon-button>
+          <!-- 右侧固定槽位：未保存圆点与关闭按钮共用同一格、同一尺寸（同 VS Code），
+               两者互换时不推动标签里的任何元素 -->
+          <span class="tab-action-slot">
+            <span v-if="tab.isDirty" class="dirty-dot" :title="t('tabUnsavedTitle')"></span>
+            <m3e-icon-button class="tab-close-btn" variant="standard" size="extra-small" :title="t('tabCloseTitle')"
+              @click.stop="emit('close-tab', tab.id)">
+              <span class="material-symbols-rounded">close</span>
+            </m3e-icon-button>
+          </span>
         </div>
       </div>
       <m3e-icon-button class="tabs-scroll-btn" variant="standard" width="narrow" size="extra-small"
@@ -1291,6 +1522,13 @@ onBeforeUnmount(() => {
             {{ t('replaceAllBtn') }}
           </m3e-button>
         </div>
+        <div v-if="findText && otherFileMatches.count > 0" class="other-files-row">
+          <span class="other-files-label">{{ tf('otherFilesMatches', { count: otherFileMatches.count }) }}</span>
+          <m3e-button size="extra-small" variant="text" :disabled="!otherFileMatches.first" @click="jumpToOtherFile">
+            <span slot="icon" class="material-symbols-rounded">arrow_forward</span>
+            {{ t('jump') }}
+          </m3e-button>
+        </div>
       </div>
 
       <!-- Code Textarea & Line Numbers Area -->
@@ -1313,6 +1551,9 @@ onBeforeUnmount(() => {
           <pre ref="codeHighlightRef" class="code-highlight-overlay" aria-hidden="true"
             :style="{ fontSize: `${config.fontSize || 15}px`, tabSize: config.tabSize || 4 }"><code class="hljs"
           v-html="highlightedCode"></code></pre>
+          <pre ref="warningRef" class="warning-overlay" aria-hidden="true"
+            :style="{ fontSize: `${config.fontSize || 15}px`, tabSize: config.tabSize || 4 }"><code
+          v-html="warningOverlayHtml"></code></pre>
           <textarea ref="textareaRef" :value="activeTab.content" wrap="off" class="code-textarea"
             :style="{ fontSize: `${config.fontSize || 15}px`, tabSize: config.tabSize || 4 }" spellcheck="false"
             autocomplete="off" autocorrect="off" autocapitalize="off" @input="handleInput" @keydown="handleKeyDown"
@@ -1438,16 +1679,44 @@ onBeforeUnmount(() => {
 }
 
 .tab-name {
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.dirty-indicator {
-  color: var(--accent-amber-text);
-  font-size: 1.6rem;
-  line-height: 1;
-  letter-spacing: -12px;
+/* 右侧固定槽位（尺寸 = extra-small 图标按钮的 32px）：宽度恒定，
+   里面的圆点与关闭按钮互换不会推动文件名，也不会改变标签宽度 */
+.tab-action-slot {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dirty-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background-color: var(--accent-amber-text);
+}
+
+/* 默认显示圆点（干净时该格为空）；悬停时圆点让位给关闭按钮 —— 与 VS Code 一致 */
+.tab-action-slot .tab-close-btn {
+  display: none;
+}
+
+.editor-tab-item:hover .tab-close-btn,
+.editor-tab-item:focus-visible .tab-close-btn {
+  display: inline-flex;
+}
+
+.editor-tab-item:hover .dirty-dot,
+.editor-tab-item:focus-visible .dirty-dot {
+  display: none;
 }
 
 /* Empty View */
@@ -1868,5 +2137,79 @@ kbd {
 .completion-footer .footer-sep {
   opacity: 0.6;
   margin: 0 2px;
+}
+
+/* 任务8：非字符串内中文标点 / 多余括号的红色细下划线装饰层（与高亮覆盖层同盒模型，滚动同步） */
+.warning-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  padding: 12px 120px 12px 12px;
+  font-family: var(--font-mono);
+  line-height: 1.5;
+  tab-size: 4;
+  white-space: pre;
+  word-break: normal;
+  word-wrap: normal;
+  overflow-wrap: normal;
+  overflow: hidden;
+  pointer-events: none;
+  background: transparent;
+  box-sizing: border-box;
+  z-index: 1;
+}
+
+.warning-overlay code {
+  padding: 0;
+  padding-right: 120px;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: inherit;
+  line-height: inherit;
+  white-space: pre;
+  display: inline-block;
+  width: max-content;
+  min-width: calc(100% + 120px);
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+:deep(.warn-underline) {
+  color: var(--text-color);
+  -webkit-text-fill-color: var(--text-color);
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: #ef4444;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+/* 任务5：查找栏下方其它文件匹配行 */
+.other-files-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 2px 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.other-files-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 任务3：让 hljs 已识别的方法调用 / 装饰器 / 类型注解着色更醒目（不换内核） */
+.code-highlight-overlay .hljs-title.function_{
+  font-weight: 600;
+}
+.code-highlight-overlay .hljs-decorator,
+.code-highlight-overlay .hljs-meta {
+  opacity: 1;
 }
 </style>

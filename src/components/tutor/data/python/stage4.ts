@@ -24,7 +24,7 @@ export const stage4: TutorialStage = {
                 ['**kwargs', 'def f(**kwargs)', '接收任意多关键字参数', '动态键值参数']
               ]
             },
-            code: `def build_user_profile(username, email, *hobbies, **attributes):\n    profile = {\n        "username": username,\n        "email": email,\n        "hobbies": hobbies,\n        "metadata": attributes\n    }\n    return profile\n\nuser = build_user_profile("alice", "alice@test.com", "coding", "reading", role="admin", level=5)\nprint("构造的用户字典:\\n", user)`
+            code: `def build_user_profile(username, email, *args, **kwargs):\n    profile = {\n        "username": username,\n        "email": email,\n        "hobbies": args,\n        "metadata": kwargs\n    }\n    return profile\n\nuser = build_user_profile("alice", "alice@test.com", "coding", "reading", role="admin", level=5)\nprint("构造的用户字典:")\nprint(user)`
           },
           {
             heading: '默认参数的经典坑',
@@ -36,11 +36,60 @@ export const stage4: TutorialStage = {
             text: '• 无 return 语句：默认返回 None\n• 单个 return：返回指定值\n• 多个返回值：本质是返回一个元组，可直接解包接收\n• return 会立即终止函数执行，后面的代码不会运行',
             code: `def calculate(a, b):\n    sum_val = a + b\n    product = a * b\n    return sum_val, product  # 返回元组\n\ns, p = calculate(3, 4)\nprint("和:", s, "积:", p)`
           },
+          {
+            heading: '关键字参数调用方式',
+            text: '调用函数时，除了按位置传值，还可以写成 形参名=值 的形式，这叫关键字参数调用。好处是参数多的时候传参顺序无所谓，而且一眼看出每个值是给谁的。位置参数和关键字参数可以混用，但位置参数必须写在前面。',
+            code: `def describe_pet(name, animal="狗"):\n    print(f"{name} 是一只{animal}")\n\ndescribe_pet("旺财")                  # 按位置传参\ndescribe_pet(animal="猫", name="咪咪") # 关键字传参，顺序无所谓\ndescribe_pet("花花", animal="兔子")    # 位置与关键字混用`
+          },
+          {
+            heading: '文档字符串与 help()',
+            text: '在函数体第一行放一段三引号字符串，叫文档字符串（docstring），用来描述函数做什么、每个参数和返回值是什么。写好后，在交互式环境里调用 help(函数名) 就能看到这段说明，IDE 也会自动弹出提示。代码里也可以直接读取 函数名.__doc__。',
+            code: `def area_rectangle(width, height):\n    """返回矩形面积 = 宽 * 高。"""\n    return width * height\n\nprint("面积:", area_rectangle(3, 4))\nprint("--- 文档字符串内容 ---")\nprint(area_rectangle.__doc__)`
+          },
+          {
+            heading: '仅位置与仅关键字参数（进阶）',
+            text: '定义参数时，单个斜杠 / 之前的参数只能按位置传；单个星号 * 之后的参数必须按关键字传。这是更精细的接口控制，属于进阶内容，初学了解即可。',
+            code: `def user_info(name, /, city, *, age):\n    print(f"{name} 住在{city}，今年{age}岁")\n\n# name 只能位置传；city 两种都行；age 必须关键字传\nuser_info("小明", "上海", age=18)`
+          },
+          {
+            heading: '递归（进阶）',
+            text: '函数直接或间接调用自己叫递归。每次调用把问题缩小一点，直到碰到「基准情形」不再自我调用；如果没有基准情形，就会无限递归直到报错。阶乘是最经典的例子。',
+            code: `def factorial(n):\n    if n <= 1:          # 基准情形，停止递归\n        return 1\n    return n * factorial(n - 1)\n\nprint("5 的阶乘:", factorial(5))\nprint("0 的阶乘:", factorial(0))`
+          },
         ],
-        codeExample: `def multiply_all(*numbers):\n    result = 1\n    for n in numbers:\n        result *= n\n    return result\n\nprint("变长乘积计算:", multiply_all(2, 3, 4, 5))`,
+        codeExample: `def multiply_all(*args):\n    result = 1\n    for n in args:\n        result *= n\n    return result\n\nprint("变长乘积计算:", multiply_all(2, 3, 4, 5))`,
         tips: [
           '切勿使用可变对象（如列表或字典）作为函数的默认参数值，应采用 None 进行延迟赋值。',
           '函数职责要单一，一个函数只做一件事，不要写几百行的大函数。'
+        ]
+      }
+    },
+    {
+      id: 'p4_first_class',
+      title: '函数是一等对象',
+      stage: 'Python 函数与对象',
+      summary: '函数能像数字一样被赋值、传参、当返回值。',
+      content: {
+        overview: '在 Python 里，函数和整数、字符串地位一样，都是「对象」。这意味着函数可以赋值给变量、当参数传给别的函数、还能当返回值返回。这种能力叫「一等公民」，装饰器、闭包、回调都是建立在它之上的。',
+        sections: [
+          { heading: '把函数赋值给变量', text: '定义函数后，不加括号直接写函数名，拿到的是函数本身。把它赋给另一个变量，就能用新名字调用。记住：加括号是「调用」，不加括号是「把函数当东西传」。',
+            code: `def greet():\n    return "你好呀"\n\nsay = greet        # 不加括号，拿到函数对象本身\nprint(say())       # 用新名字调用\nprint("类型:", type(say))`
+          },
+          {
+            heading: '把函数当参数传递',
+            text: '接收函数当参数的函数叫高阶函数。sorted、map、filter 都是这种——它们不关心你具体做什么，只负责把每个元素交给你传入的函数处理。',
+            code: `def apply_twice(func, value):\n    return func(func(value))\n\ndef add_one(x):\n    return x + 1\n\nprint("连续加两次一:", apply_twice(add_one, 10))`
+          },
+          {
+            heading: '把函数当返回值',
+            text: '函数内部再定义一个函数，然后把它 return 出来。外层函数相当于一个「函数工厂」，根据参数造出不同行为的函数。',
+            code: `def make_adder(n):\n    def adder(x):\n        return x + n\n    return adder\n\nadd5 = make_adder(5)\nadd100 = make_adder(100)\nprint("加 5:", add5(10))\nprint("加 100:", add100(10))`
+          },
+        ],
+        codeExample: `def shout(text):\n    return text.upper() + "!"\n\nfuncs = [str.lower, shout, len]\nfor f in funcs:\n    print("调用结果:", f("Hello"))`,
+        tips: [
+          '函数不加括号才是函数本身，加了括号是调用它并拿返回值。',
+          '把函数当参数传递时，传的是函数本身，不要画蛇添足加上括号。'
         ]
       }
     },
@@ -70,6 +119,21 @@ export const stage4: TutorialStage = {
             code: `products = [\n    {"name": "Laptop", "price": 8999},\n    {"name": "Mouse", "price": 199},\n    {"name": "Keyboard", "price": 499}\n]\n\n# 1. 按价格排序（最常用场景）\nproducts.sort(key=lambda item: item["price"])\nprint("按价格升序排列:\\n", products)\n\n# 2. map 映射转换\nprices = list(map(lambda p: p["price"], products))\nprint("提取价格列表:", prices)\n\n# 3. filter 过滤筛选\ncheap = list(filter(lambda p: p["price"] < 500, products))\nprint("便宜商品:", cheap)`
           },
           {
+            heading: 'min / max 配合 key',
+            text: 'sorted 的 key 参数已经见过，min 和 max 也接受 key，用来指定「按什么标准」取最小或最大。lambda 在这里特别简洁。',
+            code: `students = [("小明", 85), ("小红", 92), ("小刚", 78)]\n\ntop = max(students, key=lambda s: s[1])\nlow = min(students, key=lambda s: s[1])\nprint("最高分:", top)\nprint("最低分:", low)\n\nby_name_len = sorted(students, key=lambda s: len(s[0]))\nprint("按名字长度排序:", by_name_len)`
+          },
+          {
+            heading: '闭包变量捕获陷阱（进阶）',
+            text: '在循环里写 lambda 并引用循环变量时，lambda 不会记住当时的值，而是记住变量本身。等真正调用时循环早已结束，变量停在最后一次的值。解决办法是用默认参数 i=i 在定义时立即绑定。',
+            code: `funcs_bad = []\nfor i in range(3):\n    funcs_bad.append(lambda: i)\nprint("陷阱：都返回最后的 i:", [f() for f in funcs_bad])\n\nfuncs_good = []\nfor i in range(3):\n    funcs_good.append(lambda i=i: i)\nprint("修复后:", [f() for f in funcs_good])`
+          },
+          {
+            heading: 'functools.reduce（进阶）',
+            text: 'reduce 把一个二元函数「累积」地作用在序列上：先拿前两个算，结果再和第三个算，直到最后剩一个值。配合 lambda 可以做累加、累乘。',
+            code: `from functools import reduce\n\nnums = [1, 2, 3, 4]\ntotal = reduce(lambda a, b: a + b, nums)\nproduct = reduce(lambda a, b: a * b, nums)\nprint("累加:", total)\nprint("累乘:", product)`
+          },
+          {
             heading: '使用建议与误区',
             text: '• lambda 只适合简单逻辑，复杂逻辑请写普通 def 函数\n• 不要强行给 lambda 赋值命名，不如直接写 def\n• 大多数场景下，列表推导式比 map/filter+lambda 更易读',
             code: `# 列表推导式 vs filter+lambda\nnums = [1, 2, 3, 4, 5, 6]\n\n# filter + lambda 写法\nevens1 = list(filter(lambda x: x % 2 == 0, nums))\n\n# 列表推导式写法（更推荐）\nevens2 = [x for x in nums if x % 2 == 0]\n\nprint("两种方式结果一致:", evens1 == evens2)`
@@ -79,6 +143,30 @@ export const stage4: TutorialStage = {
         tips: [
           'Lambda 主体中只能书写单个简单表达式，不能包含复杂的赋值语句或循环。',
           '排序时指定 key 函数是 lambda 最经典的使用场景。'
+        ]
+      }
+    },
+    {
+      id: 'p4_closure',
+      title: '闭包',
+      stage: 'Python 函数与对象',
+      summary: '内层函数记住外层函数的变量，即使外层已经执行完。',
+      content: {
+        overview: '闭包是一种「内层函数记住外层函数变量」的现象。外层函数执行完返回后，它的局部变量本应消失，但如果内层函数还引用着，这些变量就会被留住、继续可用。闭包常用来保存少量状态、做可配置的小工具。',
+        sections: [
+          { heading: '闭包长什么样', text: '外层函数定义一个变量，内层函数引用它，外层再把内层函数返回。之后每次调用返回的内层函数，都还能访问那个变量，仿佛它一直活着。在内层函数里修改外层变量要用 nonlocal 声明。',
+            code: `def make_counter():\n    count = 0\n    def counter():\n        nonlocal count\n        count += 1\n        return count\n    return counter\n\nc = make_counter()\nprint("第一次:", c())\nprint("第二次:", c())\nprint("第三次:", c())`
+          },
+          {
+            heading: '用闭包保存状态',
+            text: '每次调用 make_counter() 都会产生一份独立的 count，各个计数器互不干扰。这比到处用全局变量干净，因为状态被关在闭包里，外部碰不到。',
+            code: `c1 = make_counter()\nc2 = make_counter()\nc1()\nprint("c1 现在是:", c1())\nprint("c2 现在是:", c2())\nprint("c1 再数一次:", c1())`
+          },
+        ],
+        codeExample: `def make_multiplier(n):\n    def multiply(x):\n        return x * n\n    return multiply\n\ndouble = make_multiplier(2)\ntriple = make_multiplier(3)\nprint("双倍:", double(10))\nprint("三倍:", triple(10))`,
+        tips: [
+          '闭包会记住外层变量，适合做需要保存少量状态的小工具。',
+          '在内层函数里修改外层函数变量时，要用 nonlocal 声明。'
         ]
       }
     },
@@ -111,6 +199,11 @@ export const stage4: TutorialStage = {
             text: '支持 append、pop、insert、remove 等列表常用方法，还支持：\n• `.fromlist(lst)`：从列表批量添加\n• `.tolist()`：转为普通列表\n• `.byteswap()`：字节序转换',
             code: `import array\narr = array.array('i', [1, 2, 3])\narr.fromlist([4, 5, 6])\nprint("批量添加后:", arr)\nprint("转回列表:", arr.tolist())`
           },
+          {
+            heading: '索引、切片与基本读写',
+            text: 'array 支持和 list 几乎一样的下标访问、切片、len 长度和 extend 批量扩展。区别只是它只存同类型数字，不能塞字符串进去。',
+            code: `import array\narr = array.array('i', [10, 20, 30, 40, 50])\n\nprint("长度:", len(arr))\nprint("第一个元素:", arr[0])\nprint("切片 [1:4]:", arr[1:4])\narr[0] = 99\narr.extend([60, 70])\nprint("修改并扩展后:", arr)`
+          },
         ],
         codeExample: `import array\nfloats = array.array('d', [1.1, 2.2, 3.3])\nprint("双精度浮点数组:", floats)`,
         tips: [
@@ -131,7 +224,7 @@ export const stage4: TutorialStage = {
             code: `# 定义一个银行账户类\nclass BankAccount:\n    def __init__(self, owner: str, balance: float = 0.0):\n        self.owner = owner          # 公开实例属性\n        self.__balance = balance    # 私有属性（双下划线开头）\n        \n    def deposit(self, amount: float):\n        \"\"\"存款方法\"\"\"\n        if amount > 0:\n            self.__balance += amount\n            print(f"成功存入 ￥{amount}, 当前余额: ￥{self.__balance}")\n    \n    def withdraw(self, amount: float):\n        \"\"\"取款方法\"\"\"\n        if 0 < amount <= self.__balance:\n            self.__balance -= amount\n            print(f"成功取出 ￥{amount}, 当前余额: ￥{self.__balance}")\n            return True\n        print("余额不足或金额无效")\n        return False\n            \n    def get_balance(self) -> float:\n        \"\"\"查询余额（只读访问）\"\"\"\n        return self.__balance\n\n# 创建实例对象\nacc = BankAccount("Alice", 1000.0)\nacc.deposit(500.0)\nacc.withdraw(300.0)\nprint("最终账户余额:", acc.get_balance())`
           },
           {
-            heading: 'self 参数详解',
+            heading: 'self 参数',
             text: '所有实例方法的第一个参数必须是 self，它代表当前实例对象本身。\n• 通过 self.xxx 访问实例属性\n• 通过 self.xxx() 调用其他实例方法\n• 调用方法时不需要手动传 self，Python 会自动传入',
             code: `class Person:\n    def __init__(self, name, age):\n        self.name = name\n        self.age = age\n    \n    def introduce(self):\n        # 用 self 访问自身属性和方法\n        print(f"我叫 {self.name}，今年 {self.age} 岁")\n\np = Person("Bob", 20)\np.introduce()  # 调用时不用传 self`
           },
@@ -140,11 +233,64 @@ export const stage4: TutorialStage = {
             text: '• 实例属性：每个对象独有一份，互不影响，在 __init__ 中定义\n• 类属性：所有实例共享同一份，属于类本身，直接写在类里',
             code: `class Circle:\n    pi = 3.14159  # 类属性，所有圆共享\n    \n    def __init__(self, radius):\n        self.radius = radius  # 实例属性，每个圆不一样\n    \n    def area(self):\n        return Circle.pi * (self.radius ** 2)\n\nc1 = Circle(5)\nc2 = Circle(10)\nprint("c1 面积:", c1.area())\nprint("c2 面积:", c2.area())`
           },
+          {
+            heading: '装饰器 @ 符号是什么',
+            text: '从现在起会频繁看到 @ 开头的写法，比如 @property、@staticmethod、@abstractmethod。它叫装饰器，本质是「把它下面定义的函数再包装一层」，给这个函数附加额外能力。你现在先记住：写在定义上面，就是给这个方法加功能，具体原理后面会专门讲。'
+          },
+          {
+            heading: '@property 把方法变属性',
+            text: '以前手写 get_xxx()/set_xxx() 访问方法，Python 更推荐用 @property。它让你能像访问属性一样读写，内部却可以做校验和计算，调用方却完全感觉不到是方法。',
+            code: `class Temperature:\n    def __init__(self, celsius):\n        self._celsius = celsius\n\n    @property\n    def celsius(self):\n        return self._celsius\n\n    @celsius.setter\n    def celsius(self, value):\n        if value < -273.15:\n            raise ValueError("温度不能低于绝对零度")\n        self._celsius = value\n\nt = Temperature(25)\nprint("读取属性:", t.celsius)\nt.celsius = 30\nprint("写入后:", t.celsius)`
+          },
+          {
+            heading: '@staticmethod 与 @classmethod',
+            text: '普通方法第一个参数是 self（实例本身）。静态方法 @staticmethod 不需要 self，就是个放在类命名空间里的普通函数；类方法 @classmethod 第一个参数是 cls（类本身），常用来操作类属性或做替代构造函数。',
+            code: `class MathBox:\n    count = 0\n\n    @staticmethod\n    def square(x):\n        return x * x\n\n    @classmethod\n    def show_count(cls):\n        print(f"类属性 count = {cls.count}")\n\nprint("静态方法:", MathBox.square(5))\nMathBox.count = 3\nMathBox.show_count()`
+          },
+          {
+            heading: '单下划线与双下划线约定',
+            text: '_name 单下划线开头是一种约定：表示「内部使用，外部别乱动」，但技术上仍能访问。__name 双下划线开头会触发名称改写，Python 把它改成 _类名__name，避免子类意外覆盖。它们都不是真正的访问控制，只是保护约定。',
+            code: `class Demo:\n    def __init__(self):\n        self.public = 1       # 公开属性\n        self._internal = 2    # 约定内部使用\n        self.__secret = 3     # 触发名称改写\n\nd = Demo()\nprint("公开:", d.public)\nprint("约定内部:", d._internal)\nprint("名称改写后:", d._Demo__secret)`
+          },
+          {
+            heading: 'isinstance 类型检查',
+            text: '判断一个对象是不是某个类的实例，用 isinstance(obj, 类)。它比 type() 更推荐，因为它会考虑继承关系——子类的实例也算作父类的实例。还可以传入元组同时检查多种类型。',
+            code: `print(isinstance(5, int))\nprint(isinstance("hi", str))\nprint(isinstance([], (list, tuple)))\n\nclass Animal:\n    pass\nclass Dog(Animal):\n    pass\n\nprint("子类实例也算父类:", isinstance(Dog(), Animal))`
+          },
         ],
-        codeExample: `class Circle:\n    pi = 3.14159  # 类属性\n    def __init__(self, radius):\n        self.radius = radius\n    def area( self ):\n        return Circle.pi * (me.radius ** 2)\n\nc = Circle(5)\nprint(f"半径为 5 的圆面积为: {c.area():.2f}")`,
+        codeExample: `class Circle:\n    pi = 3.14159  # 类属性\n    def __init__(self, radius):\n        self.radius = radius\n    def area(self):\n        return Circle.pi * (self.radius ** 2)\n\nc = Circle(5)\nprint(f"半径为 5 的圆面积为: {c.area():.2f}")`,
         tips: [
           '类属性被所有该类的实例对象共享，而实例属性仅归属于具体单个实例。',
           '双下划线开头的属性是名称改写，不是真正的私有，只是一种约定保护。'
+        ]
+      }
+    },
+    {
+      id: 'p4_magic_methods',
+      title: '魔术方法',
+      stage: 'Python 函数与对象',
+      summary: '用双下划线方法让自定义对象支持 print、len、+ 等内置语法。',
+      content: {
+        overview: 'Python 里有一类以双下划线开头和结尾的方法，叫「魔术方法」（dunder method）。它们让你的自定义对象能用 print、len、+ 这些内置语法操作，用起来就和内置类型一样自然。',
+        sections: [
+          { heading: '__str__ 与 __repr__', text: '直接 print 自定义对象，默认只会打印一串难看的内存地址。定义 __str__ 可以定制「给人看」的字符串；定义 __repr__ 定制「给开发者看」的、尽量能还原对象的字符串。',
+            code: `class Book:\n    def __init__(self, title, pages):\n        self.title = title\n        self.pages = pages\n    def __str__(self):\n        return f"《{self.title}》共{self.pages}页"\n    def __repr__(self):\n        return f"Book(title={self.title!r}, pages={self.pages})"\n\nb = Book("Python 入门", 300)\nprint(str(b))\nprint(repr(b))`
+          },
+          {
+            heading: '__len__ 与 __call__（进阶）',
+            text: '定义 __len__ 后对象就能被 len() 调用；定义 __call__ 后对象可以像函数一样加括号调用，这叫「可调用对象」。',
+            code: `class Bag:\n    def __init__(self, items):\n        self.items = list(items)\n    def __len__(self):\n        return len(self.items)\n    def __call__(self, label):\n        print(f"标签 {label}: 袋子里有 {self.items}")\n\nbag = Bag(["苹果", "香蕉"])\nprint("数量:", len(bag))\nbag("早餐")`
+          },
+          {
+            heading: '运算符重载（进阶）',
+            text: '定义 __add__ 就让对象支持 +，定义 __eq__ 支持 ==。Python 把每个运算符都映射到对应的魔术方法，重载后自定义对象就能用熟悉的符号运算。',
+            code: `class Pair:\n    def __init__(self, a, b):\n        self.a = a\n        self.b = b\n    def __add__(self, other):\n        return Pair(self.a + other.a, self.b + other.b)\n    def __repr__(self):\n        return f"Pair({self.a}, {self.b})"\n\np1 = Pair(1, 2)\np2 = Pair(10, 20)\nprint("相加结果:", p1 + p2)`
+          },
+        ],
+        codeExample: `class Vec:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\n    def __add__(self, other):\n        return Vec(self.x + other.x, self.y + other.y)\n    def __repr__(self):\n        return f"Vec({self.x}, {self.y})"\n\nv = Vec(1, 2) + Vec(3, 4)\nprint(v)`,
+        tips: [
+          '__str__ 面向用户展示，__repr__ 面向调试还原。',
+          '不要随意定义太多魔术方法，只在语义自然、确实能让对象更易用时使用。'
         ]
       }
     },
@@ -160,17 +306,17 @@ export const stage4: TutorialStage = {
             code: `class Vehicle:\n    def __init__(self, brand, speed):\n        self.brand = brand\n        self.speed = speed\n        \n    def drive(self):\n        print(f"{self.brand} 正在以 {self.speed} km/h 行驶")\n\nclass ElectricCar(Vehicle):\n    def __init__(self, brand, speed, battery_capacity):\n        super().__init__(brand, speed)  # 调用父类构造方法\n        self.battery_capacity = battery_capacity  # 子类新增属性\n        \n    def drive(self):  # 重写父类方法\n        print(f"{self.brand} 电动车 (电池 {self.battery_capacity}kWh) 静音行驶中")\n    \n    def charge(self):  # 子类新增方法\n        print(f"{self.brand} 正在充电...")\n\ntesla = ElectricCar("Tesla", 120, 75)\ntesla.drive()\ntesla.charge()`
           },
           {
-            heading: 'super() 函数详解',
-            text: '`super()` 用于调用父类的方法，最常用于构造方法初始化。\n• 保证父类属性被正确初始化\n• 多重继承下按照 MRO 顺序调用，避免重复调用\n• 方法重写后仍能调用父类原方法',
-            code: `class Student(Person):\n    def __init__(self, name, age, student_id):\n        super().__init__(name, age)  # 复用父类初始化\n        self.student_id = student_id  # 新增属性`
+            heading: 'super() 函数',
+            text: 'super() 用于调用父类的方法，最常见是在 __init__ 里复用父类初始化。它也可以在普通方法里调用父类的同名方法，做到「先借用父类的实现，再补充子类自己的逻辑」。多重继承下它还会按 MRO 顺序正确查找父类。',
+            code: `class Vehicle:\n    def move(self):\n        return "车辆移动"\n\nclass Car(Vehicle):\n    def move(self):\n        base = super().move()   # 调用父类的同名方法\n        return base + "，靠四轮行驶"\n\nprint(Car().move())`
           },
           {
             heading: '多重继承与 MRO',
-            text: 'Python 支持一个类继承多个父类，称为多重继承。\n方法解析顺序（MRO）决定了方法查找的优先级，可以用 `类名.__mro__` 查看。\n原则：子类优先于父类，同级按继承顺序从左到右。',
-            code: `print("查看 ElectricCar 的 MRO 解析链:")\nfor cls in ElectricCar.__mro__:\n    print(" ->", cls.__name__)`
+            text: 'Python 支持一个类继承多个父类，称为多重继承。方法解析顺序（MRO）决定了方法查找的优先级，可以用 类名.__mro__ 查看。原则：子类优先于父类，同级按继承顺序从左到右。',
+            code: `class A:\n    pass\nclass B(A):\n    pass\nclass C(A):\n    pass\nclass D(B, C):\n    pass\n\nprint("D 的方法解析顺序:")\nfor cls in D.__mro__:\n    print(" ->", cls.__name__)`
           },
         ],
-        codeExample: `print("查看 ElectricCar 的 MRO 解析链:")\nfor cls in ElectricCar.__mro__:\n    print(" ->", cls.__name__)`,
+        codeExample: `class Vehicle:\n    def move(self):\n        return "移动"\n\nclass Car(Vehicle):\n    def move(self):\n        return super().move() + "（四轮）"\n\nprint(Car().move())`,
         tips: [
           '可以通过 `issubclass(Child, Parent)` 校验类之间的继承关系。',
           '多重继承容易让代码变复杂，非必要不使用，优先用组合替代继承。'
@@ -194,9 +340,19 @@ export const stage4: TutorialStage = {
             code: `def fibonacci_generator(n):\n    a, b = 0, 1\n    count = 0\n    while count < n:\n        yield a  # 产出值并挂起\n        a, b = b, a + b\n        count += 1\n\n# 使用生成器输出斐波那契数列\nfor num in fibonacci_generator(8):\n    print("Fibonacci 项:", num)`
           },
           {
+            heading: '自定义迭代器类',
+            text: '之前用 iter(list) 拿现成迭代器。你也可以自己写类实现迭代器协议：定义 __iter__ 返回自身，定义 __next__ 返回下一个值，没值了就抛 StopIteration。这样你的对象就能直接用 for 循环遍历。',
+            code: `class CountDown:\n    def __init__(self, start):\n        self.current = start\n    def __iter__(self):\n        return self\n    def __next__(self):\n        if self.current <= 0:\n            raise StopIteration\n        self.current -= 1\n        return self.current + 1\n\nfor n in CountDown(3):\n    print("倒数:", n)`
+          },
+          {
             heading: '生成器表达式',
             text: '把列表推导式的方括号换成圆括号就是生成器表达式，惰性计算，几乎不占内存。\n适合处理百万级大数据流。',
             code: `# 生成器表达式（惰性，不占内存）\nsquares_gen = (x ** 2 for x in range(1000000))\nprint("生成器创建成功，内存占用极小:", type(squares_gen))\nprint("获取首个元素:", next(squares_gen))`
+          },
+          {
+            heading: 'yield from 委派生成器（进阶）',
+            text: '生成器里用 yield from 可以把另一个可迭代对象的元素逐个产出，省去手写 for 循环。它还能在生成器之间做委派，把请求和返回值透明地转发出去。',
+            code: `def sub_gen():\n    yield 1\n    yield 2\n\ndef main_gen():\n    yield "开始"\n    yield from sub_gen()\n    yield from [3, 4]\n    yield "结束"\n\nprint(list(main_gen()))`
           },
         ],
         codeExample: `# 生成器表达式 (Generator Expression)\nsquares_gen = (x ** 2 for x in range(1000000))\nprint("生成器表达式创建成功，内存占用极小:", type(squares_gen))\nprint("获取首个元素:", next(squares_gen))`,
@@ -219,7 +375,7 @@ export const stage4: TutorialStage = {
           },
           {
             heading: '抽象基类 ABC',
-            text: '如果需要强制子类必须实现某些方法，可以使用 abc 模块定义抽象基类。\n包含抽象方法的类不能实例化，子类必须实现所有抽象方法才能实例化。',
+            text: '如果需要强制子类必须实现某些方法，可以使用 abc 模块定义抽象基类。\n包含抽象方法的类不能实例化，子类必须实现所有抽象方法才能实例化。@abstractmethod 就是前面说过的装饰器，用来标记「这个方法子类必须重写」。',
             code: `from abc import ABC, abstractmethod\n\nclass Shape(ABC):\n    @abstractmethod\n    def area(self):\n        \"\"\"计算面积，子类必须实现\"\"\"\n        pass\n\nclass Rectangle(Shape):\n    def __init__(self, w, h):\n        self.w = w\n        self.h = h\n    def area(self):\n        return self.w * self.h\n\nr = Rectangle(3, 4)\nprint("矩形面积:", r.area())`
           },
           {
@@ -259,15 +415,56 @@ export const stage4: TutorialStage = {
             code: `count = 0  # 全局变量\n\ndef outer_function():\n    msg = "Outer"  # 嵌套变量\n    def inner_function():\n        nonlocal msg        # 修改外层函数变量\n        msg = "Inner Modified"\n        global count        # 修改全局变量\n        count += 1\n    inner_function()\n    print("闭包修改后的 msg:", msg)\n\nouter_function()\nprint("全局修改后的 count:", count)`
           },
           {
+            heading: '可变对象就地修改 vs 重新绑定',
+            text: '函数内修改外部可变对象时，如果只是调用它的方法（append、改字典键值），不需要 global，因为你没有重新绑定那个名字。但如果写 变量 = 新值 重新绑定了名字，就必须用 global 声明，否则 Python 会把它当成全新的局部变量。',
+            code: `data = [1, 2, 3]\n\ndef add():\n    data.append(4)   # 就地修改，没有重新绑定，不需要 global\n\nadd()\nprint("就地修改后:", data)\n\ncount = 10\ndef reset():\n    global count\n    count = 20       # 重新绑定名字，必须用 global 声明\n\nreset()\nprint("重新绑定后:", count)`
+          },
+          {
             heading: '常见作用域坑点',
             text: '• 函数内赋值变量会被认为是局部变量，即使外面有同名全局变量\n• 先引用后赋值会报错 UnboundLocalError\n• 不要定义和内置函数同名的变量，会屏蔽内置功能',
             code: `# • 错误示例：先引用后赋值\n# x = 10\n# def test():\n# •    print(x)  # 报错，因为下面赋值了，x 被认为是局部的\n# •    x = 20\n\n# • 正确：声明 global\ndef test():\n    global x\n    print(x)`
           },
         ],
-        codeExample: `import builtins\nprint("检查 Built-in 内置标识符数量:", len(dir(builtins)))`,
+        codeExample: `# 全局(Global)作用域的变量
+message = "我是全局变量"
+
+def outer():
+    message = "我是外层(Enclosing)变量"
+    def inner():
+        message = "我是局部(Local)变量"
+        print("inner 内部看到:", message)
+    inner()
+    print("outer 里看到:", message)
+
+outer()
+print("全局位置看到:", message)`,
         tips: [
           '过度使用 global 变量会增加函数间的耦合，应尽量采用参数传递与返回值。',
           '命名变量时避开 len、list、str 等内置名称，防止覆盖内置函数。'
+        ]
+      }
+    },
+    {
+      id: 'p4_type_hints',
+      title: '类型注解',
+      stage: 'Python 函数与对象',
+      summary: '给变量和函数标注类型，让代码更清晰、IDE 更早发现错误。',
+      content: {
+        overview: '类型注解（Type Hints）是给变量、参数、返回值标注类型的写法。它不会影响运行结果，只是让代码更易读、让 IDE 和工具能提前发现类型错误。在大型项目和团队协作中强烈推荐使用。',
+        sections: [
+          { heading: '基本标注语法', text: '在变量名后加冒号写类型，函数返回值用 -> 标注。注解只是给人和工具看的，Python 运行时不会强制检查类型。',
+            code: `def greet(name: str) -> str:\n    return f"你好，{name}"\n\nage: int = 18\nprice: float = 19.9\nprint(greet("小明"))\nprint(age, price)`
+          },
+          {
+            heading: '容器与可选类型',
+            text: '标注列表、字典等容器需要用到泛型；Optional[X] 表示这个值可能是 X，也可能是 None。Python 3.9 起可以直接用 list[int] 这种写法，旧版本从 typing 模块导入 List、Dict。',
+            code: `from typing import List, Dict, Optional\n\ndef total(nums: List[int]) -> int:\n    return sum(nums)\n\nconfig: Dict[str, int] = {"width": 800, "height": 600}\n\ndef find_name(uid: int) -> Optional[str]:\n    if uid == 1:\n        return "小明"\n    return None\n\nprint(total([1, 2, 3]))\nprint(config)\nprint(find_name(1), find_name(99))`
+          },
+        ],
+        codeExample: `from typing import List\n\ndef average(scores: List[float]) -> float:\n    return sum(scores) / len(scores)\n\ndata: List[float] = [80.0, 90.0, 100.0]\nprint("平均分:", average(data))`,
+        tips: [
+          '类型注解不改变运行时行为，但能大幅提升可读性和可维护性。',
+          'Python 3.9+ 可以直接用 list[int]、dict[str, int] 代替 typing 里的泛型。'
         ]
       }
     }

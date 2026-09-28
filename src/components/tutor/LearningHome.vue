@@ -129,6 +129,9 @@ const quizAverageLabel = (series: TutorialSeries): string => {
 <style scoped>
 .learn-home {
   flex: 1;
+  /* flex item 的 min-width 默认 auto = 内容最小宽度：宽表格/长代码会把它钉在
+     最小宽度上，窗口变窄时面板不收缩（与上面的 min-height 同理） */
+  min-width: 0;
   min-height: 0;
   height: 100%;
   /* 与文章正文/测验页同一套（--bg-color + 1rem + 12px 边距），

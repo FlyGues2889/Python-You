@@ -131,6 +131,9 @@ const stagesWithRows = computed(() =>
 <style scoped>
 .quiz-directory {
   flex: 1;
+  /* flex item 的 min-width 默认 auto = 内容最小宽度：宽表格/长代码会把它钉在
+     最小宽度上，窗口变窄时面板不收缩（与上面的 min-height 同理） */
+  min-width: 0;
   min-height: 0;
   height: 100%;
   /* host 自身 overflow 为 visible 时 flex item 的 min-height:auto 会取内容高度，

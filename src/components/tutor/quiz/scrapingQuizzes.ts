@@ -55,6 +55,13 @@ export const scrapingQuizzes: TopicQuiz[] = [
         question: '用 Series 存价格 [5.5, 3.0, 4.2, 6.8]，打印平均价格和最高价。',
         starterCode: '# 任务：创建 prices 后打印 mean 和 max\nimport pandas as pd',
         expectedOutput: '平均价格: 4.875\n最贵: 6.8'
+      },
+      {
+        id: 'sp_series_q4',
+        type: 'blank',
+        question: '补全：pandas 里单独一列带标签的数据叫 ____ ；求这列的平均值用 ____() 方法。',
+        blanks: [['Series'], ['mean']],
+        explanation: 'Series 是一维带标签的一列；求平均用 .mean()，另有 sum/max/min/count。'
       }
     ]
   },
@@ -83,6 +90,14 @@ export const scrapingQuizzes: TopicQuiz[] = [
         question: '建表（上海 300、北京 450、广州 260），打印城市个数和平均销售额。',
         starterCode: '# 任务：打印城市个数与销售额平均值\nimport pandas as pd',
         expectedOutput: '共 3 个城市\n平均销售额: 336.6666666666667'
+      },
+      {
+        id: 'sp_dataframe_q4',
+        type: 'multi',
+        question: '关于 DataFrame，下面哪些说法正确？（多选）',
+        options: ['它是一张二维表格（行和列）', '可以用字典创建，字典的键就是列名', '用 df.shape 可以看有几行几列', 'DataFrame 里只能存放数字'],
+        answerIndexes: [0, 1, 2],
+        explanation: 'DataFrame 是二维表，字典建表、shape 看行列；它可以同时存文字和数字。'
       }
     ]
   },
@@ -111,6 +126,14 @@ export const scrapingQuizzes: TopicQuiz[] = [
         question: '建商品表（铅笔 2.0、笔记本 8.5、钢笔 15.0、橡皮 1.5），筛选价格小于 10 的商品，打印数量。',
         starterCode: '# 任务：筛选后打印符合条件的行数\nimport pandas as pd',
         expectedOutput: '10 元以下商品数量: 3'
+      },
+      {
+        id: 'sp_filter_q4',
+        type: 'multi',
+        question: '关于 pandas 多条件筛选，下面哪些说法正确？（多选）',
+        options: ['多个条件之间用 & 表示且、| 表示或', '每个条件要用圆括号包起来', '列名写成 df["列名"]', '多个条件直接用英文 and 连接'],
+        answerIndexes: [0, 1, 2],
+        explanation: 'pandas 用 & 和 |，条件加圆括号；这里不能用 and，会报错。'
       }
     ]
   },
@@ -139,6 +162,14 @@ export const scrapingQuizzes: TopicQuiz[] = [
         question: '建成绩表（一班 80、一班 90、二班 70、二班 85），按班级分组打印平均分。',
         starterCode: '# 任务：按班级分组求成绩平均分，打印平均值即可\nimport pandas as pd',
         expectedOutput: { mode: 'regex', pattern: '一班\\s+85\\.0\\s*二班\\s+77\\.5', flags: 's' }
+      },
+      {
+        id: 'sp_groupby_q4',
+        type: 'order',
+        question: '把下面「用 groupby 做分组统计」的步骤排正确。',
+        items: ['用 df.groupby("城市") 按城市分组', '选中要统计的列，如 ["销售额"]', '调用 .sum() 或 .mean() 做聚合', 'print 打印统计结果'],
+        correctOrder: [0, 1, 2, 3],
+        explanation: '先按列分组，再选目标列，接着调用聚合函数，最后打印结果。'
       }
     ]
   },
@@ -167,6 +198,13 @@ export const scrapingQuizzes: TopicQuiz[] = [
         question: '用 StringIO 读取 CSV 文本（上海 300、北京 450、广州 260），打印平均销售额。',
         starterCode: '# 任务：读入后打印销售额平均值\nimport pandas as pd\nfrom io import StringIO',
         expectedOutput: '平均销售额: 336.6666666666667'
+      },
+      {
+        id: 'sp_csv_q4',
+        type: 'blank',
+        question: '补全：把 CSV 文件读成 DataFrame 用 pd.____()；把 DataFrame 存成 CSV 文件用 df.____()。',
+        blanks: [['read_csv'], ['to_csv']],
+        explanation: 'pd.read_csv 读文件成表，df.to_csv 把表写回文件。'
       }
     ]
   },
@@ -195,6 +233,14 @@ export const scrapingQuizzes: TopicQuiz[] = [
         question: '用字典模拟响应：status_code 为 200、body 为《西游记》价格 45 元，打印状态和内容。',
         starterCode: '# 任务：构造 response 字典并打印 status_code 与 body',
         expectedOutput: '状态: 200\n内容: 《西游记》价格 45 元'
+      },
+      {
+        id: 'sp_http_q4',
+        type: 'multi',
+        question: '关于 HTTP 状态码，下面哪些说法正确？（多选）',
+        options: ['200 表示请求成功', '404 表示页面不存在', '500 表示服务器内部出错', '301 表示客户端自己写错了'],
+        answerIndexes: [0, 1, 2],
+        explanation: '2xx 成功、4xx 客户端错误、5xx 服务器错误；301 是重定向，不是请求写错。'
       }
     ]
   },
@@ -223,6 +269,13 @@ export const scrapingQuizzes: TopicQuiz[] = [
         question: '给定 HTML：<ul><li>铅笔</li><li>笔记本</li><li>钢笔</li></ul>，打印其中列表项 <li> 的数量。',
         starterCode: '# 任务：用 str.count 统计 <li> 出现次数\nhtml = "<ul><li>铅笔</li><li>笔记本</li><li>钢笔</li></ul>"',
         expectedOutput: '列表项数量: 3'
+      },
+      {
+        id: 'sp_html_q4',
+        type: 'blank',
+        question: '补全：HTML 表格里，一行用 <____> 标签；行里的一个单元格用 <____> 标签。',
+        blanks: [['tr'], ['td']],
+        explanation: '<tr> 是表格行，<td> 是行内单元格；<table> 才是整张表。'
       }
     ]
   },
@@ -251,6 +304,14 @@ export const scrapingQuizzes: TopicQuiz[] = [
         question: 'requests.get 拿到响应后，用 resp.____ 查看状态码，用 resp.____ 查看网页 HTML 文本。',
         blanks: [['status_code'], ['text']],
         explanation: 'resp.status_code 判断成功，resp.text 是返回的 HTML 文本。'
+      },
+      {
+        id: 'sp_requests_q4',
+        type: 'order',
+        question: '把下面「用 requests 抓取一个网页」的步骤排正确。',
+        items: ['准备好目标网址 URL', '用 requests.get(url) 发送请求', '检查 resp.status_code 是否为 200', '用 resp.text 取出网页 HTML 文本'],
+        correctOrder: [0, 1, 2, 3],
+        explanation: '先有 URL，再发请求，确认状态码 200，最后取 HTML 文本。'
       }
     ]
   },
@@ -279,6 +340,14 @@ export const scrapingQuizzes: TopicQuiz[] = [
         question: '给定 HTML <li>铅笔</li><li>笔记本</li><li>钢笔</li>，用 re.findall 提取所有列表项并每行打印。',
         starterCode: '# 任务：用 re.findall 提取 <li> 内容并逐行打印\nimport re\nhtml = "<li>铅笔</li><li>笔记本</li><li>钢笔</li>"',
         expectedOutput: '铅笔\n笔记本\n钢笔'
+      },
+      {
+        id: 'sp_parse_q4',
+        type: 'order',
+        question: '把下面「用 BeautifulSoup 解析网页」的步骤排正确。',
+        items: ['先拿到 resp.text 网页 HTML 文本', '传给 BeautifulSoup 做解析', '用 find_all 找到目标标签', '用 .text 取出标签里的纯文字'],
+        correctOrder: [0, 1, 2, 3],
+        explanation: '先有 HTML 文本，再交给 BeautifulSoup 解析，find_all 找标签，最后 .text 取文字。'
       }
     ]
   },

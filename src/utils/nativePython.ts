@@ -11,6 +11,70 @@ type Session = 'run' | 'repl' | 'pip';
 
 const now = () => new Date().toLocaleTimeString();
 
+// matplotlib 前置钩子：切 Agg 无头后端，把图捕获成 PNG（base64 单行打印），
+// 由下面的 stdout 行解析转成终端内图片。未安装 matplotlib 时静默跳过。
+//
+// 两条触发路径：
+//   1. plt.show() —— 被替换成「出图并关闭」，与平时调用习惯一致；
+//   2. 进程退出（正常结束或异常）—— 兜底把还开着的图都出掉。
+// 教程里大量示例只画图不 show（还有用 savefig 存文件的），只靠 show 会漏掉一大半。
+const MATPLOTLIB_HOOK = `
+import base64 as _py_b64, io as _py_io, atexit as _py_atexit
+try:
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as _py_plt
+
+    def _py_emit_figures():
+        # 把当前所有未关闭的图存成 PNG 逐行打印；close 掉避免重复出图
+        try:
+            for _n in _py_plt.get_fignums():
+                _buf = _py_io.BytesIO()
+                _py_plt.figure(_n).savefig(_buf, format='png', bbox_inches='tight', dpi=100)
+                print('@@PYSTUDIO_IMG@@' + _py_b64.b64encode(_buf.getvalue()).decode())
+        except Exception:
+            pass
+        finally:
+            _py_plt.close('all')
+
+    def _py_use_cjk_font():
+        # matplotlib 默认字体（DejaVu）没有中文字形，图上中文会画成方框。
+        # 从系统已装字体里按优先级挑一个中文字体接在最前面；一个都没有时如实提示。
+        try:
+            from matplotlib import font_manager as _py_fm
+            _py_wanted = [
+                'Microsoft YaHei', 'Microsoft YaHei UI', 'SimHei', 'DengXian', 'SimSun',
+                'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', 'STHeiti',
+                'Source Han Sans SC', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'WenQuanYi Micro Hei'
+            ]
+            _py_have = {_f.name for _f in _py_fm.fontManager.ttflist}
+            _py_picked = [_n for _n in _py_wanted if _n in _py_have]
+            if _py_picked:
+                _py_plt.rcParams['font.sans-serif'] = _py_picked + list(_py_plt.rcParams['font.sans-serif'])
+            else:
+                print('[提示] 系统里没有找到中文字体，图上的中文会显示成方框')
+            # 负号跟着中文字体容易变方框，固定用 ASCII 负号
+            _py_plt.rcParams['axes.unicode_minus'] = False
+        except Exception:
+            pass
+
+    _py_use_cjk_font()
+
+    def _py_show(*a, **k):
+        _py_emit_figures()
+
+    _py_plt.show = _py_show
+    _py_atexit.register(_py_emit_figures)
+except Exception:
+    pass
+`;
+
+const IMG_PREFIX = '@@PYSTUDIO_IMG@@';
+
+/** stdout 的一行若为图片标记，返回 data URL（供终端 <img> 显示），否则返回 null */
+export const imageFromMarkerLine = (text: string): string | null =>
+  text.startsWith(IMG_PREFIX) ? 'data:image/png;base64,' + text.slice(IMG_PREFIX.length) : null;
+
 // 过滤 REPL 会话中 Python 打印的 >>> / ... 提示符
 function cleanReplLine(text: string): string {
   const trimmed = text.trim();
@@ -30,6 +94,8 @@ class NativePythonRunner {
   };
   private replStarted = false;
   private tempWorkspacePath: string | null = null;
+  // run 会话是否正在运行：终端底部输入框据此启用（程序可能阻塞在 input()）
+  public runActive = ref(false);
 
   public statusLabel = ref(t('engineLabelDefault'));
   // 本机可用的解释器列表（python / python3 / py 及其具体版本），供设置页与版本管理器展示
@@ -131,13 +197,20 @@ class NativePythonRunner {
     });
 
     return new Promise(async (resolve) => {
+      this.runActive.value = true;
       this.listeners[session] = (kind, text) => {
         if (kind === 'stdout') {
+          const image = imageFromMarkerLine(text);
+          if (image) {
+            onOutput({ id: uid(), type: 'stdout', text: '', image, timestamp: now() });
+            return;
+          }
           onOutput({ id: uid(), type: 'stdout', text: text + '\n', timestamp: now() });
         } else if (kind === 'stderr') {
           onOutput({ id: uid(), type: 'stderr', text: text + '\n', timestamp: now() });
         } else if (kind === 'done') {
           this.listeners[session] = null;
+          this.runActive.value = false;
           const duration = Math.round(performance.now() - startTime);
           onOutput({
             id: uid(),
@@ -148,15 +221,17 @@ class NativePythonRunner {
           resolve({ success: text === '0', durationMs: duration });
         } else if (kind === 'error') {
           this.listeners[session] = null;
+          this.runActive.value = false;
           onOutput({ id: uid(), type: 'error', text, timestamp: now() });
           resolve({ success: false, durationMs: Math.round(performance.now() - startTime) });
         }
       };
       try {
         const cwd = await this.resolveCwd(workspaceFiles, nativeRoot);
-        await nativeApi.runPython(code, cwd);
+        await nativeApi.runPython(MATPLOTLIB_HOOK + '\n' + code, cwd);
       } catch (err: any) {
         this.listeners[session] = null;
+        this.runActive.value = false;
         onOutput({
           id: uid(),
           type: 'error',
@@ -168,8 +243,19 @@ class NativePythonRunner {
     });
   }
 
+  // 终端底部输入框：把一行写入正在运行脚本的 stdin（input() 交互）
+  public writeRunInput(line: string): Promise<void> {
+    return nativeApi.runPythonInput(line);
+  }
+
   private forwardRepl(kind: string, text: string, onOutput: (out: ConsoleOutput) => void) {
     if (kind === 'stdout') {
+      // 与脚本运行路径共用同一套判定：REPL 里画图也直接出图
+      const image = imageFromMarkerLine(text);
+      if (image) {
+        onOutput({ id: uid(), type: 'stdout', text: '', image, timestamp: now() });
+        return;
+      }
       const cleaned = cleanReplLine(text);
       if (cleaned) onOutput({ id: uid(), type: 'stdout', text: cleaned + '\n', timestamp: now() });
     } else if (kind === 'stderr') {
@@ -195,7 +281,8 @@ class NativePythonRunner {
 
     if (!this.replStarted) {
       try {
-        await nativeApi.replStart(nativeRoot);
+        // 传入同一个 matplotlib 钩子：REPL 里 plt.show() 也能出图
+        await nativeApi.replStart(nativeRoot, MATPLOTLIB_HOOK);
         this.replStarted = true;
       } catch (err: any) {
         this.replStarted = false;
@@ -329,6 +416,7 @@ class NativePythonRunner {
       // ignore
     }
     this.replStarted = false;
+    this.runActive.value = false;
   }
 }
 

@@ -2,6 +2,8 @@
 // input() 走「中断 → 主线程弹窗 → 携带已捕获输入重放」，重放时丢弃已显示过的输出前缀。
 import { t, tf } from './i18n';
 import type { FSItem } from '../types';
+// 应用自带的中文字体（与界面同一份文件，浏览器多半已缓存）
+import cjkFontUrl from '../assets/fonts/HarmonyOS_Sans_SC_Regular.ttf?url';
 
 export interface WorkspaceFile {
   path: string;
@@ -18,9 +20,40 @@ export interface EngineHost {
   onOutput(kind: 'stdout' | 'stderr' | 'system', text: string): void;
   /** 请求用户输入（promptText 为 Python 侧 input() 的提示语，可能为空）；返回 null 表示用户取消 */
   requestInput(promptText: string): Promise<string | null>;
+  /** matplotlib 图表渲染完成：data URL（PNG），由终端输出区显示 */
+  onImage?(dataUrl: string): void;
 }
 
 const INPUT_MARKER = 'PYSTUDIO_INPUT_REQUEST';
+
+// Pyodide 的虚拟文件系统里没有任何中文字体（findSystemFonts() 返回空，emscripten 平台也不扫
+// ~/.fonts），所以图上中文会画成方框。这里把应用自带的中文字体写进 FS，并装一个 __import__ 钩子：
+// matplotlib.pyplot 导入完成的瞬间注册字体并设 rcParams —— 必须早于用户画图（文字对象在创建时
+// 就锁定字体），又不能在 matplotlib 自己还在初始化时动手（会撞上循环导入）。
+const CJK_FONT_PATH = '/home/pyodide/.fonts/HarmonyOS_Sans_SC_Regular.ttf';
+const CJK_FONT_NAME = 'HarmonyOS Sans SC';
+const CJK_HOOK = `
+import builtins as _py_builtins
+_py_orig_import = _py_builtins.__import__
+
+def _py_import_with_cjk(name, *args, **kwargs):
+    mod = _py_orig_import(name, *args, **kwargs)
+    if name == 'matplotlib.pyplot' and not globals().get('_py_cjk_ready'):
+        globals()['_py_cjk_ready'] = True
+        try:
+            from matplotlib import font_manager
+            import matplotlib
+            font_manager.fontManager.addfont('${CJK_FONT_PATH}')
+            matplotlib.rcParams['font.sans-serif'] = ['${CJK_FONT_NAME}'] + [
+                f for f in matplotlib.rcParams['font.sans-serif'] if f != '${CJK_FONT_NAME}'
+            ]
+            matplotlib.rcParams['axes.unicode_minus'] = False
+        except Exception:
+            pass
+    return mod
+
+_py_builtins.__import__ = _py_import_with_cjk
+`;
 // 重放上限：防止 `while True: input()` 这类代码无限弹窗与无限重放
 const MAX_INPUT_ATTEMPTS = 20;
 
@@ -84,7 +117,22 @@ export class PyodideEngine {
     pyodide.globals.set('__py_next_input', () => String(this.pendingInputs.shift()));
     pyodide.globals.set('__py_set_prompt', (text: string) => { this.pendingPrompt = String(text || ''); });
     await pyodide.runPython(BOOTSTRAP);
+    await this.installCjkFont(pyodide);
     this.pyodide = pyodide;
+  }
+
+  /** 把中文字体写进 Pyodide 的 FS 并装导入钩子；拿不到字体就跳过（图上的中文会是方框，不影响运行） */
+  private async installCjkFont(pyodide: any): Promise<void> {
+    try {
+      const res = await fetch(cjkFontUrl);
+      if (!res.ok) return;
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      pyodide.FS.mkdirTree('/home/pyodide/.fonts');
+      pyodide.FS.writeFile(CJK_FONT_PATH, bytes);
+      pyodide.runPython(CJK_HOOK);
+    } catch {
+      /* 忽略：没有中文字体只是图上中文显示成方框 */
+    }
   }
 
   private emit(kind: 'stdout' | 'stderr', text: string) {
@@ -125,12 +173,18 @@ export class PyodideEngine {
       this.suppressRemaining = this.streamedChunks;
       try {
         await this.pyodide.runPythonAsync(code);
+        await this.captureFigures();
         return true;
       } catch (err: any) {
         const message = String(err?.message || err);
-        if (!message.includes(INPUT_MARKER)) throw err;
+        if (!message.includes(INPUT_MARKER)) {
+          // 抛错也要把已经画好的图发出去：本机引擎那边靠 atexit 兜底，这里对齐
+          await this.captureFigures();
+          throw err;
+        }
         const value = await this.host.requestInput(this.pendingPrompt);
         if (value === null) {
+          await this.captureFigures();
           this.host.onOutput('system', t('pyodideInputCanceled'));
           return false;
         }
@@ -138,6 +192,32 @@ export class PyodideEngine {
       }
     }
     throw new Error(t('pyodideInputTooMany'));
+  }
+
+  /** 跑完后把所有未关闭的 matplotlib figure 存成 PNG data URL 推给宿主终端 */
+  private async captureFigures(): Promise<void> {
+    if (!this.pyodide) return;
+    try {
+      const matplotlib = this.pyodide.pyimport('matplotlib');
+      matplotlib.use('Agg');
+      const plt = this.pyodide.pyimport('matplotlib.pyplot');
+      const ioMod = this.pyodide.pyimport('io');
+      const b64 = this.pyodide.pyimport('base64');
+      const nums = plt.get_fignums().toJs();
+      const list: number[] = Array.from(nums);
+      for (const n of list) {
+        plt.figure(n);
+        const buf = ioMod.BytesIO.new();
+        plt.savefig(buf, { format: 'png', bbox_inches: 'tight', dpi: 100 });
+        const raw = buf.getvalue();
+        const encoded = b64.b64encode(raw).decode();
+        this.host.onImage?.('data:image/png;base64,' + String(encoded));
+        buf.delete?.();
+      }
+      if (list.length) plt.close('all');
+    } catch {
+      /* matplotlib 未安装或无 figure：忽略 */
+    }
   }
 
   /** 执行 REPL 单条语句；不支持 input()（重放会重复执行已产生的副作用） */
@@ -148,6 +228,8 @@ export class PyodideEngine {
     this.suppressRemaining = 0;
     try {
       const result = await this.pyodide.runPythonAsync(statement);
+      // REPL 里画完图当场出图：run() 只在整段脚本结束后收集，交互式一条条来的时候等不到
+      await this.captureFigures();
       return result === undefined ? null : String(result);
     } catch (err: any) {
       const message = String(err?.message || err);
@@ -155,6 +237,7 @@ export class PyodideEngine {
         this.host.onOutput('system', t('pyodideReplInputUnsupported'));
         return null;
       }
+      await this.captureFigures();
       throw err;
     }
   }

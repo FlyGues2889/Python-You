@@ -38,6 +38,7 @@ src-tauri/gen/schemas
 *.cjs
 *.ps1
 *.mjs
+promo/
 
 # Docs
 REQUIREMENTS.md

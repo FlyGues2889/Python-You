@@ -56,11 +56,10 @@ const onInterpreterChange = async (e: Event) => {
   await nativePython.applyInterpreter(id);
 };
 
-const onSwitchChange = (e: Event, key: 'enableWheelZoom' | 'autoPairQuotes' | 'demoMode') => {
+const onSwitchChange = (e: Event, key: 'enableWheelZoom' | 'demoMode') => {
   props.config[key] = !!(e.target as any).checked;
 };
 const onWheelZoomChange = (e: Event) => onSwitchChange(e, 'enableWheelZoom');
-const onAutoPairChange = (e: Event) => onSwitchChange(e, 'autoPairQuotes');
 const onDemoModeChange = (e: Event) => onSwitchChange(e, 'demoMode');
 
 // 添加自定义解释器：选择 Python 可执行文件 → Rust 探测版本与真实路径 → 并入列表并选中
@@ -82,7 +81,7 @@ const handleAddInterpreter = async () => {
 const isUpdaterAvailable = nativeApi.available();
 // 更新过程也登记到标题栏后台任务里（与包安装等长任务同一处，FR-1.3 / FR-5.6）
 const UPDATE_TASK_ID = 'app-update';
-const aboutVersion = ref('0.3.62'); // 兜底值；桌面端启动后从 tauri.conf.json 读真实版本
+const aboutVersion = ref('0.3.7'); // 兜底值；桌面端启动后从 tauri.conf.json 读真实版本
 const isUpdateDialogOpen = ref(false);
 const updateStage = ref<'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'preparing' | 'error'>('idle');
 const updateInfo = ref<UpdateInfo | null>(null);
@@ -341,15 +340,6 @@ const clearLocalData = () => {
                 <m3e-button toggle variant="tonal" shape="square" size="small" data-size="4" :selected="config.tabSize === 4"
                   @change="onTabSizeToggle">4 Spaces</m3e-button>
               </m3e-button-group>
-            </div>
-          </m3e-list-item>
-
-          <m3e-list-item>
-            <span slot="leading" class="material-symbols-rounded">format_quote</span>
-            {{ t('autoPairQuotes') }}
-            <span slot="supporting-text">{{ t('autoPairQuotesSubtitle') }}</span>
-            <div slot="trailing" class="settings-trailing">
-              <m3e-switch :checked="config.autoPairQuotes" @change="onAutoPairChange" />
             </div>
           </m3e-list-item>
         </m3e-list>
