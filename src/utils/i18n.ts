@@ -55,6 +55,9 @@ const translations = {
     interpreterAuto: '自动选择',
     interpreterPyodide: 'Pyodide (WASM)',
     interpreterLocal: '本机 Python',
+    // 网页端（无 Tauri）只有内置 WASM 引擎，不给解释器选择
+    interpreterWebOnly: '网页端使用内置的 WASM 引擎，无需选择',
+    interpreterWasmFixed: '内置 WASM 引擎（Pyodide）',
     interpreterAdd: '添加自定义解释器',
     interpreterAdded: '已添加解释器：{label}',
     interpreterAddFailed: '添加解释器失败：',
@@ -262,7 +265,7 @@ const translations = {
     helpBasicsTitle: '基础操作',
     helpBasicsText: '通过左侧文件树或工具栏“新建文件 / 新建文件夹”创建项目文件；右键文件可重命名、删除、运行或导出。\n打开文件后在编辑区编写代码，点击工具栏“执行”按钮运行当前脚本，输出显示在下方终端面板。',
     helpShortcutsTitle: '常用快捷键',
-    helpShortcutsText: 'Ctrl+S 保存当前文件\nCtrl+Z / Ctrl+Y 撤销与重做\n工具栏查找 / 替换按钮可搜索与批量替换文本\nCtrl+滚轮 调节编辑器字号（需在设置中开启）',
+    helpShortcutsText: 'Ctrl+S 保存当前文件\nCtrl+Z / Ctrl+Y 撤销与重做\nShift+Alt+F 格式化当前文档（补空格 + 按语法重排缩进）\nTab / Shift+Tab 缩进 / 反缩进当前行或选中行\n回车按语法结构自动缩进，退格一次删掉一级缩进\n工具栏查找 / 替换按钮可搜索与批量替换文本\nCtrl+滚轮 调节编辑器字号（需在设置中开启）',
     helpConsoleTitle: '交互式终端',
     helpConsoleText: '侧边栏“交互终端”进入 REPL：直接在显示区输入 Python 语句并按回车执行；↑ / ↓ 翻阅历史命令；输出可选中复制，右上角按钮清空记录。',
     helpPackagesTitle: '扩展包管理',
@@ -436,8 +439,9 @@ const translations = {
     workspaceSearchEmpty: '未找到匹配内容',
     otherFilesMatches: '其他文件：{count} 处匹配',
     jump: '跳转',
-    formatDoc: '格式化文档',
-    formattedDoc: '已格式化文档'
+    formatDoc: '格式化文档 (Shift+Alt+F)',
+    formattedDoc: '已格式化文档',
+    formatDocPythonOnly: '格式化仅支持 Python 文件（.py）'
   },
 };
 

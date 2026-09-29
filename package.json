@@ -1,7 +1,7 @@
 {
   "name": "python-you",
   "private": true,
-  "version": "0.3.7",
+  "version": "0.3.71",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,6 +10,10 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/state": "^6.7.6",
+    "@lezer/python": "^1.1.19",
     "@m3e/web": "^2.7.4",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2",

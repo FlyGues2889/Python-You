@@ -40,5 +40,12 @@ src-tauri/gen/schemas
 *.mjs
 promo/
 
+# 例外：网页版的生成脚本（教程数据生成器等，文档与数据文件头都引用这些命令，必须随仓库走）
+!docs/*.mjs
+
 # Docs
 REQUIREMENTS.md
+problem.md
+
+# docs/build-tutorial-data.mjs 的临时打包入口
+.tutorial-data-entry.ts

@@ -187,27 +187,6 @@ export function collectWorkspaceIdentifiers(files: FSItem[]): { names: string[];
   return { names: Array.from(names), callables: Array.from(callables) };
 }
 
-// 判断光标位置是否处于字符串字面量内（用于避免在字符串内容里触发自动补全）
-export function isInsideString(text: string, pos: number): boolean {
-  let inQuote: string | null = null;
-  const len = Math.min(pos, text.length);
-  let i = 0;
-  while (i < len) {
-    const ch = text[i];
-    if (inQuote) {
-      if (ch === '\\') {
-        i += 2;
-        continue;
-      }
-      if (ch === inQuote) inQuote = null;
-    } else if (ch === '"' || ch === "'") {
-      inQuote = ch;
-    }
-    i++;
-  }
-  return inQuote !== null;
-}
-
 // 光标前的单词范围（含字母/数字/下划线/点，点用于 module.attr 前缀）
 export function getWordAt(text: string, pos: number): { word: string; start: number; end: number } {
   let start = pos;

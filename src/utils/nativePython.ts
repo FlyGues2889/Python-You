@@ -4,6 +4,7 @@ import { ref } from 'vue';
 import { nativeApi, type PythonVersion } from './native';
 import { t, tf } from './i18n';
 import { isInstallProgressLine, parseInstallProgress } from './installProgress';
+import { createStderrSink, emitError } from './errorSummary';
 import type { ConsoleOutput, FSItem } from '../types';
 import { uid } from './id';
 
@@ -93,6 +94,13 @@ class NativePythonRunner {
     pip: null,
   };
   private replStarted = false;
+  // REPL 的 stderr 汇流（跨行攒 traceback），换会话或换输出回调时重建
+  private replStderr: { sink: ReturnType<typeof createStderrSink>; onOutput: (out: ConsoleOutput) => void } | null = null;
+
+  private resetReplStderr() {
+    this.replStderr?.sink.flush();
+    this.replStderr = null;
+  }
   private tempWorkspacePath: string | null = null;
   // run 会话是否正在运行：终端底部输入框据此启用（程序可能阻塞在 input()）
   public runActive = ref(false);
@@ -198,6 +206,9 @@ class NativePythonRunner {
 
     return new Promise(async (resolve) => {
       this.runActive.value = true;
+      // FR-4.5：stderr 里的 traceback 攒完整段再输出（摘要置顶 + 完整 traceback 折叠），
+      // 与 Pyodide 路径同一套行为
+      const stderr = createStderrSink(onOutput);
       this.listeners[session] = (kind, text) => {
         if (kind === 'stdout') {
           const image = imageFromMarkerLine(text);
@@ -207,8 +218,9 @@ class NativePythonRunner {
           }
           onOutput({ id: uid(), type: 'stdout', text: text + '\n', timestamp: now() });
         } else if (kind === 'stderr') {
-          onOutput({ id: uid(), type: 'stderr', text: text + '\n', timestamp: now() });
+          stderr.push(text);
         } else if (kind === 'done') {
+          stderr.flush();
           this.listeners[session] = null;
           this.runActive.value = false;
           const duration = Math.round(performance.now() - startTime);
@@ -220,9 +232,10 @@ class NativePythonRunner {
           });
           resolve({ success: text === '0', durationMs: duration });
         } else if (kind === 'error') {
+          stderr.flush();
           this.listeners[session] = null;
           this.runActive.value = false;
-          onOutput({ id: uid(), type: 'error', text, timestamp: now() });
+          emitError(onOutput, text);
           resolve({ success: false, durationMs: Math.round(performance.now() - startTime) });
         }
       };
@@ -259,8 +272,13 @@ class NativePythonRunner {
       const cleaned = cleanReplLine(text);
       if (cleaned) onOutput({ id: uid(), type: 'stdout', text: cleaned + '\n', timestamp: now() });
     } else if (kind === 'stderr') {
-      onOutput({ id: uid(), type: 'stderr', text: text + '\n', timestamp: now() });
+      // FR-4.5：REPL 与脚本运行共用同一套错误摘要（摘要置顶 + traceback 折叠）
+      if (!this.replStderr || this.replStderr.onOutput !== onOutput) {
+        this.replStderr = { sink: createStderrSink(onOutput), onOutput };
+      }
+      this.replStderr.sink.push(text);
     } else if (kind === 'done') {
+      this.resetReplStderr();
       this.replStarted = false;
       this.listeners['repl'] = null;
       onOutput({ id: uid(), type: 'system', text: t('replSessionEnded'), timestamp: now() });
@@ -415,6 +433,7 @@ class NativePythonRunner {
     } catch {
       // ignore
     }
+    this.resetReplStderr();
     this.replStarted = false;
     this.runActive.value = false;
   }

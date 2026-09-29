@@ -924,6 +924,82 @@ table.sec-table {
   gap: 8px;
 }
 
+/* 多选 / 填空 / 排序（与桌面端同款的三种页内作答题型） */
+.quiz-type-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  background-color: var(--secondary-container, rgba(0, 0, 0, 0.06));
+  color: var(--text-secondary);
+  vertical-align: 1px;
+}
+
+.quiz-check {
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text-secondary);
+}
+
+.quiz-blank {
+  width: 8.5em;
+  margin: 0 4px;
+  padding: 3px 8px;
+  border: none;
+  border-bottom: 1.4px solid var(--border-color-muted);
+  background: transparent;
+  color: var(--text-color);
+  font-size: 0.9rem;
+  font-family: inherit;
+  outline: none;
+}
+
+.quiz-blank:focus {
+  border-bottom-color: var(--primary);
+}
+
+.quiz-blank.correct { border-bottom-color: #1a7f37; color: #1a7f37; }
+.quiz-blank.wrong { border-bottom-color: #c62828; color: #c62828; }
+
+.quiz-actions { margin-top: 10px; }
+
+.quiz-orders {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.quiz-order {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1.4px solid var(--border-color-muted);
+  border-radius: 8px;
+  background-color: var(--surface-variant);
+  font-size: 0.86rem;
+}
+
+.quiz-order.correct { border-color: #1a7f37; }
+.quiz-order.wrong { border-color: #c62828; }
+
+.quiz-order-text { flex: 1; min-width: 0; }
+
+.quiz-order-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.7rem;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.quiz-order-btn:hover { background-color: var(--surface-color); color: var(--primary); }
+
 .quiz-option {
   display: flex;
   align-items: center;

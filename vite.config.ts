@@ -46,6 +46,9 @@ export default defineConfig(async () => ({
           if (id.includes("@m3e/web")) return "vendor-m3e";
           if (id.includes("highlight.js")) return "vendor-highlight";
           if (id.includes("/vue") || id.includes("/pinia")) return "vendor-vue";
+          // Python 缩进引擎（Lezer 解析器 + CodeMirror 缩进）约 300KB，几乎不随应用改动，
+          // 单独成 chunk 便于长期缓存，也避免撑大主 chunk
+          if (id.includes("@lezer") || id.includes("@codemirror")) return "vendor-python-indent";
         },
       },
     },

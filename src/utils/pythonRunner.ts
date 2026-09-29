@@ -3,6 +3,7 @@ import { ConsoleOutput, FSItem } from '../types';
 import { nativePython } from './nativePython';
 import { t, tf } from './i18n';
 import { uid } from './id';
+import { emitError } from './errorSummary';
 import { flattenWorkspace } from './pyodideEngine';
 import { extractImportsFromCode, collectLocalModules, getStoredInstalledPackages } from './packageUtils';
 import { requestInstallConfirm } from './dependencyGate';
@@ -10,48 +11,6 @@ import { addBackendTask, finishBackendTask } from './backendTasks';
 import type { WorkerRequest, WorkerResponse } from './pyodideWorker';
 
 const now = () => new Date().toLocaleTimeString();
-
-// FR-4.5：从 Python traceback 文本提取面向初学者的错误摘要
-// （错误类型 + 消息 + 最近的文件/行号），置顶展示；无 traceback 结构时返回 null
-function extractErrorSummary(text: string): string | null {
-  const lines = text.split('\n');
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const m = lines[i].match(/^([A-Za-z_][A-Za-z0-9_]*Error):\s*(.+)$/);
-    if (m) {
-      let loc = '';
-      for (let j = i - 1; j >= 0; j--) {
-        const lm = lines[j].match(/File "([^"]+)".*line (\d+)/);
-        if (lm) {
-          const fname = lm[1].split(/[\\/]/).pop() || lm[1];
-          loc = `（${fname} 第 ${lm[2]} 行）`;
-          break;
-        }
-      }
-      return `${m[1]}：${m[2]}${loc}`;
-    }
-  }
-  return null;
-}
-
-// 输出错误：摘要置顶（可读），完整 traceback 原文作为可折叠详情保留在下方
-function emitError(onOutput: (out: ConsoleOutput) => void, raw: string) {
-  const summary = extractErrorSummary(raw);
-  onOutput({
-    id: uid(),
-    type: 'error',
-    text: summary ? `${t('errorSummaryPrefix')}${summary}` : raw,
-    timestamp: new Date().toLocaleTimeString()
-  });
-  if (summary && summary !== raw) {
-    onOutput({
-      id: uid(),
-      type: 'error',
-      text: raw,
-      collapsible: true,
-      timestamp: new Date().toLocaleTimeString()
-    });
-  }
-}
 
 class PythonRunnerService {
   private demoScope: Record<string, any> = {};

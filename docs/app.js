@@ -5,6 +5,7 @@
    ============================================================ */
 'use strict';
 
+const SERIES = window.TUTORIAL_SERIES || [];
 const STAGES = window.TUTORIAL_STAGES;
 const QUIZZES = window.TOPIC_QUIZZES;
 const PYODIDE_CDN = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/';
@@ -247,10 +248,11 @@ function renderContent(topic) {
   html += `<p class="topic-summary">${esc(topic.summary)}</p>`;
   html += `<div class="sec-text">${inline(c.overview)}</div>`;
 
-  // 标题带锚点 id（m3e-toc 扫描定位用）
+  // 标题带锚点 id（m3e-toc 扫描定位用）；参考手册（kind='reference'）只渲染正文与表格，不出小节标题
+  const isReference = topic.kind === 'reference';
   for (let si = 0; si < c.sections.length; si++) {
     const sec = c.sections[si];
-    html += `<h2 class="sec-heading" id="sec-${si}">${esc(sec.heading)}</h2>`;
+    if (sec.heading && !isReference) html += `<h2 class="sec-heading" id="sec-${si}">${esc(sec.heading)}</h2>`;
     if (sec.text) html += `<div class="sec-text">${inline(sec.text)}</div>`;
     if (sec.table) {
       html += `<div class="sec-table-wrap"><table class="sec-table"><thead><tr>${sec.table.headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>`;
@@ -321,6 +323,74 @@ function renderContent(topic) {
 const QUIZ_RESULTS_KEY = 'tutor_quiz_results';
 const QUIZ_ANSWERS_KEY = 'tutor_quiz_answers';
 
+/* ---------- 判分（与桌面端 quizGrader / isAnswerCorrect 同一套规则） ---------- */
+// 行序列比较：拆行、去空行、去首尾空格
+function normalizeLines(chunks) {
+  const out = [];
+  for (const chunk of chunks) {
+    for (const part of String(chunk).replace(/\r\n/g, '\n').split('\n')) {
+      const trimmed = part.trim();
+      if (trimmed.length > 0) out.push(trimmed);
+    }
+  }
+  return out;
+}
+
+// 代码题期望输出：字符串（严格相等）/ 字符串数组（多组答案）/ {mode:'include'} / {mode:'regex'}
+function gradeOutput(actualChunks, expected) {
+  const actual = normalizeLines(actualChunks);
+  if (Array.isArray(expected)) {
+    // 本函数返回的是布尔值（桌面端 quizGrader 才返回 {passed,...} 对象），不能取 .passed
+    return expected.some((candidate) => gradeOutput(actualChunks, candidate));
+  }
+  if (expected && typeof expected === 'object') {
+    if (expected.mode === 'regex') {
+      try {
+        // 默认 flags 与桌面端 quizGrader 保持一致（'m'），否则同一道题两端判定不同
+        return new RegExp(expected.pattern, expected.flags || 'm').test(actual.join('\n'));
+      } catch {
+        return false;
+      }
+    }
+    // include：期望的每行按顺序出现（允许中间夹杂其他行）
+    const wanted = normalizeLines(expected.lines || []);
+    let cursor = 0;
+    for (const line of actual) if (cursor < wanted.length && line === wanted[cursor]) cursor++;
+    return cursor === wanted.length;
+  }
+  const wanted = normalizeLines([String(expected)]);
+  return actual.length === wanted.length && actual.every((line, i) => line === wanted[i]);
+}
+
+// 页内作答的四种题型：多选需完全一致、填空忽略大小写与首尾空格、排序需顺序一致
+function isAnswerCorrect(q, answer) {
+  if (answer === undefined) return false;
+  switch (q.type) {
+    case 'choice':
+      return answer === q.answerIndex;
+    case 'multi': {
+      if (!Array.isArray(answer)) return false;
+      const chosen = [...answer].sort((a, b) => a - b);
+      const correct = [...q.answerIndexes].sort((a, b) => a - b);
+      return chosen.length === correct.length && chosen.every((v, i) => v === correct[i]);
+    }
+    case 'blank': {
+      if (!Array.isArray(answer)) return false;
+      if (answer.length !== q.blanks.length) return false;
+      return q.blanks.every((accepted, i) => {
+        const value = String(answer[i] ?? '').trim().toLowerCase();
+        return value.length > 0 && accepted.some((a) => a.trim().toLowerCase() === value);
+      });
+    }
+    case 'order': {
+      if (!Array.isArray(answer)) return false;
+      return answer.length === q.correctOrder.length && answer.every((v, i) => v === q.correctOrder[i]);
+    }
+    default:
+      return false;
+  }
+}
+
 function renderQuiz(topicId) {
   const quiz = QUIZZES.find(q => q.topicId === topicId);
   if (!quiz || !quiz.questions.length) return '';
@@ -345,6 +415,71 @@ function renderQuiz(topicId) {
       html += `</div>`;
       if (res) {
         html += `<div class="quiz-result ${res === 'pass' ? 'ok' : 'no'}">${res === 'pass' ? '✅ 回答正确' : '❌ 回答错误'}</div>`;
+        if (q.explanation) html += `<div class="quiz-explanation">${inline(q.explanation)}</div>`;
+      }
+      html += `</div>`;
+    } else if (q.type === 'multi') {
+      const saved = Array.isArray(answers[q.id]) ? answers[q.id] : [];
+      const res = results[q.id];
+      html += `<div class="quiz-item" data-qid="${q.id}">
+        <div class="quiz-q">${esc(q.question)}<span class="quiz-type-tag">多选</span></div>
+        <div class="quiz-options">`;
+      q.options.forEach((opt, idx) => {
+        const picked = saved.includes(idx);
+        let cls = '';
+        if (res === 'pass') cls = q.answerIndexes.includes(idx) ? 'correct' : '';
+        else if (res === 'fail') {
+          if (q.answerIndexes.includes(idx)) cls = 'correct';
+          else if (picked) cls = 'wrong';
+        }
+        html += `<div class="quiz-option ${cls}${picked ? ' selected' : ''}" data-idx="${idx}">`
+          + `<span class="quiz-check">${picked ? '☑' : '☐'}</span>${esc(opt)}</div>`;
+      });
+      html += `</div>`;
+      if (res) {
+        html += `<div class="quiz-result ${res === 'pass' ? 'ok' : 'no'}">${res === 'pass' ? '✅ 回答正确' : '❌ 回答错误'}</div>`;
+        if (q.explanation) html += `<div class="quiz-explanation">${inline(q.explanation)}</div>`;
+      } else {
+        html += `<div class="quiz-actions"><m3e-button size="extra-small" variant="filled" data-quiz-submit>
+          <span slot="icon" class="material-symbols-rounded">check</span>提交答案</m3e-button></div>`;
+      }
+      html += `</div>`;
+    } else if (q.type === 'blank') {
+      const saved = Array.isArray(answers[q.id]) ? answers[q.id] : [];
+      const res = results[q.id];
+      const parts = String(q.question).split('____');
+      html += `<div class="quiz-item" data-qid="${q.id}">
+        <div class="quiz-q">${esc(parts[0])}`;
+      for (let bi = 0; bi < q.blanks.length; bi++) {
+        const ok = res === 'pass' || (res === 'fail' && String(saved[bi] ?? '').trim().toLowerCase()
+          && (q.blanks[bi] || []).some((a) => a.trim().toLowerCase() === String(saved[bi]).trim().toLowerCase()));
+        html += `<input class="quiz-blank${res ? (ok ? ' correct' : ' wrong') : ''}" data-blank="${bi}"
+          value="${esc(saved[bi] ?? '')}" ${res ? 'disabled' : ''} placeholder="第 ${bi + 1} 空" />`;
+        html += esc(parts[bi + 1] ?? '');
+      }
+      html += `</div>`;
+      if (res) {
+        html += `<div class="quiz-result ${res === 'pass' ? 'ok' : 'no'}">${res === 'pass' ? '✅ 回答正确' : '❌ 回答错误'}</div>`;
+        if (q.explanation) html += `<div class="quiz-explanation">${inline(q.explanation)}</div>`;
+      }
+      html += `</div>`;
+    } else if (q.type === 'order') {
+      const saved = Array.isArray(answers[q.id]) ? answers[q.id] : q.items.map((_, i) => i);
+      const res = results[q.id];
+      html += `<div class="quiz-item" data-qid="${q.id}">
+        <div class="quiz-q">${esc(q.question)}<span class="quiz-type-tag">排序</span></div>
+        <div class="quiz-orders">`;
+      saved.forEach((itemIdx, pos) => {
+        const cls = res === 'pass' ? 'correct' : (res === 'fail' && itemIdx !== q.correctOrder[pos] ? 'wrong' : '');
+        html += `<div class="quiz-order ${cls}" data-pos="${pos}">
+          <span class="quiz-order-text">${esc(q.items[itemIdx])}</span>
+          ${res ? '' : `<button class="quiz-order-btn" data-move="${pos}" data-delta="-1" title="上移">▲</button>
+          <button class="quiz-order-btn" data-move="${pos}" data-delta="1" title="下移">▼</button>`}
+        </div>`;
+      });
+      html += `</div>`;
+      if (res) {
+        html += `<div class="quiz-result ${res === 'pass' ? 'ok' : 'no'}">${res === 'pass' ? '✅ 顺序正确' : '❌ 顺序不对'}</div>`;
         if (q.explanation) html += `<div class="quiz-explanation">${inline(q.explanation)}</div>`;
       }
       html += `</div>`;
@@ -375,32 +510,92 @@ function renderQuiz(topicId) {
 }
 
 function bindQuizEvents(topicId) {
-  // 选择题
+  const quizOf = () => QUIZZES.find(q => q.topicId === topicId);
+  const questionOf = (qid) => (quizOf()?.questions || []).find(x => x.id === qid);
+  const answerOf = () => {
+    const answers = load(QUIZ_ANSWERS_KEY, {});
+    answers[topicId] = answers[topicId] || {};
+    return answers;
+  };
+  // 存作答 + 判分 + 重绘测验区（页内作答的四种题型都走这里）
+  const commit = (item, qid, value) => {
+    const answers = answerOf();
+    answers[topicId][qid] = value;
+    save(QUIZ_ANSWERS_KEY, answers);
+    const results = load(QUIZ_RESULTS_KEY, {});
+    results[topicId] = results[topicId] || {};
+    results[topicId][qid] = isAnswerCorrect(questionOf(qid), value) ? 'pass' : 'fail';
+    save(QUIZ_RESULTS_KEY, results);
+    const quizSection = item.closest('.quiz-section');
+    quizSection.outerHTML = renderQuiz(topicId);
+    bindQuizEvents(topicId);
+    markTopicDone(topicId);
+  };
+
+  // 单选 / 多选
   $$('.quiz-option').forEach((opt) => {
     opt.addEventListener('click', () => {
       const item = opt.closest('.quiz-item');
       const qid = item.dataset.qid;
-      const quiz = QUIZZES.find(q => q.topicId === topicId);
-      const q = quiz.questions.find(x => x.id === qid);
-      if (q.type !== 'choice') return;
+      const q = questionOf(qid);
+      if (!q || item.querySelector('.quiz-result')) return; // 已判分不再改动
       const idx = Number(opt.dataset.idx);
 
-      const answers = load(QUIZ_ANSWERS_KEY, {});
-      answers[topicId] = answers[topicId] || {};
-      answers[topicId][qid] = idx;
+      if (q.type === 'choice') {
+        commit(item, qid, idx);
+      } else if (q.type === 'multi') {
+        const answers = answerOf();
+        const current = Array.isArray(answers[topicId][qid]) ? [...answers[topicId][qid]] : [];
+        const at = current.indexOf(idx);
+        if (at >= 0) current.splice(at, 1);
+        else current.push(idx);
+        // 多选逐项勾选时先只存作答，全部选完点「提交答案」再判分
+        answers[topicId][qid] = current.sort((a, b) => a - b);
+        save(QUIZ_ANSWERS_KEY, answers);
+        opt.classList.toggle('selected');
+        opt.querySelector('.quiz-check').textContent = opt.classList.contains('selected') ? '☑' : '☐';
+      }
+    });
+  });
+
+  // 多选：提交后判分
+  $$('[data-quiz-submit]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const item = btn.closest('.quiz-item');
+      const answers = answerOf();
+      commit(item, item.dataset.qid, answers[topicId][item.dataset.qid] || []);
+    });
+  });
+
+  // 填空：输入即存（不重绘，避免失焦），失焦时判分
+  $$('.quiz-blank').forEach((input) => {
+    input.addEventListener('input', () => {
+      const item = input.closest('.quiz-item');
+      const answers = answerOf();
+      const values = [];
+      item.querySelectorAll('.quiz-blank').forEach((el) => { values[Number(el.dataset.blank)] = el.value; });
+      answers[topicId][item.dataset.qid] = values;
       save(QUIZ_ANSWERS_KEY, answers);
+    });
+    input.addEventListener('change', () => {
+      const item = input.closest('.quiz-item');
+      const answers = answerOf();
+      commit(item, item.dataset.qid, answers[topicId][item.dataset.qid] || []);
+    });
+  });
 
-      const pass = idx === q.answerIndex;
-      const results = load(QUIZ_RESULTS_KEY, {});
-      results[topicId] = results[topicId] || {};
-      results[topicId][qid] = pass ? 'pass' : 'fail';
-      save(QUIZ_RESULTS_KEY, results);
-
-      // 重新渲染测验区
-      const quizSection = item.closest('.quiz-section');
-      quizSection.outerHTML = renderQuiz(topicId);
-      bindQuizEvents(topicId);
-      markTopicDone(topicId);
+  // 排序：上移 / 下移后重绘
+  $$('[data-move]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const item = btn.closest('.quiz-item');
+      const q = questionOf(item.dataset.qid);
+      const answers = answerOf();
+      const order = Array.isArray(answers[topicId][q.id]) ? [...answers[topicId][q.id]] : q.items.map((_, i) => i);
+      const pos = Number(btn.dataset.move);
+      const target = pos + Number(btn.dataset.delta);
+      if (target < 0 || target >= order.length) return;
+      [order[pos], order[target]] = [order[target], order[pos]];
+      commit(item, q.id, order);
     });
   });
 
@@ -419,7 +614,7 @@ function bindQuizEvents(topicId) {
       const quiz = QUIZZES.find(q => q.topicId === topicId);
       const q = quiz.questions.find(x => x.id === qid);
       const result = await runCodeCapture(codeInput.value);
-      const pass = result.trim() === q.expectedOutput.trim();
+      const pass = gradeOutput([result], q.expectedOutput);
 
       const results = load(QUIZ_RESULTS_KEY, {});
       results[topicId] = results[topicId] || {};
@@ -496,40 +691,52 @@ function renderTree(filter = '') {
   const q = filter.trim().toLowerCase();
   treeEl.innerHTML = '';
   let any = false;
-  for (const stage of STAGES) {
-    const topics = [];
-    if (stage.topics) topics.push(...stage.topics.map(t => ({ t, sub: null })));
-    for (const sub of stage.subcategories || []) {
-      topics.push(...sub.topics.map(t => ({ t, sub })));
-    }
-    const matched = topics.filter(({ t }) =>
-      !q || t.title.toLowerCase().includes(q) || t.summary.toLowerCase().includes(q));
-    if (q && !matched.length) continue;
-    any = true;
 
-    const stageItem = document.createElement('m3e-tree-item');
-    stageItem.innerHTML = treeItemHtml('folder', stage.title, null);
-    stageItem.open = true; // 默认展开
+  // 目录按系列分组（与桌面端一致）：系列 → 阶段 → 主题
+  for (const series of SERIES) {
+    const seriesItem = document.createElement('m3e-tree-item');
+    seriesItem.innerHTML = treeItemHtml(series.icon || 'school', series.title, null);
+    seriesItem.open = true; // 默认展开
 
-    let lastSub = null;
-    for (const { t, sub } of matched) {
-      if (sub && sub.id !== lastSub) {
-        lastSub = sub.id;
-        const subItem = document.createElement('m3e-tree-item');
-        subItem.innerHTML = treeItemHtml('folder_special', sub.title, null);
-        stageItem.appendChild(subItem);
+    for (const stage of series.stages) {
+      const topics = [];
+      if (stage.topics) topics.push(...stage.topics.map(t => ({ t, sub: null })));
+      for (const sub of stage.subcategories || []) {
+        topics.push(...sub.topics.map(t => ({ t, sub })));
       }
-      const topicItem = document.createElement('m3e-tree-item');
-      topicItem.dataset.topic = t.id;
-      topicItem.innerHTML = treeItemHtml('article', t.title, t.id);
-      if (t.id === currentTopicId) {
-        topicItem.selected = true;
-        // 等组件升级后应用源码风格（透明背景 + 全圆角）
-        requestAnimationFrame(() => styleSelectedItem(topicItem));
+      const matched = topics.filter(({ t }) =>
+        !q || t.title.toLowerCase().includes(q) || t.summary.toLowerCase().includes(q));
+      if (q && !matched.length) continue;
+      any = true;
+
+      const stageItem = document.createElement('m3e-tree-item');
+      stageItem.innerHTML = treeItemHtml('folder', stage.title, null);
+      stageItem.open = true; // 默认展开
+
+      let lastSub = null;
+      for (const { t, sub } of matched) {
+        if (sub && sub.id !== lastSub) {
+          lastSub = sub.id;
+          const subItem = document.createElement('m3e-tree-item');
+          subItem.innerHTML = treeItemHtml('folder_special', sub.title, null);
+          stageItem.appendChild(subItem);
+        }
+        const topicItem = document.createElement('m3e-tree-item');
+        topicItem.dataset.topic = t.id;
+        topicItem.innerHTML = treeItemHtml('article', t.title, t.id);
+        if (t.id === currentTopicId) {
+          topicItem.selected = true;
+          // 等组件升级后应用源码风格（透明背景 + 全圆角）
+          requestAnimationFrame(() => styleSelectedItem(topicItem));
+        }
+        stageItem.appendChild(topicItem);
       }
-      stageItem.appendChild(topicItem);
+      seriesItem.appendChild(stageItem);
     }
-    treeEl.appendChild(stageItem);
+
+    // 搜索时整段都没有命中就不显示这个系列
+    if (q && !seriesItem.querySelector('m3e-tree-item[data-topic]')) continue;
+    treeEl.appendChild(seriesItem);
   }
   if (!any) treeEl.innerHTML = '<div class="tree-empty">未找到匹配的教程内容</div>';
 }

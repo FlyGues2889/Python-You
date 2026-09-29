@@ -78,10 +78,11 @@ const handleAddInterpreter = async () => {
 };
 
 /* ==================== 检查更新 ==================== */
-const isUpdaterAvailable = nativeApi.available();
+// 桌面端（有 Tauri）：本机解释器、应用内更新这些能力只在桌面端存在
+const isDesktop = nativeApi.available();
 // 更新过程也登记到标题栏后台任务里（与包安装等长任务同一处，FR-1.3 / FR-5.6）
 const UPDATE_TASK_ID = 'app-update';
-const aboutVersion = ref('0.3.7'); // 兜底值；桌面端启动后从 tauri.conf.json 读真实版本
+const aboutVersion = ref('0.3.71'); // 兜底值；桌面端启动后从 tauri.conf.json 读真实版本
 const isUpdateDialogOpen = ref(false);
 const updateStage = ref<'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'preparing' | 'error'>('idle');
 const updateInfo = ref<UpdateInfo | null>(null);
@@ -91,7 +92,7 @@ let downloadToken = 0;      // 每次下载的代号：过期的监听与回调�
 let cancelling = false;     // 是否是「用户点了取消」导致的下载中断
 let stopProgressListener: (() => void) | null = null;
 
-if (isUpdaterAvailable) {
+if (isDesktop) {
   getVersion().then(v => { aboutVersion.value = v; }).catch(() => { /* 取不到就用兜底版本号 */ });
 }
 
@@ -114,7 +115,7 @@ const updateHeadline = computed(() => {
 
 // 关于卡片里的状态文案：没检查过就显示当前版本
 const updateStatusText = computed(() => {
-  if (!isUpdaterAvailable) return t('updateUnsupported');
+  if (!isDesktop) return t('updateUnsupported');
   if (updateStage.value === 'checking') return t('updateChecking');
   if (updateStage.value === 'latest') return t('updateLatest');
   if (updateStage.value === 'downloading') {
@@ -139,7 +140,7 @@ const closeUpdateDialog = () => {
 };
 
 const handleCheckUpdate = async () => {
-  if (!isUpdaterAvailable) {
+  if (!isDesktop) {
     updateStage.value = 'error';
     updateError.value = t('updateUnsupported');
     isUpdateDialogOpen.value = true;
@@ -360,33 +361,39 @@ const clearLocalData = () => {
             </div>
           </m3e-list-item>
 
-          <!-- 解释器选择：每个本机解释器下方显示真实路径，便于辨认；右侧可添加自定义解释器 -->
+          <!-- 解释器选择：桌面端列出本机解释器（含真实路径）并可添加自定义解释器；
+               网页端没有本机 Python，固定用内置的 WASM 引擎，不给选择项 -->
           <m3e-list-item>
             <span slot="leading" class="material-symbols-rounded">terminal</span>
             {{ t('interpreter') }}
-            <span slot="supporting-text">{{ interpreterError || t('interpreterSubtitle') }}</span>
+            <span slot="supporting-text">
+              {{ isDesktop ? (interpreterError || t('interpreterSubtitle')) : t('interpreterWebOnly') }}
+            </span>
             <div slot="trailing" class="settings-trailing interpreter-trailing">
-              <m3e-select class="theme-select interpreter-select" @change="onInterpreterChange">
-                <m3e-option value="auto" :selected="!config.interpreter || config.interpreter === 'auto'">
-                  {{ t('interpreterAuto') }}
-                </m3e-option>
-                <m3e-option value="pyodide" :selected="config.interpreter === 'pyodide'">
-                  {{ t('interpreterPyodide') }}
-                </m3e-option>
-                <m3e-optgroup>
-                  <span slot="label">{{ t('interpreterLocal') }}</span>
-                  <m3e-option v-for="v in nativePython.versions.value" :key="v.id" :value="v.id"
-                    :selected="config.interpreter === v.id">
-                    <span class="interp-option">
-                      <span>{{ v.label }}</span>
-                      <span v-if="v.path" class="interp-path">{{ v.path }}</span>
-                    </span>
+              <template v-if="isDesktop">
+                <m3e-select class="theme-select interpreter-select" @change="onInterpreterChange">
+                  <m3e-option value="auto" :selected="!config.interpreter || config.interpreter === 'auto'">
+                    {{ t('interpreterAuto') }}
                   </m3e-option>
-                </m3e-optgroup>
-              </m3e-select>
-              <m3e-icon-button width="narrow" :title="t('interpreterAdd')" @click="handleAddInterpreter">
-                <span class="material-symbols-rounded">add</span>
-              </m3e-icon-button>
+                  <m3e-option value="pyodide" :selected="config.interpreter === 'pyodide'">
+                    {{ t('interpreterPyodide') }}
+                  </m3e-option>
+                  <m3e-optgroup>
+                    <span slot="label">{{ t('interpreterLocal') }}</span>
+                    <m3e-option v-for="v in nativePython.versions.value" :key="v.id" :value="v.id"
+                      :selected="config.interpreter === v.id">
+                      <span class="interp-option">
+                        <span>{{ v.label }}</span>
+                        <span v-if="v.path" class="interp-path">{{ v.path }}</span>
+                      </span>
+                    </m3e-option>
+                  </m3e-optgroup>
+                </m3e-select>
+                <m3e-icon-button width="narrow" :title="t('interpreterAdd')" @click="handleAddInterpreter">
+                  <span class="material-symbols-rounded">add</span>
+                </m3e-icon-button>
+              </template>
+              <span v-else class="interpreter-fixed">{{ t('interpreterWasmFixed') }}</span>
             </div>
           </m3e-list-item>
         </m3e-list>
@@ -407,7 +414,7 @@ const clearLocalData = () => {
             </div>
           </m3e-list-item>
 
-          <m3e-list-item>
+          <m3e-list-item v-if="isDesktop">
             <span slot="leading" class="material-symbols-rounded">system_update_alt</span>
             {{ t('checkUpdate') }}
             <span slot="supporting-text">{{ updateStatusText }}</span>
@@ -650,6 +657,12 @@ const clearLocalData = () => {
 }
 
 /* 解释器选择：更宽的宽度容纳路径，右侧按钮与选择框留 4dp 间隔 */
+/* 网页端固定的引擎说明（不可选） */
+.interpreter-fixed {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
 .interpreter-trailing {
   gap: 4px;
 }

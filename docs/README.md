@@ -27,7 +27,7 @@ python -m http.server 8080 -d docs/tutor
 | `style.css` | 样式（主题 token 提取自桌面版 theme.css/font.css/m3eStyle.css，自动生成） |
 | `app.js` | 核心逻辑（目录树、内容渲染、编辑器、Pyodide 运行、测验） |
 | `tutorial-data.js` | 教程数据（自动生成，勿手改） |
-| `build-data.mjs` | 数据生成脚本（`node build-data.mjs`） |
+| `build-tutorial-data.mjs` | 教程数据生成脚本（`node build-tutorial-data.mjs`） |
 | `build-style.mjs` | 样式生成脚本（`node build-style.mjs`） |
 | `vendor/` | 本地资源：`m3e/all.bundle.js`（@m3e/web 组件库）、`material-symbols/`（图标字体） |
 
@@ -39,4 +39,4 @@ python -m http.server 8080 -d docs/tutor
 - **主题**：亮/暗双主题，颜色 token 直接提取自桌面版 `theme.css`（md-sys 全套 + 应用别名），样式与桌面版一致
 - **解释器**：仅使用 Pyodide（Python 3.11 WASM），首次运行需联网下载（约 15MB，之后走浏览器缓存）；`import numpy` 等第三方包按需懒加载
 - **测验**：选择题与代码题结果保存在 `localStorage`，无需账号
-- **数据源**：教程内容与测验数据提取自桌面版 `src/components/tutor/`，如需更新内容重新运行 `build-data.mjs`；主题 token 变更重新运行 `build-style.mjs`
+- **数据源**：教程内容与测验数据提取自桌面版 `src/components/tutor/`，如需更新内容重新运行 `build-tutorial-data.mjs`；主题 token 变更重新运行 `build-style.mjs`

@@ -691,6 +691,10 @@ onMounted(async () => {
   }
   // FR-3.7：字号三入口统一为 12-24，历史配置可能存有区间外的旧值，启动时归一到区间内
   config.value.fontSize = Math.min(24, Math.max(12, Number(config.value.fontSize) || 15));
+  // 网页端没有本机 Python：解释器一律用内置 WASM（导入的桌面端配置可能指向不存在的本机解释器）
+  if (!nativeApi.available() && config.value.interpreter !== 'pyodide') {
+    config.value.interpreter = 'pyodide';
+  }
 
   // Open default main.py tab
   const mainFile = findFileByPath(workspaceItems.value, '/main.py');
@@ -1547,6 +1551,9 @@ const activeTabObject = computed(() => {
   return openTabs.value.find((t) => t.id === activeEditorTabId.value) || null;
 });
 
+// 格式化（补空格 + 按 Python 语法重排缩进）只对 .py 生效：其它文件按 Python 规则改会破坏正文
+const canFormatDoc = computed(() => !!activeTabObject.value?.name.endsWith('.py'));
+
 // 工具栏「检查答案 / 返回教程」可用状态：已加载 tutorial_demo.py 且处于教程/测验上下文
 // （原为 v-if 隐藏，现改为始终渲染、无上下文时禁用）
 const isTutorialQuizMode = computed(() => {
@@ -1759,7 +1766,7 @@ onMounted(() => {
         </div>
         <!-- Editor Action Toolbar：编辑器视图下始终可见；未打开文件时各按钮禁用 -->
         <div v-if="activeNavTab === 'explorer'" class="editor-toolbar">
-          <div class="left-toolbar-group">
+          <div class="toolbar-group">
             <!-- 新建文件 / 新建文件夹（触发文件树顶部内联输入行；不依赖是否打开文件）/ 保存 / 撤销 / 重做 -->
             <m3e-icon-button variant="standard" size="extra-small" :title="t('newFileTooltip')"
               @click="fileTreeRef?.startCreateFile(null)">
@@ -1783,25 +1790,9 @@ onMounted(() => {
               <span class="material-symbols-rounded">redo</span>
             </m3e-icon-button>
 
-            <!-- 运行 / 停止 -->
-            <template v-if="codeEditorRef?.isExecuting">
-              <m3e-button variant="text" size="extra-small" class="marginBtn stopBtn" width="wide"
-                :title="t('stopCode')" @click="codeEditorRef?.stopCode()">
-                <span slot="icon" class="material-symbols-rounded">stop</span>
-                {{ t('stopCode') }}
-              </m3e-button>
-            </template>
-            <template v-else>
-              <m3e-button variant="text" size="extra-small" class="marginBtn runBtn" width="wide"
-                :disabled="!activeTabObject" :title="t('runCode')" @click="codeEditorRef?.runCode()">
-                <span slot="icon" class="material-symbols-rounded">play_arrow</span>
-                {{ t('runCode') }}
-              </m3e-button>
-            </template>
-
           </div>
 
-          <div class="left-toolbar-group">
+          <div class="toolbar-group">
             <!-- 编辑器字号加减：直接更新 config.fontSize（deep watch 自动持久化），范围 10-24px -->
             <m3e-icon-button size="extra-small" :disabled="!activeTabObject" :title="t('fontSizeIncrease')"
               @click="changeFontSize(1)">
@@ -1820,14 +1811,37 @@ onMounted(() => {
               @click="codeEditorRef?.openReplaceBar()">
               <span class="material-symbols-rounded">find_replace</span>
             </m3e-icon-button>
-            <m3e-icon-button size="extra-small" :disabled="!activeTabObject" :title="t('formatDoc')"
+            <m3e-icon-button size="extra-small" :disabled="!canFormatDoc" :title="t('formatDoc')"
               @click="codeEditorRef?.formatDocument()">
-              <span class="material-symbols-rounded">format_align_left</span>
+              <span class="material-symbols-rounded">bolt_boost</span>
             </m3e-icon-button>
           </div>
 
+          <div class="toolbar-group">
+            <!-- 运行 / 停止 -->
+            <template v-if="codeEditorRef?.isExecuting">
+              <m3e-button variant="text" size="extra-small" class="stopBtn" width="wide"
+                :title="t('stopCode')" @click="codeEditorRef?.stopCode()">
+                <span slot="icon" class="material-symbols-rounded">stop</span>
+                {{ t('stopCode') }}
+              </m3e-button>
+            </template>
+            <template v-else>
+              <m3e-button variant="text" size="extra-small" class="runBtn" width="wide"
+                :disabled="!activeTabObject" :title="t('runCode')" @click="codeEditorRef?.runCode()">
+                <span slot="icon" class="material-symbols-rounded">play_arrow</span>
+                {{ t('runCode') }}
+              </m3e-button>
+            </template>
+
+            <!-- 解释器版本管理器：点击按钮弹出选择弹窗（文字超长省略） -->
+            <m3e-button size="extra-small" class="interpreter-btn marginBtn" @click="isInterpreterOpen = true">
+              <span slot="trailing-icon" class="material-symbols-rounded">keyboard_arrow_down</span>
+              <span class="interpreter-btn-label">{{ engineLabel || t('engineLabelDefault') }}</span>
+            </m3e-button>
+          </div>
           <!-- 检查答案 / 返回教程：始终显示，无教程上下文时禁用（原为 v-if 隐藏） -->
-          <div class="left-toolbar-group">
+          <div class="toolbar-group">
             <m3e-button size="extra-small" variant="text" class="answerBtn" :class="{ 'is-passed': activeQuizPassed }"
               :disabled="!isTutorialQuizMode" @click="handleCheckAnswerClick">
               <span slot="icon" class="material-symbols-rounded">{{ activeQuizPassed ? 'check_circle' : 'task_alt'
@@ -1849,11 +1863,6 @@ onMounted(() => {
               {{ t('cursorPositionText').replace('{line}', String(codeEditorRef?.cursorLine ?? 1)).replace('{col}',
                 String(codeEditorRef?.cursorCol ?? 1)) }}
             </span>
-            <!-- 解释器版本管理器：点击按钮弹出选择弹窗（文字超长省略） -->
-            <m3e-button size="extra-small" class="interpreter-btn" @click="isInterpreterOpen = true">
-              <span slot="icon" class="material-symbols-rounded">terminal</span>
-              <span class="interpreter-btn-label">{{ engineLabel || t('engineLabelDefault') }}</span>
-            </m3e-button>
           </div>
         </div>
 
@@ -1882,7 +1891,8 @@ onMounted(() => {
                   @cursor-change="handleCursorChange" @select-tab="handleSelectTab" @close-tab="handleCloseTab"
                   @content-change="handleContentChange" @save-tab="handleSaveTab"
                   @add-console-output="out => consoleOutputs.push(out)"
-                  @contextmenu-editor="e => openContextMenu(e, 'editor')" @jump-to-file="handleJumpToSearchResult" @show-toast="showToast" />
+                  @contextmenu-editor="e => openContextMenu(e, 'editor')" @jump-to-file="handleJumpToSearchResult"
+                  @show-toast="showToast" />
               </m3e-card>
 
               <m3e-card slot="end" class="terminal-card">
@@ -1929,8 +1939,7 @@ onMounted(() => {
     </m3e-snackbar>
 
     <!-- 后台任务 Dialog：点击标题栏状态栏弹出，查看各后台任务的状态与进度 -->
-    <m3e-dialog :open="isBackendTasksOpen" @cancel="isBackendTasksOpen = false"
-      @closed="isBackendTasksOpen = false">
+    <m3e-dialog :open="isBackendTasksOpen" @cancel="isBackendTasksOpen = false" @closed="isBackendTasksOpen = false">
       <span slot="header" class="m3e-dialog-title-row">
         <span class="material-symbols-rounded m3e-dialog-icon">sync</span>
         <span class="m3e-dialog-title">{{ t('backendTasksTitle') }}</span>
@@ -1964,7 +1973,7 @@ onMounted(() => {
       <div slot="actions" class="m3e-dialog-actions">
         <m3e-button variant="text" size="small" @click="isDeleteDialogOpen = false">{{ t('cancel') }}</m3e-button>
         <m3e-button class="dialog-danger-btn" variant="filled" size="small" @click="confirmDelete">{{ t('delete')
-          }}</m3e-button>
+        }}</m3e-button>
       </div>
     </m3e-dialog>
 
@@ -1992,7 +2001,7 @@ onMounted(() => {
       <div slot="actions" class="m3e-dialog-actions">
         <m3e-button variant="text" size="small" @click="handleConflictCancel">{{ t('cancel') }}</m3e-button>
         <m3e-button variant="filled" size="small" @click="handleConflictOverwrite">{{ t('conflictOverwrite')
-          }}</m3e-button>
+        }}</m3e-button>
       </div>
     </m3e-dialog>
 
@@ -2008,7 +2017,7 @@ onMounted(() => {
       <div slot="actions" class="m3e-dialog-actions">
         <m3e-button variant="text" size="small" @click="resolveInstallConfirm(false)">{{ t('cancel') }}</m3e-button>
         <m3e-button variant="filled" size="small" @click="resolveInstallConfirm(true)">{{ t('depsConfirmInstall')
-          }}</m3e-button>
+        }}</m3e-button>
       </div>
     </m3e-dialog>
 
@@ -2081,7 +2090,7 @@ onMounted(() => {
       </div>
       <div slot="actions" class="m3e-dialog-actions">
         <m3e-button variant="filled" size="small" @click="quizCompareDialog.isOpen = false">{{ t('helpGotIt')
-          }}</m3e-button>
+        }}</m3e-button>
       </div>
     </m3e-dialog>
 
@@ -2098,7 +2107,7 @@ onMounted(() => {
       </m3e-content-pane>
       <div slot="actions" class="m3e-dialog-actions">
         <m3e-button variant="text" size="small" @click="isWelcomeOpen = false">{{ t('enterWorkspace')
-          }}</m3e-button>
+        }}</m3e-button>
         <m3e-button variant="filled" size="small" @click="startTutorial">{{ t('startLearning') }}</m3e-button>
       </div>
     </m3e-dialog>
@@ -2442,14 +2451,13 @@ m3e-snackbar.app-snackbar {
   flex-shrink: 0;
 }
 
-.left-toolbar-group {
+.toolbar-group {
   display: flex;
   align-items: center;
   gap: 2px;
   padding: 0.1rem 0.8rem;
   margin-left: 0.8rem;
   background-color: var(--bg-color);
-  border: 1.4px solid var(--border-color-muted);
   border-radius: 16px;
 }
 

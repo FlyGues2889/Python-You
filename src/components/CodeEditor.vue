@@ -5,8 +5,10 @@ import { pythonRunner } from '../utils/pythonRunner';
 import { useI18n } from '../utils/i18n';
 import { copyToClipboard, readClipboard } from '../utils/clipboard';
 import { uid } from '../utils/id';
-import { getCompletions, getWordAt, getUsage, collectWorkspaceIdentifiers, isInsideString, type CompletionItem } from '../utils/pythonCompletions';
+import { getCompletions, getWordAt, getUsage, collectWorkspaceIdentifiers, type CompletionItem } from '../utils/pythonCompletions';
 import { hljs } from '../utils/highlightSetup';
+import { formatCodeText } from '../utils/codeFormat';
+import { backspaceIndent, indentForNewLine, indentLines, isInsideStringAt, outdentLines, reindentText, stringAndCommentRanges } from '../utils/pythonIndent';
 import 'highlight.js/styles/github-dark.css';
 
 const { t, tf } = useI18n();
@@ -478,52 +480,66 @@ const handleKeyDown = (e: KeyboardEvent) => {
     return;
   }
 
+  // Shift+Alt+F => 格式化文档（与 VS Code 一致）
+  if (e.shiftKey && e.altKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'f') {
+    e.preventDefault();
+    formatDocument();
+    return;
+  }
+
   const el = textareaRef.value;
   const start = el.selectionStart;
   const end = el.selectionEnd;
   const val = el.value;
 
   // 轻量自动补空格：运算符两侧、逗号/冒号后（字符串内不处理）
-  if (!e.shiftKey && AUTO_SPACE_KEYS.has(e.key) && start === end && !isInsideString(val, start)) {
+  if (!e.shiftKey && AUTO_SPACE_KEYS.has(e.key) && start === end && !isInsideStringAt(val, start, tabSize())) {
     if (maybeAutoSpace(e, val, start)) return;
   }
 
-  // Tab Key => Insert 4 spaces
+  // Backspace => 光标在行首空白里时删掉一整级缩进（而不是一个空格）
+  if (e.key === 'Backspace') {
+    const result = backspaceIndent(val, start, end, tabSize());
+    if (result) {
+      e.preventDefault();
+      emit('content-change', activeTab.value.id, result.content);
+      nextTick(() => {
+        el.selectionStart = el.selectionEnd = result.start;
+        updateCursorPosition();
+      });
+      return;
+    }
+  }
+
+  // Tab / Shift+Tab => 缩进 / 反缩进当前行或选中的若干行
   if (e.key === 'Tab') {
     e.preventDefault();
-    const tabSpaces = ' '.repeat(props.config.tabSize || 4);
-    const newContent = val.substring(0, start) + tabSpaces + val.substring(end);
-    emit('content-change', activeTab.value.id, newContent);
-
+    const result = e.shiftKey
+      ? outdentLines(val, start, end, tabSize())
+      : indentLines(val, start, end, tabSize());
+    emit('content-change', activeTab.value.id, result.content);
     nextTick(() => {
-      el.selectionStart = el.selectionEnd = start + tabSpaces.length;
+      el.selectionStart = result.start;
+      el.selectionEnd = result.end;
       updateCursorPosition();
     });
     return;
   }
 
-  // Enter Key => Auto Indentation
+  // Enter Key => 新行缩进由语法树决定（块体、续行对齐、else/except 回归都对）
   if (e.key === 'Enter') {
-    const currentLineStart = val.lastIndexOf('\n', start - 1) + 1;
-    const currentLine = val.substring(currentLineStart, start);
-    const indentMatch = currentLine.match(/^\s*/);
-    let indent = indentMatch ? indentMatch[0] : '';
+    e.preventDefault();
+    // 查询用「换行尚未插入」的文档：换行已存在时末尾空行会被语法树判为块外
+    const docForIndent = start === end ? val : val.substring(0, start) + val.substring(end);
+    const indent = ' '.repeat(indentForNewLine(docForIndent, start, tabSize()));
+    const newContent = val.substring(0, start) + '\n' + indent + val.substring(end);
+    emit('content-change', activeTab.value.id, newContent);
 
-    // Extra indent if line ends with colon ':'
-    if (currentLine.trim().endsWith(':')) {
-      indent += ' '.repeat(props.config.tabSize || 4);
-    }
-
-    if (indent.length > 0) {
-      e.preventDefault();
-      const newContent = val.substring(0, start) + '\n' + indent + val.substring(end);
-      emit('content-change', activeTab.value.id, newContent);
-
-      nextTick(() => {
-        el.selectionStart = el.selectionEnd = start + 1 + indent.length;
-        updateCursorPosition();
-      });
-    }
+    nextTick(() => {
+      el.selectionStart = el.selectionEnd = start + 1 + indent.length;
+      updateCursorPosition();
+    });
+    return;
   }
 };
 
@@ -640,7 +656,7 @@ const openCompletions = (force = false) => {
     return;
   }
   // 字符串字面量内部不自动唤起补全（如 "123" 的引号之间）
-  if (!force && isInsideString(el.value, caret)) {
+  if (!force && isInsideStringAt(el.value, caret, tabSize())) {
     closeCompletions();
     return;
   }
@@ -1255,47 +1271,20 @@ const revealLine = (line: number) => {
   });
 };
 
-/* ==================== 任务6：格式化文档（轻量规则化） ==================== */
-const formatLine = (line: string): string => {
-  const parts: string[] = [];
-  let out = '';
-  let i = 0;
-  while (i < line.length) {
-    const ch = line[i];
-    if (ch === '"' || ch === "'") {
-      let j = i + 1;
-      while (j < line.length && line[j] !== ch) {
-        if (line[j] === '\\') j++;
-        j++;
-      }
-      j = Math.min(j + 1, line.length);
-      parts.push(line.slice(i, j));
-      out += '\0' + (parts.length - 1) + '\0';
-      i = j;
-    } else if (ch === '#') {
-      parts.push(line.slice(i));
-      out += '\0' + (parts.length - 1) + '\0';
-      break;
-    } else {
-      out += ch;
-      i++;
-    }
-  }
-  out = out
-    .replace(/\s*([+\-*/%]=?|==|!=|<=|>=|<<|>>|&&|\|\||\*\*|\/\/)\s*/g, ' $1 ')
-    .replace(/,\s*/g, ', ')
-    .replace(/:\s*/g, ': ')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\s+([,)\]}])/g, '$1')
-    .replace(/([(\[{])\s+/g, '$1')
-    .trim();
-  return out.replace(/\0(\d+)\0/g, (_, n) => parts[+n]);
-};
+/* ==================== 任务6：格式化文档（轻量规则化 + 缩进重排） ==================== */
+const tabSize = () => props.config.tabSize || 4;
 
 const formatDocument = () => {
   if (!activeTab.value) return;
-  const formatted = activeTab.value.content.split('\n').map(formatLine).join('\n');
-  if (formatted !== activeTab.value.content) {
+  // 与工具栏按钮同一条件：非 Python 文件不按 Python 规则改写
+  if (!activeTab.value.name.endsWith('.py')) {
+    emit('show-toast', t('formatDocPythonOnly'));
+    return;
+  }
+  // 先补空格（词法级，不碰缩进），再按语法树重排缩进：多一个空格 / 少一个空格也一并修正
+  const content = activeTab.value.content;
+  const formatted = reindentText(formatCodeText(content), tabSize());
+  if (formatted !== content) {
     emit('content-change', activeTab.value.id, formatted);
   }
   emit('show-toast', t('formattedDoc'));
@@ -1308,46 +1297,31 @@ const warningRef = ref<HTMLPreElement | null>(null);
 const warningOverlayHtml = computed(() => {
   const code = activeTab.value?.content || '';
   const warned = new Set<number>();
-  let str: string | null = null;
-  let triple: string | null = null;
-  const stack: { ch: string; pos: number }[] = [];
-  let i = 0;
-  while (i < code.length) {
-    const ch = code[i];
-    if (triple) {
-      if (code.startsWith(triple.repeat(3), i)) { triple = null; i += 3; continue; }
+  // 只检查 .py：这些是 Python 的语法问题，字符串/注释区段也来自 Python 语法树，
+  // 用在 .md / .txt 正文里会把中文标点和英文撇号误判成错误
+  if (activeTab.value?.name.endsWith('.py')) {
+    // 字符串与注释由语法树整段标出并跳过：里面的中文标点、括号都不算错误
+    const skipped = stringAndCommentRanges(code, tabSize());
+    const stack: { ch: string; pos: number }[] = [];
+    let skip = 0;
+    let i = 0;
+    while (i < code.length) {
+      while (skip < skipped.length && skipped[skip].to <= i) skip++;
+      if (skip < skipped.length && skipped[skip].from <= i) { i = skipped[skip].to; continue; }
+      const ch = code[i];
+      if (ch === '(' || ch === '[' || ch === '{') { stack.push({ ch, pos: i }); i++; continue; }
+      if (ch === ')' || ch === ']' || ch === '}') {
+        const match = { ')': '(', ']': '[', '}': '{' }[ch] as string;
+        const top = stack.pop();
+        if (!top || top.ch !== match) warned.add(i);
+        i++;
+        continue;
+      }
+      if (NON_ASCII_PUNCT.has(ch)) { warned.add(i); i++; continue; }
       i++;
-      continue;
     }
-    if (str) {
-      if (ch === '\\') { i += 2; continue; }
-      if (ch === str) str = null;
-      i++;
-      continue;
-    }
-    if (ch === '#') {
-      const nl = code.indexOf('\n', i);
-      i = nl === -1 ? code.length : nl;
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      if (code.startsWith(ch.repeat(3), i)) { triple = ch; i += 3; continue; }
-      str = ch;
-      i++;
-      continue;
-    }
-    if (ch === '(' || ch === '[' || ch === '{') { stack.push({ ch, pos: i }); i++; continue; }
-    if (ch === ')' || ch === ']' || ch === '}') {
-      const match = { ')': '(', ']': '[', '}': '{' }[ch] as string;
-      const top = stack.pop();
-      if (!top || top.ch !== match) warned.add(i);
-      i++;
-      continue;
-    }
-    if (NON_ASCII_PUNCT.has(ch)) { warned.add(i); i++; continue; }
-    i++;
+    for (const b of stack) warned.add(b.pos);
   }
-  for (const b of stack) warned.add(b.pos);
 
   let html = '';
   for (let j = 0; j < code.length; j++) {
@@ -1728,7 +1702,6 @@ onBeforeUnmount(() => {
   color: var(--text-tertiary);
   min-height: 0;
   overflow: hidden;
-  border: 1.4px solid var(--border-color-muted);
   background-color: var(--surface-2);
   border-radius: 1rem;
 }
