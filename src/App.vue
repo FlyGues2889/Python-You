@@ -293,14 +293,16 @@ const resolvedCodeTheme = computed(() => resolveCodeTheme(config.value.codeTheme
 
 // Toast message notifier
 const toastMessage = ref<string | null>(null);
-const showToast = (msg: string) => {
+// 用函数声明（会提升）而不是 const 箭头：setup 顶部把它按值传给 composable（useEditorCommands），
+// const 在那个位置还处于 TDZ，会直接抛 "Cannot access 'showToast' before initialization"
+function showToast(msg: string) {
   // 先置空再赋值：已有 toast 未关闭时 open 不变，组件不会重新计时，
   // 新消息会被上一条的收尾（closed → 置空）立刻清掉
   toastMessage.value = null;
   nextTick(() => {
     toastMessage.value = msg;
   });
-};
+}
 
 const snackbarDuration = 5000;
 const handleSnackbarToggle = (e: Event) => {
@@ -319,12 +321,14 @@ const consoleOutputs = ref<ConsoleOutput[]>([]);
 const editorTabs = useEditorTabs({
   getWorkspaceItems: () => workspaceItems.value,
   getWorkspaceRoot: () => workspaceRootPath.value,
-  findItemById,
-  findFileByPath,
-  findOrLoadFileByPath,
-  ensureFileContent,
-  writeDiskFile,
-  showToast,
+  // 下面这些助手都在本文件下方才声明：必须惰性传（箭头内解引用），
+  // 直接按值传会在 setup 期触发 TDZ —— "Cannot access 'X' before initialization"
+  findItemById: (items, id) => findItemById(items, id),
+  findFileByPath: (items, path) => findFileByPath(items, path),
+  findOrLoadFileByPath: (items, path, root) => findOrLoadFileByPath(items, path, root),
+  ensureFileContent: (file, force) => ensureFileContent(file, force),
+  writeDiskFile: (item, abs, content) => writeDiskFile(item, abs, content),
+  showToast: (msg) => showToast(msg),
   setActiveNavTab: (v: string) => { activeNavTab.value = v; },
 });
 const {
