@@ -2,52 +2,79 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { ConsoleOutput } from '../types';
 import { paneScroller, watchPaneScroll } from '../utils/contentPane';
+import { toDisplayLines } from '../utils/consoleLines';
+import { semanticClassOf, isCollapsible, isImage } from '../utils/consoleView';
+import { useReplInput } from '../utils/replInput';
 import { useI18n } from '../utils/i18n';
 import { pythonRunner } from '../utils/pythonRunner';
-import { nativePython } from '../utils/nativePython';
 import { uid } from '../utils/id';
 
 const props = defineProps<{
   outputs: ConsoleOutput[];
   codeTheme?: string;
+  demoMode?: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: 'clear'): void;
   (e: 'contextmenu-terminal', event: MouseEvent): void;
   (e: 'add-console-output', output: ConsoleOutput): void;
+  (e: 'add-log', output: ConsoleOutput): void;
 }>();
 
 const { t } = useI18n();
 
-// 底部 stdin 输入框：Pyodide 等待输入，或本机 run 会话进行中（程序可能阻塞在 input()）时可用
-const inputEnabled = computed(() => pythonRunner.stdinWaiting.value || nativePython.runActive.value);
-const inputPlaceholder = computed(() => pythonRunner.stdinPrompt.value || t('terminalInputPlaceholder'));
-const inputLine = ref('');
 // 点击终端里的图表时放大查看（null = 未打开）
 const previewImage = ref<string | null>(null);
 const inputRef = ref<HTMLInputElement | null>(null);
 
-const submitInput = () => {
-  const line = inputLine.value;
-  inputLine.value = '';
-  if (!inputEnabled.value) return;
-  emit('add-console-output', {
-    id: uid(),
-    type: 'input',
-    text: `$ ${line}`,
-    timestamp: new Date().toLocaleTimeString(),
-  });
-  pythonRunner.submitRunInput(line);
+// 程序正在运行（可能阻塞在 input()）：此时输入行喂给它的 stdin，其余时候就是第二个 REPL。
+// 是否在等输入由门面统一派生（stdinWaiting ∨ native runActive），不再在组件里读两个 ref 猜；
+// 能喂 stdin 还要求当前后端具备 stdin 能力（演示引擎从不等待输入，此条件恒假，行为不变）
+const feedingProgram = () => pythonRunner.awaitingInput.value && pythonRunner.capabilities.value.stdin;
+
+// 图片分支问能力：只有支持出图的后端（native/Pyodide）才会产生带 image 的输出，
+// 演示后端不产图，此守卫恒为放行，行为不变
+const canShowImages = computed(() => pythonRunner.capabilities.value.images);
+
+const logLine = (type: ConsoleOutput['type'], text: string) => {
+  const out: ConsoleOutput = { id: uid(), type, text, timestamp: new Date().toLocaleTimeString() };
+  emit('add-console-output', out);
+  emit('add-log', out);
 };
 
-const onInputKeydown = (e: KeyboardEvent) => {
-  if (e.isComposing) return;
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    submitInput();
-  }
-};
+// 输入模型与交互终端共用（历史、多行续行、粘贴多行）。就是一个普通终端：
+// 提示符恒为 `>>>`，输入交给前台——有程序在跑就进它的 stdin，否则当语句执行
+const {
+  input: inputLine,
+  prompt,
+  submit,
+  handleEnter,
+  handleKeyDown,
+  handlePaste,
+} = useReplInput({
+  onLog: logLine,
+  onOutput: (out) => emit('add-console-output', out),
+  onIntercept: (line) => {
+    if (!feedingProgram()) return false;
+    // 回显由引擎层做（等价于真实终端的 tty 回显）：它要把这行接进进程输出流的拼装器里，
+    // 否则提示串会和程序后续输出粘成一行
+    pythonRunner.submitRunInput(line);
+    return true;
+  },
+  demoMode: () => props.demoMode,
+});
+
+// 显示行：连续的部分行（同一行分多次到达）合并成一行。
+// 末行若还没结束且程序正在运行（例如停在 input("Test: ") 的提示串后面），
+// 它不在这里渲染——它的文本要作为输入行的前缀，光标才接得上。
+// 进程结束后残留的未结束行按普通行渲染（光标已经不在那里了）。
+const allLines = computed(() => toDisplayLines(props.outputs));
+const openTail = computed(() => {
+  const last = allLines.value[allLines.value.length - 1];
+  return last?.open && feedingProgram() ? last : null;
+});
+const displayLines = computed(() => (openTail.value ? allLines.value.slice(0, -1) : allLines.value));
 
 const terminalContainerRef = ref<HTMLDivElement | null>(null);
 
@@ -57,20 +84,7 @@ const toggleLogDetail = (id: string) => {
   if (expandedLogs.value.has(id)) expandedLogs.value.delete(id);
   else expandedLogs.value.add(id);
 };
-
-const getLogTypeClass = (out: ConsoleOutput) => {
-  const text = out.text || '';
-  if (out.type === 'error' || out.type === 'stderr' || text.includes('[ERROR]') || text.includes('Error:') || text.includes('Traceback')) {
-    return 'log-error';
-  }
-  if (out.type === 'warning' || text.includes('[WARN]') || text.includes('Warning:')) {
-    return 'log-warning';
-  }
-  if (out.type === 'system' || out.type === 'info' || text.includes('[INFO]') || text.startsWith('▶')) {
-    return 'log-system';
-  }
-  return 'log-stdout';
-};
+// 展示语义统一由 consoleView 判定（输出契约收口：与 REPL 同一套），此处不再有本地分支
 
 // 用户是否主动滚离底部（阅读/选中文本）：一旦滚离，新输出不再强行拉回底部
 let userScrolledAway = false;
@@ -132,31 +146,35 @@ onUnmounted(() => {
     <div class="terminal-card" :class="`theme-${props.codeTheme || 'github-dark'}`">
     <m3e-content-pane ref="terminalContainerRef" class="terminal-logs-body"
       :class="`theme-${props.codeTheme || 'github-dark'}`">
-      <div v-if="outputs.length === 0" class="terminal-placeholder"></div>
-      <template v-for="out in outputs" :key="out.id">
+      <template v-for="line in displayLines" :key="line.key">
         <!-- 可折叠详情（完整 traceback）：默认只显示展开按钮，避免刷屏 -->
-        <div v-if="out.collapsible" class="log-line log-collapsible" :class="getLogTypeClass(out)">
-          <button class="log-toggle" type="button" @click="toggleLogDetail(out.id)">
-            <span class="material-symbols-rounded">{{ expandedLogs.has(out.id) ? 'expand_less' : 'expand_more'
+        <div v-if="isCollapsible(line.out)" class="log-line log-collapsible" :class="semanticClassOf(line.out)">
+          <button class="log-toggle" type="button" @click="toggleLogDetail(line.out.id)">
+            <span class="material-symbols-rounded">{{ expandedLogs.has(line.out.id) ? 'expand_less' : 'expand_more'
               }}</span>
-            <span>{{ expandedLogs.has(out.id) ? t('tracebackCollapse') : t('tracebackExpand') }}</span>
+            <span>{{ expandedLogs.has(line.out.id) ? t('tracebackCollapse') : t('tracebackExpand') }}</span>
           </button>
-          <pre v-show="expandedLogs.has(out.id)" class="log-text">{{ out.text }}</pre>
+          <pre v-show="expandedLogs.has(line.out.id)" class="log-text">{{ line.text }}</pre>
         </div>
-        <div v-else class="log-line" :class="getLogTypeClass(out)">
-          <pre v-if="!out.image" class="log-text">{{ out.text }}</pre>
-          <img v-else class="terminal-img" :src="out.image" alt="matplotlib chart" title="点击查看大图"
-            @click="previewImage = out.image" />
+        <div v-else class="log-line" :class="semanticClassOf(line.out)">
+          <pre v-if="!isImage(line.out) || !canShowImages" class="log-text">{{ line.text }}</pre>
+          <img v-else class="terminal-img" :src="line.out.image" alt="matplotlib chart" title="点击查看大图"
+            @click="previewImage = line.out.image" />
         </div>
       </template>
-    </m3e-content-pane>
 
-    <div class="terminal-input-row">
-      <span class="terminal-input-prompt">>>></span>
-      <input ref="inputRef" v-model="inputLine" class="terminal-input" type="text"
-        :disabled="!inputEnabled" :placeholder="inputPlaceholder" autocomplete="off" autocapitalize="off"
-        spellcheck="false" @keydown="onInputKeydown" />
-    </div>
+      <!-- 输入行并入输出流：提示符与输入接在最后一条输出之后，不再单独占一行。
+           与交互终端同一套行为——始终可输入，回车执行语句；程序运行中则把行喂给它的 stdin -->
+      <div class="log-line terminal-input-line">
+        <!-- 程序正在等输入：它的提示串已经停在行尾（未结束的行），输入直接接上；
+             其余时候显示本终端的提示符 >>> / ... -->
+        <span v-if="openTail" class="terminal-input-tail">{{ openTail.text }}</span>
+        <span v-else class="terminal-input-prompt">{{ prompt }}</span>
+        <input ref="inputRef" v-model="inputLine" class="terminal-input" type="text" :placeholder="inputPlaceholder"
+          autocomplete="off" autocapitalize="off" spellcheck="false" @keydown.enter.prevent="handleEnter"
+          @keydown="handleKeyDown" @paste="handlePaste" />
+      </div>
+    </m3e-content-pane>
     </div>
 
   <!-- 图表放大查看（终端里高度受限，细节看不清时可以点开） -->
@@ -245,21 +263,21 @@ onUnmounted(() => {
   /* m3e-content-pane 的外观由 shadow 内 .base/.scroll-container 绘制，经变量控制：
      padding 单值（右端自动扣除滚动条宽度）、圆角、背景色 */
   --m3e-content-pane-container-padding: 8px;
-  /* 上圆角与编辑器区同档（16px）；下圆角交给下面的输入行，避免两处圆角打架 */
-  --m3e-content-pane-container-shape: 16px 16px 0 0;
+  /* 四角与编辑器区同档（16px）：输入行已并入内容流，下圆角不再需要单独处理 */
+  --m3e-content-pane-container-shape: 16px;
   --m3e-content-pane-container-color: var(--bg-color);
 }
 
 /* 背景跟随编辑器主题：背景绘制在 shadow 内，须经 --m3e-content-pane-container-color
    传入（与 index.css 全局 .theme-* 根规则同值）；这里补前景色 */
-.terminal-logs-body.theme-github-dark { --m3e-content-pane-container-color: #0d1117; --terminal-bg: #0d1117; color: #c9d1d9; }
-.terminal-logs-body.theme-monokai { --m3e-content-pane-container-color: #272822; --terminal-bg: #272822; color: #f8f8f2; }
-.terminal-logs-body.theme-one-dark { --m3e-content-pane-container-color: #282c34; --terminal-bg: #282c34; color: #abb2bf; }
-.terminal-logs-body.theme-vs-code { --m3e-content-pane-container-color: #1e1e1e; --terminal-bg: #1e1e1e; color: #d4d4d4; }
-.terminal-logs-body.theme-github-light { --m3e-content-pane-container-color: #ffffff; --terminal-bg: #ffffff; color: #24292e; }
-.terminal-logs-body.theme-one-light { --m3e-content-pane-container-color: #fafafa; --terminal-bg: #fafafa; color: #383a42; }
-.terminal-logs-body.theme-vs-code-light { --m3e-content-pane-container-color: #ffffff; --terminal-bg: #ffffff; color: #000000; }
-.terminal-logs-body.theme-solarized-light { --m3e-content-pane-container-color: #fdf6e3; --terminal-bg: #fdf6e3; color: #657b83; }
+.terminal-logs-body.theme-github-dark { --m3e-content-pane-container-color: #0d1117; color: #c9d1d9; }
+.terminal-logs-body.theme-monokai { --m3e-content-pane-container-color: #272822; color: #f8f8f2; }
+.terminal-logs-body.theme-one-dark { --m3e-content-pane-container-color: #282c34; color: #abb2bf; }
+.terminal-logs-body.theme-vs-code { --m3e-content-pane-container-color: #1e1e1e; color: #d4d4d4; }
+.terminal-logs-body.theme-github-light { --m3e-content-pane-container-color: #ffffff; color: #24292e; }
+.terminal-logs-body.theme-one-light { --m3e-content-pane-container-color: #fafafa; color: #383a42; }
+.terminal-logs-body.theme-vs-code-light { --m3e-content-pane-container-color: #ffffff; color: #000000; }
+.terminal-logs-body.theme-solarized-light { --m3e-content-pane-container-color: #fdf6e3; color: #657b83; }
 
 /* 所有后代均可选中：避免拖选经过 log-line 的空隙/容器时选区被 user-select:none 截断取消 */
 .terminal-logs-body *,
@@ -267,12 +285,6 @@ onUnmounted(() => {
 .terminal-logs-body *::after {
   -webkit-user-select: text !important;
   user-select: text !important;
-}
-
-.terminal-placeholder {
-  color: var(--text-tertiary);
-  font-style: italic;
-  padding: 1rem 0;
 }
 
 .log-line {
@@ -407,23 +419,26 @@ onUnmounted(() => {
   cursor: zoom-in;
 }
 
-.terminal-input-row {
-  display: flex;
+/* 输入行：与 log-line 同一套排版，行高/字号跟随终端文本；
+   原来是独立一行的输入条，保持 32px 行高与 10px 左内边距（内容层已有 8px，这里补 2px） */
+.terminal-input-line {
   align-items: center;
-  gap: 8px;
-  height: 32px;
-  padding: 0 10px;
-  font-family: var(--font-terminal);
-  font-size: 0.8125rem;
-  background-color: var(--terminal-bg, var(--bg-color));
-  flex-shrink: 0;
-  border-radius: 0 0 16px 16px;
+  min-height: 32px;
+  padding-left: 2px;
+  margin-bottom: 0;
 }
 
 .terminal-input-prompt {
   color: var(--secondary);
   font-weight: 700;
   flex-shrink: 0;
+}
+
+/* 未结束的行（程序提示串）作为输入前缀：与日志同色同字体，不做强调 */
+.terminal-input-tail {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: inherit;
 }
 
 .terminal-input {
@@ -440,23 +455,8 @@ onUnmounted(() => {
   caret-color: var(--primary);
 }
 
-.terminal-input:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
 .terminal-input::placeholder {
-  color: var(--text-tertiary);
-  opacity: 0.8;
+  color: var(--text-secondary);
+  opacity: 1;
 }
-
-/* 终端卡片整体背景（含输入行）跟随代码主题 */
-.terminal-card.theme-github-dark { --terminal-bg: #0d1117; }
-.terminal-card.theme-monokai { --terminal-bg: #272822; }
-.terminal-card.theme-one-dark { --terminal-bg: #282c34; }
-.terminal-card.theme-vs-code { --terminal-bg: #1e1e1e; }
-.terminal-card.theme-github-light { --terminal-bg: #ffffff; }
-.terminal-card.theme-one-light { --terminal-bg: #fafafa; }
-.terminal-card.theme-vs-code-light { --terminal-bg: #ffffff; }
-.terminal-card.theme-solarized-light { --terminal-bg: #fdf6e3; }
 </style>

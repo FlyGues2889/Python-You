@@ -331,7 +331,6 @@ const cancelInline = () => {
   color: var(--text-secondary);
   transition: background-color var(--motion-effects-fast), color var(--motion-effects-fast);
   position: relative;
-  border: 1px solid transparent;
 }
 
 .tree-node-item:hover {

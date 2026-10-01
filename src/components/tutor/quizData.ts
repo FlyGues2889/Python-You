@@ -70,16 +70,6 @@ export interface TopicQuiz {
   questions: QuizQuestion[];
 }
 
-// 测验题目载入编辑器时传递给 App 的载荷
-export interface QuizEditorPayload {
-  code: string;
-  topicId: string;
-  topicTitle: string;
-  isQuiz: boolean;
-  questionId: string;
-  expectedOutput: OutputExpectation;
-}
-
 export interface QuizResults {
   [topicId: string]: { [questionId: string]: 'pass' | 'fail' };
 }
@@ -94,7 +84,7 @@ export interface QuizAnswersMap {
 
 const QUIZ_ANSWERS_KEY = 'python_you_quiz_answers';
 
-export function loadQuizAnswers(): QuizAnswersMap {
+function loadQuizAnswers(): QuizAnswersMap {
   try {
     const raw = localStorage.getItem(QUIZ_ANSWERS_KEY);
     if (raw) {
@@ -105,7 +95,7 @@ export function loadQuizAnswers(): QuizAnswersMap {
   return {};
 }
 
-export function saveQuizAnswers(map: QuizAnswersMap) {
+function saveQuizAnswers(map: QuizAnswersMap) {
   try {
     localStorage.setItem(QUIZ_ANSWERS_KEY, JSON.stringify(map));
   } catch {}
@@ -227,7 +217,7 @@ export function isQuizAllCorrect(topicId: string): boolean {
 
 const COMPLETED_KEY = 'python_you_completed_topics';
 
-export function markTopicCompleted(topicId: string) {
+function markTopicCompleted(topicId: string) {
   try {
     const raw = localStorage.getItem(COMPLETED_KEY);
     let arr: string[] = [];

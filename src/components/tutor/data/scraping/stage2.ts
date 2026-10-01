@@ -1,4 +1,4 @@
-import { TutorialStage, TutorialTopic } from '../../tutorialData';
+import { TutorialStage } from '../../tutorialData';
 
 // 爬虫和数据分析系列 · 阶段二：网络与网页基础
 export const spStage2: TutorialStage = {

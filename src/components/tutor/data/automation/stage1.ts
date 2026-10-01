@@ -1,4 +1,4 @@
-import { TutorialStage, TutorialTopic } from '../../tutorialData';
+import { TutorialStage } from '../../tutorialData';
 
 // 自动化系列 · 阶段一：文件与文件夹
 export const autoStage1: TutorialStage = {

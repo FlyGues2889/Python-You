@@ -1,6 +1,6 @@
 ﻿<script setup lang="ts">
 import { ref, onMounted, watch, computed, nextTick } from 'vue';
-import { FSItem, EditorTab, ConsoleOutput, AppConfig } from './types';
+import { FSItem, ConsoleOutput, AppConfig } from './types';
 import { DEFAULT_WORKSPACE_ITEMS } from './utils/defaultWorkspace';
 import { pythonRunner } from './utils/pythonRunner';
 import { useI18n } from './utils/i18n';
@@ -22,179 +22,36 @@ import { nativePython } from './utils/nativePython';
 import { copyToClipboard } from './utils/clipboard';
 import { revealItemInDir, openPath } from '@tauri-apps/plugin-opener';
 
-import { gradeOutput } from './utils/quizGrader';
 import { uid } from './utils/id';
 import { resolveCodeTheme } from './utils/theme';
 import { backendTasks, addBackendTask, finishBackendTask, type BackendTask } from './utils/backendTasks';
 import { setQuizQuestionResult, syncQuizCompletion, getQuizQuestionResult } from './components/tutor/quizData';
+import { useSplitLayout } from './composables/useSplitLayout';
+import { useEditorTabs } from './composables/useEditorTabs';
+import { useLearningSession } from './composables/useLearningSession';
+import { useEditorCommands } from './composables/useEditorCommands';
 
 const { t, tf } = useI18n();
 
 // Component refs
 const codeEditorRef = ref<any>(null);
+// 编辑器命令通道 + 上抛状态（useEditorCommands）：标题栏/工具栏/右键菜单远程触发、撤销态/光标标签
+const { editorCommand, sendEditorCommand, editorUndoState, editorCursor, onEditorCursorChange, handleEditorCopyResult } = useEditorCommands({ onCursorChange: (p) => handleCursorChange(p), showToast });
 const fileTreeRef = ref<any>(null);
 const openFileInputRef = ref<HTMLInputElement | null>(null);
 const openFolderInputRef = ref<HTMLInputElement | null>(null);
 
-// 工作区栏(外层 split 的 start 面板)折叠——临界阻尼模型:
-// 0–220px 为死区,面板不允许停留其中。临界处复刻 m3e-split-pane 内建的 overshoot 阻尼
-// (与终端手柄一致的手感,overshootLimit=4):拖过临界时面板被压缩在锚点附近,拖得越远
-// 阻力越重;越过临界后继续拖过一段距离(180px)且至少按住 250ms 即切换状态,无需松手:
-// - 展开态拖过 220px 临界继续左拉 → 阻尼 → 再拖 180px → 折叠到 0
-// - 折叠态(0px)继续右拉 → 阻尼 → 再拖 180px → 展开到 220px
-// 时间门控保证快速拖动时面板也在临界处被按住可感知的时间,而非瞬间跳变切换
-// 切换后拖动继续生效(折叠后右拉可再次展开,展开后左拉可再次折叠),当前状态由
-// workspaceCollapsed 记录——不能用 value 判断,阻尼期间的压缩值会污染状态判定。
-// 不用组件 min/max(其松手 snap 有 250ms 回弹动画会延迟切换):直接覆写 el.value 模拟压缩,
-// input 事件在每个 mousemove 内同步触发,覆写在 paint 前完成 → 无中间态、无过渡动画。
-// 文件树最小展开宽度(px):面板低于该宽度进入死区(阻尼区)
-const WORKSPACE_MIN_EXPAND_PX = 220;
-// 手柄容器实际宽度 8px(m3eStyle.css 全局覆盖,m3e 默认 24px),flex-basis 减半 4px
-const WORKSPACE_HANDLE_HALF = 4;
-// 阻尼压缩上限(px),与组件 overshootLimit 默认 4(%)的手感一致
-const WORKSPACE_OVERSHOOT_LIMIT_PX = 4;
-// 越过临界后继续拖动超过此距离(px)立即切换折叠/展开状态。
-// 阈值即阻尼区间的长度:180px 几乎覆盖整个 220px 死区,面板在临界处被钉住,
-// 手指需持续拖过 180px(慢速拖约 0.6s)才会触发切换——阻尼感持续最久
-const WORKSPACE_DRAG_SWITCH_PX = 180;
-// 进入死区后至少保持该时长(ms)的阻尼才允许切换:快速拖动时帧间距离大,
-// 距离阈值 1~2 帧即达标,面板只"卡住"几十毫秒感知不到;时间门控保证
-// 面板在临界处被按住的时间可感知(慢速拖动距离先达标时时间早已满足,不受影响)
-const WORKSPACE_DRAG_MIN_HOLD_MS = 250;
-// 受控值:拖拽/折叠/展开后的真实 value(替换原写死的 :value="20",避免 Vue 重渲染重置面板)
-const workspaceSplitValue = ref(20);
-// 当前折叠状态(阻尼压缩值 >0 会污染 value 判定,须单独记录)
-let workspaceCollapsed = false;
-// 本次拖拽进入死区时的面板宽度起点(px):阻尼距离从该点起算,负值表示未进入死区
-let workspaceCollapsedEntryPx = -1;
-let workspaceExpandedEntryPx = -1;
-// 本次进入死区的时间戳(ms):距离达标后还需经过最小保持时长才能切换
-let workspaceDeadzoneEnteredAt = 0;
-
-const onWorkspaceSplitPointerDown = (e: Event) => {
-  const el = e.currentTarget as HTMLElement & { value: number };
-  workspaceCollapsed = (Number(el.value) || 0) <= 0;
-  workspaceCollapsedEntryPx = -1;
-  workspaceExpandedEntryPx = -1;
-};
-
-const handleWorkspaceSplitInput = (e: Event) => {
-  const el = e.currentTarget as HTMLElement & { value: number };
-  const hostWidth = el.clientWidth;
-  if (hostWidth <= 0) return;
-  const raw = Number(el.value) || 0;
-  const panePx = (raw / 100) * hostWidth - WORKSPACE_HANDLE_HALF;
-  let value = raw;
-  if (workspaceCollapsed) {
-    // 折叠态:右拉进入死区 → 阻尼锚 0;越过临界继续拉过阈值 → 立即展开
-    if (panePx > 0) {
-      if (workspaceCollapsedEntryPx < 0) {
-        workspaceCollapsedEntryPx = panePx;
-        workspaceDeadzoneEnteredAt = Date.now();
-      }
-      if (
-        panePx - workspaceCollapsedEntryPx >= WORKSPACE_DRAG_SWITCH_PX &&
-        Date.now() - workspaceDeadzoneEnteredAt >= WORKSPACE_DRAG_MIN_HOLD_MS
-      ) {
-        // 切换时两个距离起点全部重置:否则旧起点会让切换后下一帧立即再次触发(抽搐)
-        workspaceCollapsed = false;
-        workspaceCollapsedEntryPx = -1;
-        workspaceExpandedEntryPx = -1;
-        value = ((WORKSPACE_MIN_EXPAND_PX + WORKSPACE_HANDLE_HALF) / hostWidth) * 100;
-      } else {
-        const compressed =
-          (WORKSPACE_OVERSHOOT_LIMIT_PX * panePx) / (panePx + WORKSPACE_OVERSHOOT_LIMIT_PX);
-        value = ((compressed + WORKSPACE_HANDLE_HALF) / hostWidth) * 100;
-      }
-    } else {
-      // 拖回 0 或以下:贴 0,重置右拉距离起点
-      workspaceCollapsedEntryPx = -1;
-      value = 0;
-    }
-  } else if (panePx < WORKSPACE_MIN_EXPAND_PX) {
-    // 展开态:左拉过 220px 临界 → 阻尼锚 220;越过临界继续拉过阈值 → 立即折叠
-    if (workspaceExpandedEntryPx < 0) {
-      workspaceExpandedEntryPx = panePx;
-      workspaceDeadzoneEnteredAt = Date.now();
-    }
-    if (
-      workspaceExpandedEntryPx - panePx >= WORKSPACE_DRAG_SWITCH_PX &&
-      Date.now() - workspaceDeadzoneEnteredAt >= WORKSPACE_DRAG_MIN_HOLD_MS
-    ) {
-      // 切换时两个距离起点全部重置:否则旧起点会让切换后下一帧立即再次触发(抽搐)
-      workspaceCollapsed = true;
-      workspaceCollapsedEntryPx = -1;
-      workspaceExpandedEntryPx = -1;
-      value = 0;
-    } else {
-      const overshoot = WORKSPACE_MIN_EXPAND_PX - panePx;
-      const compressed =
-        (WORKSPACE_OVERSHOOT_LIMIT_PX * overshoot) / (overshoot + WORKSPACE_OVERSHOOT_LIMIT_PX);
-      value = ((WORKSPACE_MIN_EXPAND_PX - compressed + WORKSPACE_HANDLE_HALF) / hostWidth) * 100;
-    }
-  } else {
-    // 拖回 220px 以上:自由区,重置左拉距离起点
-    workspaceExpandedEntryPx = -1;
-  }
-  if (value !== raw) {
-    // 覆写组件值 → 面板被阻尼压缩在锚点附近(与组件内建 overshoot 视觉一致)
-    el.value = value;
-  }
-  workspaceSplitValue.value = value;
-};
-
-// 终端面板采用"固定像素高度"模型：窗口高度改变时终端保持像素高度不变
-// （窗口最矮时终端多高，调高窗口后仍保持该高度），而不是按 25% 比例放大
-// 露出更多内容。仅用户拖拽手柄会改变终端像素高度（下限 28px 最小高度）。
-// split-pane 拖拽时内部 value 变化并派发 input 事件——必须受控绑定（@input 同步到
-// innerSplitValue），否则窗口高度改变导致 Vue 重渲染时，组件 value 会被强制重置回 75。
-const innerSplitPaneRef = ref<HTMLElement | null>(null);
-const innerSplitMax = ref(100);
-const innerSplitValue = ref(75);
-let innerSplitResizeObserver: ResizeObserver | null = null;
-// 终端面板的固定像素高度：null 表示尚未初始化（首次用当前 25% 比例记录）
-let terminalHeightPx: number | null = null;
-
-// 拖拽/键盘调整时同步内部值，并记录新的终端像素高度作为后续保持的基准
-const onInnerSplitInput = (e: Event) => {
-  const v = Number((e.target as HTMLInputElement).value);
-  if (Number.isNaN(v)) return;
-  innerSplitValue.value = v;
-  const el = innerSplitPaneRef.value;
-  const h = el?.clientHeight || 0;
-  if (h > 0) {
-    // end 面板像素高度 = (100 - v)% × h - 4（手柄半宽），下限 28px
-    terminalHeightPx = Math.max(28, ((100 - v) / 100) * (h - 4));
-  }
-};
-
-const updateInnerSplitMax = () => {
-  const el = innerSplitPaneRef.value;
-  if (!el) return;
-  const h = el.clientHeight;
-  if (h <= 0) return;
-  // end 面板可用高度 = h - 4（手柄半宽）；拖拽上限保证终端 ≥ 28px 最小高度
-  const available = Math.max(0, h - 4);
-  innerSplitMax.value = Math.max(0, Math.min(100, ((available - 28) / h) * 100));
-  // 首次运行：以当前面板比例（初始 25%）记录终端像素高度
-  if (terminalHeightPx === null) {
-    terminalHeightPx = Math.max(28, ((100 - innerSplitValue.value) / 100) * available);
-  }
-  // 窗口高度改变：终端保持固定像素高度（最小 28px；窗口过矮放不下时占满可用高度）
-  const px = Math.min(terminalHeightPx, available);
-  innerSplitValue.value = Math.max(0, Math.min(100, ((available - px) / h) * 100));
-};
-
-const attachInnerSplitResizeObserver = () => {
-  const el = innerSplitPaneRef.value;
-  if (!el || innerSplitResizeObserver) return;
-  innerSplitResizeObserver = new ResizeObserver(updateInnerSplitMax);
-  innerSplitResizeObserver.observe(el);
-  updateInnerSplitMax();
-};
-
-// 初始挂载后确保观察器就位（activeNavTab 的切换监听放在其声明之后）
-onMounted(attachInnerSplitResizeObserver);
+// 分栏布局（工作区栏折叠阻尼 + 终端面板像素高度）：见 src/composables/useSplitLayout.ts（提示词 6 批次 1）
+const {
+  workspaceSplitValue,
+  onWorkspaceSplitPointerDown,
+  handleWorkspaceSplitInput,
+  innerSplitPaneRef,
+  innerSplitValue,
+  innerSplitMax,
+  onInnerSplitInput,
+  attachInnerSplitResizeObserver,
+} = useSplitLayout();
 
 // Context menu state
 const contextMenuState = ref<{
@@ -258,14 +115,8 @@ const handleContextMenuCopy = async () => {
     showToast(ok ? t('toastCopiedSelection') : t('toastCopyFailed'));
     return;
   }
-  // 编辑器：复制 textarea 选区
-  // copySelection 是 async 函数，必须 await —— 否则拿到 Promise（恒真），无选区时也会误报成功
-  const ok = (await codeEditorRef.value?.copySelection?.()) ?? false;
-  if (ok) {
-    showToast(t('toastCopiedToClipboard'));
-  } else {
-    showToast(t('toastSelectEditorText'));
-  }
+  // 编辑器：复制 textarea 选区；结果经 CodeEditor 的 copy-result 事件回传，提示由 App 负责
+  sendEditorCommand('copySelection');
 };
 
 const closeContextMenu = () => {
@@ -321,7 +172,7 @@ const closeMenus = () => {
   setTimeout(() => {
     const active = document.activeElement;
     if (!active || (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA')) {
-      codeEditorRef.value?.focusEditor?.();
+      sendEditorCommand('focus');
     }
   }, 60);
 };
@@ -386,8 +237,7 @@ const loadWorkspaceFromDisk = async (root: string) => {
     workspaceRootPath.value = root;
     pythonRunner.workspaceRoot = root;
     workspaceItems.value = fsEntriesToFSItems(entries);
-    openTabs.value = [];
-    activeEditorTabId.value = null;
+    resetTabs();
     safeStorage.setItem('python_you_workspace_root', root);
     await startWorkspaceWatcher();
 
@@ -462,9 +312,29 @@ const handleSnackbarToggle = (e: Event) => {
 
 // Workspace File System & Editor Tabs State
 const workspaceItems = ref<FSItem[]>([]);
-const openTabs = ref<EditorTab[]>([]);
-const activeEditorTabId = ref<string | null>(null);
 const consoleOutputs = ref<ConsoleOutput[]>([]);
+
+// 编辑器标签会话（useEditorTabs）：标签列表 / 活动标签 / 会话保存恢复 / 保存冲突 / 光标记忆
+// 依赖以惰性箭头传入：文件树助手在下方定义，调用时（而非 setup 时）才解引用
+const editorTabs = useEditorTabs({
+  getWorkspaceItems: () => workspaceItems.value,
+  getWorkspaceRoot: () => workspaceRootPath.value,
+  findItemById,
+  findFileByPath,
+  findOrLoadFileByPath,
+  ensureFileContent,
+  writeDiskFile,
+  showToast,
+  setActiveNavTab: (v: string) => { activeNavTab.value = v; },
+});
+const {
+  openTabs, activeEditorTabId, sessionCursors, unsavedDialogState, conflictState, activeTabObject,
+  saveSession, handleCursorChange, restoreSession, openFileInTab,
+  handleSelectTab, handleCloseTab, forceCloseTab,
+  handleUnsavedSave, handleUnsavedDontSave, handleUnsavedCancel,
+  handleContentChange, handleSaveTab, handleConflictOverwrite, handleConflictCancel,
+  closeTabForFileId, resetTabs, renameTabForFile, refreshTabContent,
+} = editorTabs;
 // REPL 交互终端会话记录：提升到 App 级，切换页面时保留；内存态，应用重启自动清空
 const replLogs = ref<ConsoleOutput[]>([]);
 
@@ -529,28 +399,6 @@ const onInterpreterDialogChange = async (e: Event) => {
   await selectInterpreter((e.target as any).value as string);
 };
 
-// ---- 会话恢复：上次关闭时打开的标签页 + 光标位置 ----
-const SESSION_KEY = 'python_you_session';
-const sessionCursors = ref<Record<string, { line: number; col: number }>>({});
-
-const saveSession = () => {
-  try {
-    safeStorage.setItem(
-      SESSION_KEY,
-      JSON.stringify({
-        tabs: openTabs.value.map((t) => t.path),
-        active: activeTabObject.value?.path || null,
-        cursors: sessionCursors.value
-      })
-    );
-  } catch (e) { }
-};
-
-const handleCursorChange = (payload: { path: string; line: number; col: number }) => {
-  if (!payload?.path) return;
-  sessionCursors.value[payload.path] = { line: payload.line, col: payload.col };
-  saveSession();
-};
 
 // 在（可能懒加载的）文件树中按路径查找文件；沿途未加载的文件夹从磁盘补载
 const findOrLoadFileByPath = async (items: FSItem[], path: string, root: string): Promise<FSItem | null> => {
@@ -572,35 +420,6 @@ const findOrLoadFileByPath = async (items: FSItem[], path: string, root: string)
   return null;
 };
 
-// 重新打开上次会话的标签页，并恢复活动标签与光标
-const restoreSession = async () => {
-  try {
-    const raw = safeStorage.getItem(SESSION_KEY);
-    if (!raw) return;
-    const session = JSON.parse(raw);
-    if (session.cursors) {
-      sessionCursors.value = session.cursors;
-    }
-    if (Array.isArray(session.tabs) && session.tabs.length > 0) {
-      const root = workspaceRootPath.value;
-      const files: FSItem[] = [];
-      for (const p of session.tabs as string[]) {
-        const f = root ? await findOrLoadFileByPath(workspaceItems.value, p, root) : findFileByPath(workspaceItems.value, p);
-        if (f) files.push(f);
-      }
-      openTabs.value = [];
-      // 并行读取文件内容，避免串行 IPC 拖慢启动
-      await Promise.all(files.map((f) => ensureFileContent(f)));
-      for (const f of files) {
-        openFileInTab(f);
-      }
-      if (session.active) {
-        const activeTab = openTabs.value.find((t) => t.path === session.active);
-        if (activeTab) activeEditorTabId.value = activeTab.id;
-      }
-    }
-  } catch (e) { }
-};
 
 // Initialize Workspace from LocalStorage / 本地工作区
 onMounted(async () => {
@@ -621,6 +440,9 @@ onMounted(async () => {
       finishBackendTask('load-pyodide');
     }
   };
+  // 预热 Pyodide：首次运行的 >1s 等待主要来自 Worker + WASM 加载，提前到启动后台完成。
+  // 本机 Python 可用时 warmUpPyodide 自己跳过；演示模式不需要预加载。
+  if (!config.value.demoMode) pythonRunner.warmUpPyodide();
 
   // 应用在用户目录生成文件（如运行用的临时工作区）时，用 snackbar 告知保存位置
   nativePython.onNotice = (message) => showToast(message);
@@ -751,65 +573,9 @@ const changeFontSize = (delta: number) => {
   config.value.fontSize = Math.min(24, Math.max(12, cur + delta));
 };
 
-// ---- 工作区级内容搜索（B-6）：搜索全部 .py/.txt/.md/.json/.js/.ts 文件内容 ----
-const isSearchOpen = ref(false);
-const searchQueryText = ref('');
-const searchResults = ref<{ file: FSItem; line: number; text: string }[]>([]);
-// 内容缓存：原生工作区文件按需读盘后缓存，避免重复 IPC
-const searchContentCache = new Map<string, string>();
-let searchTimer: number | undefined;
-
-const runWorkspaceSearch = async () => {
-  const q = searchQueryText.value.trim().toLowerCase();
-  if (!q) {
-    searchResults.value = [];
-    return;
-  }
-  const results: { file: FSItem; line: number; text: string }[] = [];
-  const walk = async (items: FSItem[]) => {
-    for (const item of items) {
-      if (item.isFolder) {
-        if (item.children) await walk(item.children);
-        continue;
-      }
-      if (!/\.(py|txt|md|json|js|ts)$/i.test(item.name)) continue;
-      let content = item.content || '';
-      if (!content && workspaceRootPath.value) {
-        const key = absPath(workspaceRootPath.value, item.path);
-        if (!searchContentCache.has(key)) {
-          try {
-            searchContentCache.set(key, await nativeApi.readFile(key));
-          } catch {
-            searchContentCache.set(key, '');
-          }
-        }
-        content = searchContentCache.get(key) || '';
-      }
-      if (!content) continue;
-      content.split('\n').forEach((line, i) => {
-        if (line.toLowerCase().includes(q)) {
-          results.push({ file: item, line: i + 1, text: line.trim().slice(0, 120) });
-        }
-      });
-    }
-  };
-  await walk(workspaceItems.value);
-  searchResults.value = results.slice(0, 200);
-};
-
-const onSearchInput = () => {
-  window.clearTimeout(searchTimer);
-  searchTimer = window.setTimeout(runWorkspaceSearch, 250);
-};
-
-const handleSearchResultClick = (r: { file: FSItem }) => {
-  handleSelectFile(r.file);
-  isSearchOpen.value = false;
-};
-
 const handleJumpToSearchResult = async (p: { file: FSItem; line: number }) => {
   await handleSelectFile(p.file);
-  window.setTimeout(() => codeEditorRef.value?.revealLine?.(p.line), 60);
+  window.setTimeout(() => sendEditorCommand('reveal', p.line), 60);
 };
 
 // 首次启动欢迎引导弹窗（FR-1.4）：无教程完成记录时打开
@@ -822,9 +588,6 @@ const startTutorial = () => {
 // 使用帮助弹窗
 const isHelpOpen = ref(false);
 
-// 会话：标签页与活动标签变化时保存
-watch(openTabs, saveSession, { deep: true });
-watch(activeEditorTabId, saveSession);
 
 // Theme handling
 const updateTheme = () => {
@@ -874,11 +637,7 @@ const ensureFileContent = async (file: FSItem, force = false): Promise<void> => 
       file.mtime = await nativeApi.statMtime(abs);
     } catch (e) { /* 拿不到 mtime 就不做事前比对 */ }
     // 同步已打开的标签页；有未保存修改时保留用户内容（写盘前仍会走冲突检测）
-    const tab = openTabs.value.find((t) => t.fileId === file.id);
-    if (tab && !tab.isDirty) {
-      tab.content = content;
-      tab.savedContent = content;
-    }
+    refreshTabContent(file, content);
   } catch (e) { }
 };
 
@@ -971,7 +730,6 @@ const applyWorkspaceChange = async (change: WorkspaceChange) => {
   });
   addBackendTask('workspace-sync', t('statusWorkspaceSyncing'));
   try {
-    searchContentCache.clear(); // 内容已变：清掉搜索用的读盘缓存
     for (const path of change.removed) removeItemByPath(workspaceItems.value, path);
     for (const entry of change.added) addEntryToTree(entry);
 
@@ -996,31 +754,11 @@ const applyWorkspaceChange = async (change: WorkspaceChange) => {
   }
 };
 
-function openFileInTab(file: FSItem) {
-  const existing = openTabs.value.find((t) => t.fileId === file.id);
-  if (existing) {
-    activeEditorTabId.value = existing.id;
-  } else {
-    const newTab: EditorTab = {
-      id: `tab-${file.id}`,
-      fileId: file.id,
-      name: file.name,
-      path: file.path,
-      content: file.content || '',
-      savedContent: file.content || '',
-      isDirty: false,
-      language: file.name.endsWith('.py') ? 'python' : 'plaintext'
-    };
-    openTabs.value.push(newTab);
-    activeEditorTabId.value = newTab.id;
-  }
-  activeNavTab.value = 'explorer';
-}
 
 const handleSelectFile = async (file: FSItem) => {
   // 手动从文件树打开文件 = 离开教程流程：清除教程来源，
   // 否则「检查答案/返回教程」按钮会一直出现在之后打开的 tutorial_demo.py 上
-  activeTutorialSource.value = null;
+  clearTutorialSource();
   await ensureFileContent(file, true);
   openFileInTab(file);
 };
@@ -1118,22 +856,13 @@ const handleRenameItem = (item: FSItem, newName: string) => {
   }
 
   // Update tabs if file renamed
-  const tab = openTabs.value.find((t) => t.fileId === item.id);
-  if (tab) {
-    tab.name = newName;
-    tab.path = item.path;
-  }
+  renameTabForFile(item, newName);
 
   // 原生工作区：重命名磁盘上的真实文件/文件夹
   if (workspaceRootPath.value) {
     nativeApi.renamePath(absPath(workspaceRootPath.value, oldPath), newName).then(noteSelfChange).catch(() => { });
   }
   showToast(t('toastRenamed'));
-};
-
-// Delete File/Folder
-const handleDeleteItem = (item: FSItem) => {
-  requestDeleteItem(item);
 };
 
 const confirmDelete = () => {
@@ -1145,10 +874,7 @@ const confirmDelete = () => {
     }
     removeItemFromTree(workspaceItems.value, item.id);
     // Close tab if open
-    openTabs.value = openTabs.value.filter((t) => t.fileId !== item.id);
-    if (activeEditorTabId.value === `tab-${item.id}`) {
-      activeEditorTabId.value = openTabs.value.length > 0 ? openTabs.value[0].id : null;
-    }
+    closeTabForFileId(item.id);
     pythonRunner.syncFileSystem(workspaceItems.value);
     showToast(t('toastFileDeleted').replace('{name}', item.name));
   }
@@ -1169,9 +895,10 @@ const handleRunFile = async (item: FSItem) => {
     timestamp: new Date().toLocaleTimeString()
   });
 
-  await pythonRunner.runCode(item.content || '', workspaceItems.value, (out) => {
+  const runResult = await pythonRunner.runCode(item.content || '', workspaceItems.value, (out) => {
     consoleOutputs.value.push(out);
   }, config.value.demoMode);
+  if (runResult.busy) showToast(t('toastRunnerBusy'));
 };
 
 // Download File
@@ -1222,126 +949,6 @@ const handleImportFiles = async (files: FileList) => {
   showToast(t('toastImported'));
 };
 
-// Tab Management
-const handleSelectTab = (tabId: string) => {
-  activeEditorTabId.value = tabId;
-};
-
-// Unsaved changes confirmation state
-const unsavedDialogState = ref<{
-  isOpen: boolean;
-  tabId: string | null;
-  tabName: string;
-}>({
-  isOpen: false,
-  tabId: null,
-  tabName: ''
-});
-
-const handleCloseTab = (tabId: string) => {
-  const tab = openTabs.value.find((t) => t.id === tabId);
-  if (!tab) return;
-
-  if (tab.isDirty) {
-    unsavedDialogState.value = {
-      isOpen: true,
-      tabId: tab.id,
-      tabName: tab.name
-    };
-  } else {
-    forceCloseTab(tabId);
-  }
-};
-
-const forceCloseTab = (tabId: string) => {
-  const index = openTabs.value.findIndex((t) => t.id === tabId);
-  if (index !== -1) {
-    openTabs.value.splice(index, 1);
-    if (activeEditorTabId.value === tabId) {
-      activeEditorTabId.value = openTabs.value.length > 0
-        ? openTabs.value[Math.max(0, index - 1)].id
-        : null;
-    }
-  }
-};
-
-const handleUnsavedSave = async () => {
-  const tabId = unsavedDialogState.value.tabId;
-  unsavedDialogState.value.isOpen = false;
-  if (!tabId) return;
-  await handleSaveTab(tabId);
-  // 出现保存冲突时保持标签页打开，交给冲突对话框决定
-  if (!conflictState.value) forceCloseTab(tabId);
-};
-
-const handleUnsavedDontSave = () => {
-  if (unsavedDialogState.value.tabId) {
-    forceCloseTab(unsavedDialogState.value.tabId);
-  }
-  unsavedDialogState.value.isOpen = false;
-};
-
-const handleUnsavedCancel = () => {
-  unsavedDialogState.value.isOpen = false;
-};
-
-const handleContentChange = (tabId: string, newContent: string) => {
-  const tab = openTabs.value.find((t) => t.id === tabId);
-  if (tab) {
-    tab.content = newContent;
-    tab.isDirty = tab.content !== tab.savedContent;
-  }
-};
-
-const commitSave = async (tab: EditorTab) => {
-  tab.savedContent = tab.content;
-  tab.isDirty = false;
-
-  // Only update workspace file item content on explicit save
-  const file = findItemById(workspaceItems.value, tab.fileId);
-  if (file) {
-    file.content = tab.content;
-  }
-  // 原生工作区：同时写回磁盘
-  if (workspaceRootPath.value) {
-    const abs = absPath(workspaceRootPath.value, tab.path);
-    if (file) await writeDiskFile(file, abs, tab.content);
-    else nativeApi.writeFile(abs, tab.content).catch(() => { });
-  }
-  showToast(t('toastFileSaved').replace('{name}', tab.name));
-};
-
-// NFR-5.4：保存前比对 mtime，磁盘被外部修改时挂起保存等用户确认，不静默覆盖
-const conflictState = ref<{ tabId: string; name: string } | null>(null);
-
-const handleSaveTab = async (tabId: string) => {
-  const tab = openTabs.value.find((t) => t.id === tabId);
-  if (!tab) return;
-  const file = findItemById(workspaceItems.value, tab.fileId);
-  if (workspaceRootPath.value && file?.mtime !== undefined) {
-    const abs = absPath(workspaceRootPath.value, tab.path);
-    try {
-      const current = await nativeApi.statMtime(abs);
-      if (current !== file.mtime) {
-        conflictState.value = { tabId, name: tab.name };
-        return;
-      }
-    } catch (e) { /* 文件已不存在等情况按正常保存处理 */ }
-  }
-  await commitSave(tab);
-};
-
-const handleConflictOverwrite = async () => {
-  const pending = conflictState.value;
-  conflictState.value = null;
-  if (!pending) return;
-  const tab = openTabs.value.find((t) => t.id === pending.tabId);
-  if (tab) await commitSave(tab);
-};
-
-const handleConflictCancel = () => {
-  conflictState.value = null;
-};
 
 // Tree Helper Utilities
 function findItemById(items: FSItem[], id: string): FSItem | null {
@@ -1383,56 +990,40 @@ function rebaseChildrenPaths(item: FSItem, oldPrefix: string, newPrefix: string)
   }
 }
 
-const activeTutorialSource = ref<{ id: string; title: string; isQuiz?: boolean; questionId?: string; expectedOutput?: string } | null>(null);
-const activeTutorialTopicId = ref<string>(safeStorage.getItem('python_you_last_tutorial_topic') || 'p1_home');
-const activeQuizPassed = ref(false);
-// 当前 tutorial_demo.py 缓冲区属于哪道题：同一题重复载入时保留已写入的作答
-const demoBufferKey = ref<string | null>(null);
+// 教程/测验会话（useLearningSession）：来源 / 小节 / 通过态 / 缓冲区键 / 判分对比弹窗
+const learning = useLearningSession({
+  getActiveTab: () => activeTabObject.value,
+  runCode: (code, files, onOut, demo) => pythonRunner.runCode(code, files, onOut, demo),
+  getWorkspaceItems: () => workspaceItems.value,
+  getDemoMode: () => config.value.demoMode,
+  pushConsole: (out) => { consoleOutputs.value.push(out); },
+  showToast,
+  setActiveNavTab: (v: string) => { activeNavTab.value = v; },
+  openQuizExternally: (topicId) => { tutorialViewRef.value?.openQuizExternally(topicId); },
+  quizData: {
+    getResult: (id, qid) => getQuizQuestionResult(id, qid),
+    setResult: (id, qid, v) => setQuizQuestionResult(id, qid, v),
+    syncCompletion: (id) => syncQuizCompletion(id)
+  }
+});
+const {
+  activeTutorialTopicId, activeQuizPassed, quizCompareDialog, quizCompareRows,
+  isTutorialQuizMode, canReturnToTutorial,
+  setTutorialTopicId, clearTutorialSource, beginTutorialLoad,
+  handleCheckAnswerClick, handleTutorialBtnClick,
+} = learning;
 
-// Load tutorial code to editor
+// Load tutorial code to editor：会话状态（来源/小节/通过态/缓冲区键）在 useLearningSession 设置，
+// 本函数只负责 tutorial_demo.py 的工作区缓冲（落盘 + 开标签）
 const handleLoadTutorialCodeToEditor = (payload: { code: string; topicId: string; topicTitle: string; isQuiz?: boolean; questionId?: string; expectedOutput?: string } | string) => {
-  let code = '';
-  let topicId = '';
-  let topicTitle = '';
-  let isQuiz = false;
-  let questionId = '';
-  let expectedOutput = '';
-
-  if (typeof payload === 'string') {
-    code = payload;
-  } else if (payload && typeof payload === 'object') {
-    code = payload.code || '';
-    topicId = payload.topicId || '';
-    topicTitle = payload.topicTitle || '';
-    isQuiz = !!payload.isQuiz;
-    questionId = payload.questionId || '';
-    expectedOutput = payload.expectedOutput || '';
-  }
-
-  if (topicId) {
-    activeTutorialSource.value = {
-      id: topicId,
-      title: (topicTitle || t('correspondingTutorial')) + (isQuiz ? t('quizSuffix') : ''),
-      isQuiz: isQuiz || undefined,
-      questionId: questionId || undefined,
-      expectedOutput: expectedOutput || undefined
-    };
-    activeTutorialTopicId.value = topicId;
-  }
-  if (isQuiz && questionId) {
-    activeQuizPassed.value = getQuizQuestionResult(topicId, questionId) === 'pass';
-  } else {
-    activeQuizPassed.value = false;
-  }
+  const { code, topicId, isQuiz, questionId, bufferKey, prevBufferKey } = beginTutorialLoad(payload);
 
   activeNavTab.value = 'explorer';
-  const bufferKey = isQuiz && questionId ? `${topicId}#${questionId}` : `topic:${topicId}`;
   let demoFile = workspaceItems.value.find((item) => item.name === 'tutorial_demo.py');
   const existingTab = demoFile ? openTabs.value.find((t) => t.fileId === demoFile.id) : undefined;
   // 同一道题重复载入（编辑器 ↔ 测验来回切换）时保留已写入的作答：
   // 用起始代码覆盖会把用户写好的答案改掉，之后的「检查答案」就会拿起始代码判分
-  const keepAnswer = isQuiz && !!questionId && !!existingTab && demoBufferKey.value === bufferKey;
-  demoBufferKey.value = bufferKey;
+  const keepAnswer = isQuiz && !!questionId && !!existingTab && prevBufferKey === bufferKey;
 
   if (!demoFile) {
     demoFile = {
@@ -1440,9 +1031,7 @@ const handleLoadTutorialCodeToEditor = (payload: { code: string; topicId: string
       name: 'tutorial_demo.py',
       path: '/tutorial_demo.py',
       isFolder: false,
-      content: code,
-      language: 'python',
-      modifiedAt: new Date()
+      content: code
     };
     workspaceItems.value.push(demoFile);
   }
@@ -1452,12 +1041,8 @@ const handleLoadTutorialCodeToEditor = (payload: { code: string; topicId: string
     if (workspaceRootPath.value) {
       writeDiskFile(demoFile, absPath(workspaceRootPath.value, '/tutorial_demo.py'), code);
     }
-    // 同步到已打开的标签页，编辑器立即显示最新代码
-    if (existingTab) {
-      existingTab.content = code;
-      existingTab.savedContent = code;
-      existingTab.isDirty = false;
-    }
+    // 同步到已打开的标签页，编辑器立即显示最新代码（新题载入强制覆盖，不保留旧作答）
+    if (existingTab) refreshTabContent(demoFile, code, true);
   }
   openFileInTab(demoFile);
   showToast(keepAnswer ? t('toastTutorialCodeKept') : t('toastTutorialCodeLoaded'));
@@ -1465,124 +1050,8 @@ const handleLoadTutorialCodeToEditor = (payload: { code: string; topicId: string
 
 const tutorialViewRef = ref<InstanceType<typeof TutorialView> | null>(null);
 
-// 「返回对应教程」FAB：总是回到对应小节的教程文章页（不打开测验）
-const handleReturnToTutorial = (topicId: string) => {
-  activeNavTab.value = 'tutorial';
-  if (topicId) {
-    activeTutorialTopicId.value = topicId;
-  } else {
-    activeTutorialTopicId.value = safeStorage.getItem('python_you_last_tutorial_topic') || 'p1_home';
-  }
-};
-
-// 「检查答案」FAB（已答对）：回到对应小节的测验界面
-const handleReturnToQuiz = (topicId: string) => {
-  activeNavTab.value = 'tutorial';
-  if (topicId) {
-    activeTutorialTopicId.value = topicId;
-  }
-  nextTick(() => {
-    tutorialViewRef.value?.openQuizExternally(activeTutorialTopicId.value);
-  });
-};
-
-// 测验判分失败时的输出对比弹窗状态（FR-6.5：完整期望 vs 实际，逐行高亮差异，不截断）
-const quizCompareDialog = ref<{ isOpen: boolean; expected: string; actual: string }>({
-  isOpen: false,
-  expected: '',
-  actual: ''
-});
-// 逐行对比行对：行号对齐、不同行标记 diff（供弹窗渲染）
-const quizCompareRows = computed(() => {
-  const d = quizCompareDialog.value;
-  const exp = d.expected.split('\n');
-  const act = d.actual.split('\n');
-  const len = Math.max(exp.length, act.length);
-  return Array.from({ length: len }, (_, i) => ({
-    i,
-    expected: exp[i] || '',
-    actual: act[i] || '',
-    diff: (exp[i] || '') !== (act[i] || '')
-  }));
-});
-
-const handleQuizSubmit = async () => {
-  const src = activeTutorialSource.value;
-  if (!src?.isQuiz) {
-    showToast(t('toastNotQuizCode'));
-    return;
-  }
-  const activeTab = openTabs.value.find((t) => t.id === activeEditorTabId.value);
-  if (!activeTab) {
-    showToast(t('toastOpenQuizCode'));
-    return;
-  }
-  const code = activeTab.content;
-  const stdoutParts: string[] = [];
-  const runResult = await pythonRunner.runCode(code, workspaceItems.value, (out) => {
-    consoleOutputs.value.push(out);
-    if (out.type === 'stdout') stdoutParts.push(out.text);
-  }, config.value.demoMode);
-  if (!runResult.success) {
-    showToast(t('toastRunError'));
-    return;
-  }
-  // 判分逻辑在独立判分器（utils/quizGrader）中：行序列规范化 + 逐行比对
-  const { passed, expectedLines, actualLines } = gradeOutput(stdoutParts, src.expectedOutput || '');
-  activeQuizPassed.value = passed;
-  // 已通过的题目不因再次判分失败而降级（仅「重新测验」会清除成绩）
-  const alreadyPassed = getQuizQuestionResult(src.id, src.questionId || '') === 'pass';
-  setQuizQuestionResult(src.id, src.questionId || '', passed || alreadyPassed ? 'pass' : 'fail');
-  if (passed) {
-    syncQuizCompletion(src.id);
-    showToast(t('toastQuizPassed'));
-  } else {
-    // 判分失败：打开持久对比弹窗（完整输出、逐行标红），Toast 仅作入口摘要
-    quizCompareDialog.value = {
-      isOpen: true,
-      expected: expectedLines.join('\n'),
-      actual: actualLines.join('\n')
-    };
-    showToast(t('toastQuizFailed'));
-  }
-};
-
-const activeTabObject = computed(() => {
-  return openTabs.value.find((t) => t.id === activeEditorTabId.value) || null;
-});
-
 // 格式化（补空格 + 按 Python 语法重排缩进）只对 .py 生效：其它文件按 Python 规则改会破坏正文
 const canFormatDoc = computed(() => !!activeTabObject.value?.name.endsWith('.py'));
-
-// 工具栏「检查答案 / 返回教程」可用状态：已加载 tutorial_demo.py 且处于教程/测验上下文
-// （原为 v-if 隐藏，现改为始终渲染、无上下文时禁用）
-const isTutorialQuizMode = computed(() => {
-  return !!(activeTutorialSource.value && activeTabObject.value?.name === 'tutorial_demo.py');
-});
-
-// 从测验的代码题进入编辑器时，返回目标应是测验页：工具栏「返回教程」禁用（避免绕开测验回到文章页）
-const canReturnToTutorial = computed(() => isTutorialQuizMode.value && !activeTutorialSource.value?.isQuiz);
-
-const handleCheckAnswerClick = () => {
-  const src = activeTutorialSource.value;
-  if (!src || !isTutorialQuizMode.value) return;
-  // 以存储的作答记录为准（「重新测验」清除成绩后，编辑器里的按钮状态随之回退）
-  const passed = src.questionId ? getQuizQuestionResult(src.id, src.questionId) === 'pass' : false;
-  activeQuizPassed.value = passed;
-  if (passed) {
-    // 已通过后再点击：返回测验页，同时再次给出通过反馈（snackbar）
-    showToast(t('toastQuizPassed'));
-    handleReturnToQuiz(src.id);
-  } else {
-    handleQuizSubmit();
-  }
-};
-
-const handleTutorialBtnClick = () => {
-  const src = activeTutorialSource.value;
-  if (!src || !canReturnToTutorial.value) return;
-  handleReturnToTutorial(src.id);
-};
 
 /* 全局滚动条 hover 显示（VS Code 风格）：
    mouseover 时沿 composedPath（含 shadow DOM 内元素）找第一个可滚动容器，
@@ -1700,24 +1169,24 @@ onMounted(() => {
           </m3e-menu>
 
           <m3e-menu id="editMenu">
-            <m3e-menu-item @click="codeEditorRef?.triggerCopy()">
+            <m3e-menu-item @click="sendEditorCommand('copy')">
               <span slot="icon" class="material-symbols-rounded">content_copy</span>
               {{ t('copy') }}
             </m3e-menu-item>
-            <m3e-menu-item @click="codeEditorRef?.triggerCut()">
+            <m3e-menu-item @click="sendEditorCommand('cut')">
               <span slot="icon" class="material-symbols-rounded">content_cut</span>
               {{ t('cut') }}
             </m3e-menu-item>
-            <m3e-menu-item @click="codeEditorRef?.triggerPaste()">
+            <m3e-menu-item @click="sendEditorCommand('paste')">
               <span slot="icon" class="material-symbols-rounded">content_paste</span>
               {{ t('paste') }}
             </m3e-menu-item>
             <m3e-divider></m3e-divider>
-            <m3e-menu-item @click="codeEditorRef?.openFindBar()">
+            <m3e-menu-item @click="sendEditorCommand('find')">
               <span slot="icon" class="material-symbols-rounded">search</span>
               {{ t('find') }}
             </m3e-menu-item>
-            <m3e-menu-item @click="codeEditorRef?.openReplaceBar()">
+            <m3e-menu-item @click="sendEditorCommand('replace')">
               <span slot="icon" class="material-symbols-rounded">find_replace</span>
               {{ t('replace') }}
             </m3e-menu-item>
@@ -1781,11 +1250,11 @@ onMounted(() => {
               <span class="material-symbols-rounded">save</span>
             </m3e-icon-button>
 
-            <m3e-icon-button size="extra-small" class="marginBtn" :disabled="!codeEditorRef?.canUndo"
+            <m3e-icon-button size="extra-small" class="marginBtn" :disabled="!editorUndoState.canUndo"
               :title="t('undoTitle')" @click="codeEditorRef?.undo()">
               <span class="material-symbols-rounded">undo</span>
             </m3e-icon-button>
-            <m3e-icon-button size="extra-small" :disabled="!codeEditorRef?.canRedo" :title="t('redoTitle')"
+            <m3e-icon-button size="extra-small" :disabled="!editorUndoState.canRedo" :title="t('redoTitle')"
               @click="codeEditorRef?.redo()">
               <span class="material-symbols-rounded">redo</span>
             </m3e-icon-button>
@@ -1804,11 +1273,11 @@ onMounted(() => {
             </m3e-icon-button>
             <!-- 查找 / 替换 -->
             <m3e-icon-button class="marginBtn" size="extra-small" :disabled="!activeTabObject" :title="t('find')"
-              @click="codeEditorRef?.openFindBar()">
+              @click="sendEditorCommand('find')">
               <span class="material-symbols-rounded">search</span>
             </m3e-icon-button>
             <m3e-icon-button size="extra-small" :disabled="!activeTabObject" :title="t('replace')"
-              @click="codeEditorRef?.openReplaceBar()">
+              @click="sendEditorCommand('replace')">
               <span class="material-symbols-rounded">find_replace</span>
             </m3e-icon-button>
             <m3e-icon-button size="extra-small" :disabled="!canFormatDoc" :title="t('formatDoc')"
@@ -1818,8 +1287,8 @@ onMounted(() => {
           </div>
 
           <div class="toolbar-group">
-            <!-- 运行 / 停止 -->
-            <template v-if="codeEditorRef?.isExecuting">
+            <!-- 运行 / 停止：停止按钮只在当前后端可中断时出现（演示引擎瞬时执行且不可中断，不显示停止） -->
+            <template v-if="pythonRunner.isRunning.value && pythonRunner.capabilities.value.interrupt !== 'none'">
               <m3e-button variant="text" size="extra-small" class="stopBtn" width="wide"
                 :title="t('stopCode')" @click="codeEditorRef?.stopCode()">
                 <span slot="icon" class="material-symbols-rounded">stop</span>
@@ -1860,8 +1329,8 @@ onMounted(() => {
 
           <div class="right-toolbar-group">
             <span class="cursor-position-tag">
-              {{ t('cursorPositionText').replace('{line}', String(codeEditorRef?.cursorLine ?? 1)).replace('{col}',
-                String(codeEditorRef?.cursorCol ?? 1)) }}
+              {{ t('cursorPositionText').replace('{line}', String(editorCursor.line)).replace('{col}',
+                String(editorCursor.col)) }}
             </span>
           </div>
         </div>
@@ -1888,7 +1357,8 @@ onMounted(() => {
               <m3e-card slot="start">
                 <CodeEditor ref="codeEditorRef" :tabs="openTabs" :active-tab-id="activeEditorTabId" :config="config"
                   :workspace-files="workspaceItems" :code-theme="resolvedCodeTheme" :initial-cursors="sessionCursors"
-                  @cursor-change="handleCursorChange" @select-tab="handleSelectTab" @close-tab="handleCloseTab"
+                  :command="editorCommand" @undo-state="editorUndoState = $event" @copy-result="handleEditorCopyResult"
+                  @cursor-change="onEditorCursorChange" @select-tab="handleSelectTab" @close-tab="handleCloseTab"
                   @content-change="handleContentChange" @save-tab="handleSaveTab"
                   @add-console-output="out => consoleOutputs.push(out)"
                   @contextmenu-editor="e => openContextMenu(e, 'editor')" @jump-to-file="handleJumpToSearchResult"
@@ -1896,8 +1366,9 @@ onMounted(() => {
               </m3e-card>
 
               <m3e-card slot="end" class="terminal-card">
-                <TerminalPanel :outputs="consoleOutputs" :code-theme="resolvedCodeTheme" @clear="consoleOutputs = []"
-                  @add-console-output="out => consoleOutputs.push(out)"
+                <TerminalPanel :outputs="consoleOutputs" :code-theme="resolvedCodeTheme" :demo-mode="!!config.demoMode"
+                  @clear="consoleOutputs = []" @add-console-output="out => consoleOutputs.push(out)"
+                  @add-log="out => replLogs.push(out)"
                   @contextmenu-terminal="e => openContextMenu(e, 'terminal', null, 'run')" />
               </m3e-card>
             </m3e-split-pane>
@@ -1909,7 +1380,7 @@ onMounted(() => {
           <!-- Python Tutorial View -->
           <TutorialView ref="tutorialViewRef" v-if="activeNavTab === 'tutorial'"
             :active-topic-id-prop="activeTutorialTopicId"
-            @update-active-topic="id => { activeTutorialTopicId = id; safeStorage.setItem('python_you_last_tutorial_topic', id); }"
+            @update-active-topic="setTutorialTopicId"
             @load-code-to-editor="handleLoadTutorialCodeToEditor"
             @contextmenu-tutorial="e => openContextMenu(e, 'tutorial')" />
 
@@ -2028,7 +1499,6 @@ onMounted(() => {
         <span class="m3e-dialog-title">{{ t('interpreter') }}</span>
       </span>
       <div class="interpreter-dialog-body">
-        <!-- <p class="m3e-dialog-desc">{{ t('interpreterSubtitle') }}</p> -->
         <p class="interpreter-current-status">
           {{ interpreterError || engineLabel || t('engineLabelDefault') }}
         </p>
@@ -2154,8 +1624,8 @@ onMounted(() => {
     <!-- Custom Right-Click Context Menu -->
     <ContextMenu :visible="contextMenuState.visible" :x="contextMenuState.x" :y="contextMenuState.y"
       :type="contextMenuState.type" :target-item="contextMenuState.targetItem" @close="closeContextMenu"
-      @copy="handleContextMenuCopy" @cut="codeEditorRef?.triggerCut()" @paste="codeEditorRef?.triggerPaste()"
-      @find="codeEditorRef?.openFindBar()" @replace="codeEditorRef?.openReplaceBar()"
+      @copy="handleContextMenuCopy" @cut="sendEditorCommand('cut')" @paste="sendEditorCommand('paste')"
+      @find="sendEditorCommand('find')" @replace="sendEditorCommand('replace')"
       @new-file="handleCreateFile(contextMenuState.targetItem?.isFolder ? contextMenuState.targetItem.id : null, 'untitled.py')"
       @new-folder="handleCreateFolder(contextMenuState.targetItem?.isFolder ? contextMenuState.targetItem.id : null, 'new_folder')"
       @rename="item => fileTreeRef.value?.startRename(item)" @delete="item => requestDeleteItem(item)"
@@ -2282,13 +1752,6 @@ m3e-nav-rail {
 .backend-task-panel {
   min-width: 15rem;
   padding: 2px 0;
-}
-
-.backend-task-panel-title {
-  margin: 0 0 6px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--text-secondary);
 }
 
 .backend-task-empty {
@@ -2672,99 +2135,6 @@ m3e-snackbar.app-snackbar {
   text-align: right;
   color: var(--text-tertiary);
   user-select: none;
-}
-
-/* 工作区内容搜索弹窗 */
-.workspace-search-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 32rem;
-  max-width: 44rem;
-}
-
-.workspace-search-input {
-  width: 100%;
-  box-sizing: border-box;
-  height: 34px;
-  padding: 0 12px;
-  font-size: 0.875rem;
-  font-family: inherit;
-  border: 1px solid var(--border-color-muted);
-  border-radius: 8px;
-  background-color: var(--surface-variant);
-  color: var(--text-color);
-  outline: none;
-}
-
-.workspace-search-input:focus {
-  border: 2px solid var(--primary);
-  padding: 0 11px;
-  background-color: var(--surface-color);
-}
-
-.workspace-search-count {
-  font-size: 0.75rem;
-  color: var(--text-tertiary);
-}
-
-.workspace-search-results {
-  max-height: 45vh;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.workspace-search-item {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  text-align: left;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 6px 8px;
-  border-radius: 8px;
-  font-size: 0.8125rem;
-  font-family: inherit;
-}
-
-.workspace-search-item:hover {
-  background-color: color-mix(in srgb, var(--primary) 10%, transparent);
-}
-
-.ws-item-name {
-  font-weight: 700;
-  color: var(--primary);
-  flex-shrink: 0;
-  max-width: 40%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ws-item-line {
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-  min-width: 3ch;
-  text-align: right;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-}
-
-.ws-item-text {
-  color: var(--text-color);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workspace-search-empty {
-  padding: 1rem;
-  text-align: center;
-  font-size: 0.8125rem;
-  color: var(--text-tertiary);
 }
 
 m3e-card {

@@ -1,6 +1,6 @@
 [package]
 name = "python-you"
-version = "0.3.71"
+version = "0.3.72"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"

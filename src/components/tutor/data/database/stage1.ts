@@ -1,4 +1,4 @@
-import { TutorialStage, TutorialTopic } from '../../tutorialData';
+import { TutorialStage } from '../../tutorialData';
 
 // 数据库系列 · 阶段一：入门与 SQLite
 export const dbStage1: TutorialStage = {

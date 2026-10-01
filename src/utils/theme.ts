@@ -4,7 +4,7 @@ import { AppConfig } from '../types';
 // 系统暗色偏好（响应式）：跟随系统主题（themeMode='system'）时用于映射代码主题，
 // 系统偏好变化会触发依赖它的 computed 重算（App.vue/SettingsView.vue 共用）
 const mq = window.matchMedia('(prefers-color-scheme: dark)');
-export const isSystemDark = ref(mq.matches);
+const isSystemDark = ref(mq.matches);
 mq.addEventListener('change', (e) => {
   isSystemDark.value = e.matches;
 });

@@ -41,7 +41,8 @@ const indentColumnAt = (doc: string, pos: number, tabSize: number): number | nul
 export const isInsideStringAt = (doc: string, pos: number, tabSize: number): boolean => {
   if (pos <= 0) return false;
   const tree = syntaxTree(stateFor(doc, tabSize));
-  for (let node = tree.resolveInner(Math.min(pos, doc.length) - 1, 1); node; node = node.parent) {
+  const start = tree.resolveInner(Math.min(pos, doc.length) - 1, 1);
+  for (let node: typeof start | null = start; node; node = node.parent) {
     if (node.name === 'String' || node.name === 'FormatString') return node.to >= pos;
   }
   return false;

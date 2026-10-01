@@ -1,4 +1,4 @@
-import { TutorialStage, TutorialTopic } from '../../tutorialData';
+import { TutorialStage } from '../../tutorialData';
 
 // 参考手册：内容只保留正文与表格（kind: 'reference' → 渲染时不出小节标题、不显示代码与贴士）
 export const cmdHelp: TutorialStage = {

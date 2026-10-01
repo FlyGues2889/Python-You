@@ -1,4 +1,4 @@
-import { TutorialStage, TutorialTopic } from '../../tutorialData';
+import { TutorialStage } from '../../tutorialData';
 
 // 数据库系列 · 阶段二：进阶查询
 export const dbStage2: TutorialStage = {

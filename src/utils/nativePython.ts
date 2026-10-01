@@ -5,12 +5,36 @@ import { nativeApi, type PythonVersion } from './native';
 import { t, tf } from './i18n';
 import { isInstallProgressLine, parseInstallProgress } from './installProgress';
 import { createStderrSink, emitError } from './errorSummary';
-import type { ConsoleOutput, FSItem } from '../types';
+import { createLineAssembler } from './consoleLines';
+import { extractImportsFromCode } from './packageUtils';
+import type { ConsoleOutput, FSItem, RunResult } from '../types';
+import type { BackendCapabilities } from '../engine/types';
 import { uid } from './id';
 
 type Session = 'run' | 'repl' | 'pip';
 
 const now = () => new Date().toLocaleTimeString();
+
+/**
+ * 代码（含工作区里的本地模块）是否用到 matplotlib —— 决定要不要挂绘图钩子。
+ * 钩子里 `import matplotlib` 实测约 +670ms（空脚本 81ms → 752ms），而绝大多数运行根本不画图。
+ * 只按当前文件与前缀模块名判断会漏掉「main.py → 本地模块 → matplotlib」这种间接引用，
+ * 所以对工作区里的 .py 一起扫（内容都在内存里，代价可忽略）。
+ */
+const needsPlotHook = (code: string, files: FSItem[]): boolean => {
+  // 不 import matplotlib 也可能画图（pandas 的 df.plot()、seaborn 等），文本上出现绘图调用
+  // 就挂钩子：漏钩子的代价是「图不出来」，比多花 670ms 严重。
+  const PLOT_CALL = /\.plot\(|plt\.|pyplot|savefig|\.bar\(|\.scatter\(|\.hist\(/;
+  const usesPlot = (src: string) =>
+    PLOT_CALL.test(src) ||
+    extractImportsFromCode(src).some((m) => m === 'matplotlib' || m === 'pylab');
+  if (usesPlot(code)) return true;
+  const walk = (list: FSItem[]): boolean =>
+    list.some((item) =>
+      item.isFolder ? !!item.children && walk(item.children) : item.name.endsWith('.py') && usesPlot(item.content || '')
+    );
+  return walk(files);
+};
 
 // matplotlib 前置钩子：切 Agg 无头后端，把图捕获成 PNG（base64 单行打印），
 // 由下面的 stdout 行解析转成终端内图片。未安装 matplotlib 时静默跳过。
@@ -73,11 +97,16 @@ except Exception:
 const IMG_PREFIX = '@@PYSTUDIO_IMG@@';
 
 /** stdout 的一行若为图片标记，返回 data URL（供终端 <img> 显示），否则返回 null */
-export const imageFromMarkerLine = (text: string): string | null =>
+const imageFromMarkerLine = (text: string): string | null =>
   text.startsWith(IMG_PREFIX) ? 'data:image/png;base64,' + text.slice(IMG_PREFIX.length) : null;
 
+// REPL 子进程（python -u -i -c，stdin 是管道）把自己的 `>>> ` / `... ` 提示符写到 stderr，
+// 且可能被读成 `>`、`>> ` 这样的碎片。仅由 >、. 与空白组成的片段一定是提示符；
+// 要求非空——空片段是「这一行到此结束」的信号，丢掉会破坏 stderr 汇流的攒段语义。
+export const REPL_PROMPT_FRAGMENT = /^[>.\s]+$/;
+
 // 过滤 REPL 会话中 Python 打印的 >>> / ... 提示符
-function cleanReplLine(text: string): string {
+export function cleanReplLine(text: string): string {
   const trimmed = text.trim();
   if (!trimmed || trimmed === '>>>' || trimmed === '...') return '';
   return text.replace(/^\s*(>>>|\.\.\.)\s*/, '');
@@ -88,7 +117,7 @@ class NativePythonRunner {
   private pythonAvailable = false;
   private pythonVersion = '';
   private listenerRegistered = false;
-  private listeners: Record<Session, ((kind: string, text: string) => void) | null> = {
+  private listeners: Record<Session, ((kind: string, text: string, partial?: boolean) => void) | null> = {
     run: null,
     repl: null,
     pip: null,
@@ -96,14 +125,46 @@ class NativePythonRunner {
   private replStarted = false;
   // REPL 的 stderr 汇流（跨行攒 traceback），换会话或换输出回调时重建
   private replStderr: { sink: ReturnType<typeof createStderrSink>; onOutput: (out: ConsoleOutput) => void } | null = null;
+  // REPL 的 stdout 行拼装器（跨事件拼「正在写的那一行」）；不发未结束的片段——
+  // 子进程的 `>>> ` 提示符正是这种片段，发出来会多出一串 `>`
+  private replStdout = createLineAssembler({ emitPartial: false });
+  // run 会话的 stdout 拼装器与输出通道：stdin 回显要接进同一条流里
+  private runStdout = createLineAssembler();
+  private runOutput: ((out: ConsoleOutput) => void) | null = null;
 
-  private resetReplStderr() {
+  /** 送出一段 run 会话的 stdout：完整行识别图片标记，未结束的行按 partial 送出 */
+  private pushRunStdout(text: string, partial: boolean) {
+    const onOutput = this.runOutput;
+    if (!onOutput) return;
+    const { completeLines, partialText } = this.runStdout.push(text, partial);
+    for (const line of completeLines) {
+      const image = imageFromMarkerLine(line);
+      if (image) onOutput({ id: uid(), type: 'stdout', text: '', image, timestamp: now() });
+      else onOutput({ id: uid(), type: 'stdout', text: line + '\n', timestamp: now() });
+    }
+    if (partialText) {
+      onOutput({ id: uid(), type: 'stdout', text: partialText, partial: true, timestamp: now() });
+    }
+  }
+
+  private resetReplBuffers() {
     this.replStderr?.sink.flush();
     this.replStderr = null;
+    this.replStdout = createLineAssembler({ emitPartial: false });
   }
   private tempWorkspacePath: string | null = null;
   // run 会话是否正在运行：终端底部输入框据此启用（程序可能阻塞在 input()）
   public runActive = ref(false);
+
+  // 能力描述符（ARCHITECTURE §2.4）：本机子进程流式输出、出图、stdin 交互、可杀进程中断、REPL repr 回显
+  public readonly capabilities: BackendCapabilities = {
+    streaming: true,
+    images: true,
+    stdin: true,
+    replStdin: true,
+    interrupt: 'process',
+    valueEcho: 'repr',
+  };
 
   public statusLabel = ref(t('engineLabelDefault'));
   // 本机可用的解释器列表（python / python3 / py 及其具体版本），供设置页与版本管理器展示
@@ -167,7 +228,9 @@ class NativePythonRunner {
     if (this.listenerRegistered) return;
     await nativeApi.onPythonEvent((e) => {
       const handler = this.listeners[e.session as Session];
-      if (handler) handler(e.kind, e.text);
+      // partial 必须一起转发：漏掉它每个片段都会被当成「整行」，
+      // 图片标记行的前半段会被识别成一张坏图、后半段当 base64 文本显示出来
+      if (handler) handler(e.kind, e.text, e.partial);
     });
     this.listenerRegistered = true;
   }
@@ -192,7 +255,12 @@ class NativePythonRunner {
     workspaceFiles: FSItem[],
     onOutput: (out: ConsoleOutput) => void,
     nativeRoot: string | null
-  ): Promise<{ success: boolean; durationMs: number }> {
+  ): Promise<RunResult> {
+    // 并发闸门：run 会话单槽，已有在飞时拒绝重入——不能静默覆盖监听器，
+    // 否则旧进程的 done("-1") 会被新监听器误判成新运行的失败
+    if (this.listeners['run']) {
+      return { success: false, busy: true, durationMs: 0, failureKind: 'interrupted' };
+    }
     const startTime = performance.now();
     const session: Session = 'run';
     await this.ensureListener();
@@ -209,16 +277,14 @@ class NativePythonRunner {
       // FR-4.5：stderr 里的 traceback 攒完整段再输出（摘要置顶 + 完整 traceback 折叠），
       // 与 Pyodide 路径同一套行为
       const stderr = createStderrSink(onOutput);
-      this.listeners[session] = (kind, text) => {
+      // 流式片段拼成整行：图片标记行要整行才认，未结束的行按 partial 实时送出
+      this.runOutput = onOutput;
+      this.runStdout = createLineAssembler();
+      this.listeners[session] = (kind, text, partial = false) => {
         if (kind === 'stdout') {
-          const image = imageFromMarkerLine(text);
-          if (image) {
-            onOutput({ id: uid(), type: 'stdout', text: '', image, timestamp: now() });
-            return;
-          }
-          onOutput({ id: uid(), type: 'stdout', text: text + '\n', timestamp: now() });
+          this.pushRunStdout(text, partial);
         } else if (kind === 'stderr') {
-          stderr.push(text);
+          stderr.push(text, partial);
         } else if (kind === 'done') {
           stderr.flush();
           this.listeners[session] = null;
@@ -230,18 +296,20 @@ class NativePythonRunner {
             text: tf('processExited', { code: text, duration }),
             timestamp: now(),
           });
-          resolve({ success: text === '0', durationMs: duration });
+          resolve({ success: text === '0', durationMs: duration, failureKind: text === '0' ? undefined : 'exitCode' });
         } else if (kind === 'error') {
           stderr.flush();
           this.listeners[session] = null;
           this.runActive.value = false;
           emitError(onOutput, text);
-          resolve({ success: false, durationMs: Math.round(performance.now() - startTime) });
+          resolve({ success: false, durationMs: Math.round(performance.now() - startTime), failureKind: 'exception' });
         }
       };
       try {
         const cwd = await this.resolveCwd(workspaceFiles, nativeRoot);
-        await nativeApi.runPython(MATPLOTLIB_HOOK + '\n' + code, cwd);
+        // 不用 matplotlib 就不挂钩子：省掉每次运行约 670ms 的 import 开销
+        const hook = needsPlotHook(code, workspaceFiles) ? MATPLOTLIB_HOOK + '\n' : '';
+        await nativeApi.runPython(hook + code, cwd);
       } catch (err: any) {
         this.listeners[session] = null;
         this.runActive.value = false;
@@ -251,34 +319,45 @@ class NativePythonRunner {
           text: err?.message || String(err),
           timestamp: now(),
         });
-        resolve({ success: false, durationMs: Math.round(performance.now() - startTime) });
+        resolve({ success: false, durationMs: Math.round(performance.now() - startTime), failureKind: 'exception' });
       }
     });
   }
 
   // 终端底部输入框：把一行写入正在运行脚本的 stdin（input() 交互）
   public writeRunInput(line: string): Promise<void> {
+    // 伪 tty 回显：用户输入接在未结束的提示串后面并结束该行（真实终端里由 tty 完成这件事）
+    this.pushRunStdout(line + '\n', false);
     return nativeApi.runPythonInput(line);
   }
 
-  private forwardRepl(kind: string, text: string, onOutput: (out: ConsoleOutput) => void) {
+  private forwardRepl(kind: string, text: string, onOutput: (out: ConsoleOutput) => void, partial = false) {
     if (kind === 'stdout') {
-      // 与脚本运行路径共用同一套判定：REPL 里画图也直接出图
-      const image = imageFromMarkerLine(text);
-      if (image) {
-        onOutput({ id: uid(), type: 'stdout', text: '', image, timestamp: now() });
-        return;
+      // 只取完整行：REPL 子进程每执行一句都会先打印自己的 `>>> ` / `... ` 提示符（不带换行，
+      // 正好以未结束的片段形式到达）。界面上已经有自己的提示符，把片段显示出来会多出一串 `>`；
+      // 片段仍留在拼装器里参与拼行，整行到齐后由 cleanReplLine 统一去掉提示符。
+      const { completeLines } = this.replStdout.push(text, partial);
+      for (const line of completeLines) {
+        // 与脚本运行路径共用同一套判定：REPL 里画图也直接出图
+        const image = imageFromMarkerLine(line);
+        if (image) {
+          onOutput({ id: uid(), type: 'stdout', text: '', image, timestamp: now() });
+          continue;
+        }
+        const cleaned = cleanReplLine(line);
+        if (cleaned) onOutput({ id: uid(), type: 'stdout', text: cleaned + '\n', timestamp: now() });
       }
-      const cleaned = cleanReplLine(text);
-      if (cleaned) onOutput({ id: uid(), type: 'stdout', text: cleaned + '\n', timestamp: now() });
     } else if (kind === 'stderr') {
+      // 提示符碎片在进汇流之前丢掉：攒进去会变成一串 `>` 的裸输出。
+      // 真实 traceback 仍原样交给 sink，由它攒段、出摘要与可折叠详情（FR-4.5）
+      if (REPL_PROMPT_FRAGMENT.test(text)) return;
       // FR-4.5：REPL 与脚本运行共用同一套错误摘要（摘要置顶 + traceback 折叠）
       if (!this.replStderr || this.replStderr.onOutput !== onOutput) {
         this.replStderr = { sink: createStderrSink(onOutput), onOutput };
       }
-      this.replStderr.sink.push(text);
+      this.replStderr.sink.push(text, partial);
     } else if (kind === 'done') {
-      this.resetReplStderr();
+      this.resetReplBuffers();
       this.replStarted = false;
       this.listeners['repl'] = null;
       onOutput({ id: uid(), type: 'system', text: t('replSessionEnded'), timestamp: now() });
@@ -291,11 +370,10 @@ class NativePythonRunner {
     nativeRoot: string | null
   ): Promise<any> {
     const session: Session = 'repl';
-    onOutput({ id: uid(), type: 'input', text: `>>> ${statement}`, timestamp: now() });
     await this.ensureListener();
 
     // REPL 会话是持久的，但每条语句传入的 onOutput 回调可能不同，这里始终更新
-    this.listeners[session] = (kind, text) => this.forwardRepl(kind, text, onOutput);
+    this.listeners[session] = (kind, text, partial) => this.forwardRepl(kind, text, onOutput, partial);
 
     if (!this.replStarted) {
       try {
@@ -433,7 +511,7 @@ class NativePythonRunner {
     } catch {
       // ignore
     }
-    this.resetReplStderr();
+    this.resetReplBuffers();
     this.replStarted = false;
     this.runActive.value = false;
   }

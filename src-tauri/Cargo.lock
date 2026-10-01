@@ -2763,7 +2763,7 @@ dependencies = [
 
 [[package]]
 name = "python-you"
-version = "0.3.71"
+version = "0.3.72"
 dependencies = [
  "chrono",
  "hex",

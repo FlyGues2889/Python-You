@@ -210,6 +210,8 @@ const translations = {
     toastNotQuizCode: '当前不是测验代码，无法提交',
     toastOpenQuizCode: '请先打开测验代码',
     toastRunError: '运行出错，请查看终端中的错误信息',
+    toastRunnerBusy: '已有程序在运行，请先停止再试',
+    toastDemoUnsupported: '演示模式无法执行这段代码，请查看终端中的提示',
     toastQuizPassed: '测验通过，输出完全正确！',
     toastQuizFailed: '输出与预期不符，请查看对比详情',
     correspondingTutorial: '对应教程',
@@ -253,7 +255,6 @@ const translations = {
     quizAnswerCorrectDesc: '已通过，返回测验',
     checkAnswer: '答案',
     outputTerminalTitle: '输出',
-    terminalInputPlaceholder: '等待程序输入…',
     fontSizeIncrease: '增大编辑器字体',
     fontSizeDecrease: '减小编辑器字体',
     tracebackExpand: '展开完整错误信息',
@@ -274,8 +275,6 @@ const translations = {
     helpTutorialText: '“教程”页面内置 Python 入门课程与课后测验；测验代码通过“检查答案”按钮自动校验输出。',
     helpSettingsTitle: '偏好设置',
     helpSettingsText: '“设置”页面可调整外观主题、代码配色、字号、Tab 宽度等，所有修改即时生效并自动保存。',
-
-    // Package Manager
 
     // Quiz / Tutorial UI
     backToLearnHome: '返回学习首页',
@@ -378,6 +377,7 @@ const translations = {
     pyodideInputCanceled: '[INFO] 已取消输入，本次执行中止。',
     pyodideInputTooMany: '输入次数超过上限，已中止执行（代码中可能存在无限输入循环）。',
     pyodideReplInputUnsupported: '[INFO] WASM 引擎的交互终端暂不支持 input()，请把代码放入编辑器运行。',
+    runnerBusy: '[INFO] 已有程序在运行，本次执行被拒绝。请先点击「停止」再运行。',
     demoModeRunning: '[演示模式] 正在以演示引擎执行（非真实 Python 运行）...',
     demoExecuted: '[演示模式] 演示引擎执行结束（非真实 Python 运行，结果仅供演示）。',
     demoUnsupportedWarning: '[演示模式] 警告：代码中有 {count} 处语句无法由演示引擎执行（第 {lines} 行），这些语句未运行，结果不完整。',
@@ -432,12 +432,7 @@ const translations = {
     backendTaskDone: '完成',
     backendTaskFailed: '失败',
 
-    // 工作区内容搜索
-    workspaceSearch: '搜索工作区内容',
-    workspaceSearchPlaceholder: '搜索文件内容（.py / .txt / .md / .json / .js / .ts）...',
-    searchResultCount: '找到 {count} 处匹配',
-    workspaceSearchEmpty: '未找到匹配内容',
-    otherFilesMatches: '其他文件：{count} 处匹配',
+otherFilesMatches: '其他文件：{count} 处匹配',
     jump: '跳转',
     formatDoc: '格式化文档 (Shift+Alt+F)',
     formattedDoc: '已格式化文档',

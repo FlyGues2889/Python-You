@@ -21,6 +21,8 @@ const props = defineProps<{
   workspaceFiles: FSItem[];
   codeTheme?: string; // 已解析的代码主题（'system' 由 App.vue 映射为具体主题）
   initialCursors?: Record<string, { line: number; col: number }>;
+  // App 侧命令通道（批次 4）：标题栏/工具栏/右键菜单经 command prop 触发编辑器内部动作
+  command?: { cmd: string; arg?: unknown; seq: number } | null;
 }>();
 
 const emit = defineEmits<{
@@ -33,13 +35,16 @@ const emit = defineEmits<{
   (e: 'cursor-change', payload: { path: string; line: number; col: number }): void;
   (e: 'show-toast', msg: string): void;
   (e: 'jump-to-file', payload: { file: FSItem; line: number }): void;
+  (e: 'undo-state', state: { canUndo: boolean; canRedo: boolean }): void;
+  (e: 'copy-result', ok: boolean): void;
 }>();
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const lineNumbersRef = ref<HTMLDivElement | null>(null);
 const codeHighlightRef = ref<HTMLPreElement | null>(null);
 
-const isExecuting = ref(false);
+// 运行会话状态由门面统一维护（阶段 3）：三个运行入口共用 pythonRunner.isRunning
+const isExecuting = computed(() => pythonRunner.isRunning.value);
 const cursorLine = ref(1);
 const cursorCol = ref(1);
 
@@ -893,8 +898,6 @@ watch(() => props.activeTabId, closeCompletions);
 const handleRunCode = async () => {
   if (!activeTab.value || isExecuting.value) return;
 
-  isExecuting.value = true;
-
   emit('add-console-output', {
     id: uid(),
     type: 'system',
@@ -906,14 +909,11 @@ const handleRunCode = async () => {
   await pythonRunner.runCode(code, props.workspaceFiles, (out) => {
     emit('add-console-output', out);
   }, props.config?.demoMode);
-
-  isExecuting.value = false;
 };
 
 // 停止当前运行（本机 Python 引擎可真正中断；Pyodide/演示模式为尽力而为）
 const handleStopCode = async () => {
   await pythonRunner.stop();
-  isExecuting.value = false;
 };
 
 // Undo & Redo History State Tracking per Tab
@@ -1335,26 +1335,36 @@ const warningOverlayHtml = computed(() => {
   return html + '\n';
 });
 
+// ---- 命令通道：App 标题栏 / 工具栏 / 右键菜单经 command prop 触发编辑器内部动作 ----
+// 收敛 expose（批次 4）：可撤销/重做/光标等状态改走事件，剪贴板/查找替换/聚焦/定位改走命令通道
+const execEditorCommand = (cmd: string, arg?: unknown) => {
+  switch (cmd) {
+    case 'find': openFindBar(); break;
+    case 'replace': openReplaceBar(); break;
+    case 'copy': void triggerCopy(); break;
+    case 'cut': void triggerCut(); break;
+    case 'paste': void triggerPaste(); break;
+    case 'copySelection':
+      void copySelection().then((ok) => emit('copy-result', ok));
+      break;
+    case 'focus': textareaRef.value?.focus(); break;
+    case 'reveal': if (typeof arg === 'number') revealLine(arg); break;
+  }
+};
+watch(() => props.command?.seq, (seq, oldSeq) => {
+  if (!seq || seq === oldSeq || !props.command) return;
+  execEditorCommand(props.command.cmd, props.command.arg);
+});
+// 撤销/重做可用状态经事件上抛（App 工具栏禁用态；不再经 expose 读取）
+watch([canUndo, canRedo], ([cu, cr]) => emit('undo-state', { canUndo: cu, canRedo: cr }), { immediate: true });
+
+// expose 收敛为 5 项：仅保留 App 工具栏必须命令式调用的动作
 defineExpose({
-  openFindBar,
-  openReplaceBar,
-  triggerCopy,
-  triggerCut,
-  triggerPaste,
-  copySelection,
-  focusEditor: () => textareaRef.value?.focus(),
-  // 以下为 App 级操作工具栏使用的编辑器能力/状态（expose 代理会自动解包 ref，父级模板可直接读取）
   runCode: handleRunCode,
   stopCode: handleStopCode,
   undo: handleUndo,
   redo: handleRedo,
-  formatDocument,
-  isExecuting,
-  canUndo,
-  canRedo,
-  cursorLine,
-  cursorCol,
-  revealLine
+  formatDocument
 });
 
 // ---- 标签条横向滚动：两侧滚动按钮 + 溢出状态跟踪 ----

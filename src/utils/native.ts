@@ -33,6 +33,8 @@ interface PyOutputEvent {
   kind: string;
   text: string;
   session: string;
+  /** true = 这段文本后面还没有换行（正在写的这一行），见 python.rs 的 drain_segments */
+  partial?: boolean;
 }
 
 // 工作区整树清单条目（fs_scan_workspace），供外部变更检测使用

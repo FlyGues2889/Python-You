@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { ConsoleOutput, AppConfig } from '../types';
-import { pythonRunner } from '../utils/pythonRunner';
 import { nativePython } from '../utils/nativePython';
 import { paneScroller, watchPaneScroll } from '../utils/contentPane';
+import { toDisplayLines } from '../utils/consoleLines';
+import { semanticClassOf, isCollapsible, isImage } from '../utils/consoleView';
+import { useReplInput } from '../utils/replInput';
 import { useI18n } from '../utils/i18n';
 import { uid } from '../utils/id';
 
@@ -34,9 +36,6 @@ const replWelcome = computed(() => {
   return t('replWelcomePyodide');
 });
 
-const inputCommand = ref('');
-const commandHistory = ref<string[]>([]);
-const historyIndex = ref(-1);
 const consoleContainerRef = ref<HTMLDivElement | null>(null);
 const replInputRef = ref<HTMLInputElement | null>(null);
 const promptRowRef = ref<HTMLDivElement | null>(null);
@@ -79,109 +78,31 @@ const ensurePromptVisible = () => {
   });
 };
 
-// 多行续行（FR-4.4）：语句未闭合（括号未配平 / 行尾冒号）时进入续行模式，
-// 提示符变 `...`，继续输入直到语句闭合才执行；粘贴多行代码直接整体执行
-const pendingLines = ref<string[]>([]);
-const isContinuation = computed(() => pendingLines.value.length > 0);
-
-// 粗略判断语句是否需要续行：忽略引号内容，检查括号配平 + 最后一行行尾冒号
-const isUnclosed = (text: string): boolean => {
-  let depth = 0;
-  let inStr: string | null = null;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (inStr) {
-      if (ch === '\\') i++;
-      else if (ch === inStr) inStr = null;
-      continue;
-    }
-    if (ch === '"' || ch === "'") inStr = ch;
-    else if (ch === '(' || ch === '[' || ch === '{') depth++;
-    else if (ch === ')' || ch === ']' || ch === '}') depth--;
-  }
-  if (depth > 0) return true;
-  const lines = text.split('\n');
-  const last = lines[lines.length - 1].trimEnd();
-  return last.endsWith(':');
-};
-
 const emitReplLog = (type: ConsoleOutput['type'], text: string) => {
   const out: ConsoleOutput = { id: uid(), type, text, timestamp: new Date().toLocaleTimeString() };
   emit('add-log', out);
   emit('add-console-output', out);
 };
 
-const runStatement = async (statement: string) => {
-  commandHistory.value.push(statement);
-  historyIndex.value = commandHistory.value.length;
-  await pythonRunner.runREPL(statement, (out) => {
+// 显示行：同一行的多次到达合并成一行（未结束的行也照常显示，光标不在 REPL 提示行上）
+const displayLines = computed(() => toDisplayLines(logs.value));
+
+// 输入模型（历史、多行续行 FR-4.4、粘贴多行、回车执行）与输出终端共用
+const {
+  input: inputCommand,
+  isContinuation,
+  submit: handleExecute,
+  handleEnter: handlePromptEnter,
+  handleKeyDown,
+  handlePaste,
+} = useReplInput({
+  onLog: emitReplLog,
+  onOutput: (out) => {
     emit('add-log', out);
     emit('add-console-output', out);
-  }, props.config?.demoMode);
-  nextTick(scrollReplToBottom);
-};
-
-const handleExecute = async () => {
-  const cmd = inputCommand.value;
-  inputCommand.value = '';
-  if (!cmd.trim()) return;
-
-  // 粘贴的多行代码：整体执行（不进入逐行续行状态；回显由 runREPL 统一处理）
-  if (cmd.includes('\n')) {
-    const full = [...pendingLines.value, cmd].join('\n');
-    pendingLines.value = [];
-    await runStatement(full);
-    return;
-  }
-
-  const trimmed = cmd.trim();
-  // 进入续行模式：首个未闭合语句
-  if (pendingLines.value.length === 0 && isUnclosed(trimmed)) {
-    pendingLines.value = [trimmed];
-    emitReplLog('input', `>>> ${trimmed}`);
-    return;
-  }
-  // 续行中：仍未闭合 → 继续累积
-  if (pendingLines.value.length > 0 && isUnclosed(trimmed)) {
-    pendingLines.value.push(trimmed);
-    emitReplLog('input', `... ${trimmed}`);
-    return;
-  }
-  // 续行闭合 / 普通单行：执行（回显由 runREPL 统一处理）
-  const full = pendingLines.value.length > 0 ? [...pendingLines.value, trimmed].join('\n') : trimmed;
-  pendingLines.value = [];
-  await runStatement(full);
-};
-
-// 回车执行（输入法组合期间的回车用于选词，不执行）
-const handlePromptEnter = (e: KeyboardEvent) => {
-  if (e.isComposing) return;
-  handleExecute();
-};
-
-const handleKeyDown = (e: KeyboardEvent) => {
-  if (e.isComposing) return;
-  // Esc 取消续行模式（丢弃已输入的多行缓冲）
-  if (e.key === 'Escape' && pendingLines.value.length > 0) {
-    pendingLines.value = [];
-    e.preventDefault();
-    return;
-  }
-  if (e.key === 'ArrowUp') {
-    if (historyIndex.value > 0) {
-      historyIndex.value--;
-      inputCommand.value = commandHistory.value[historyIndex.value] || '';
-    }
-  } else if (e.key === 'ArrowDown') {
-    if (historyIndex.value < commandHistory.value.length - 1) {
-      historyIndex.value++;
-      inputCommand.value = commandHistory.value[historyIndex.value] || '';
-    } else {
-      historyIndex.value = commandHistory.value.length;
-      inputCommand.value = '';
-    }
-  }
-};
+  },
+  demoMode: () => props.config?.demoMode,
+});
 
 // 点击显示区空白处聚焦输入行；点击日志文本或存在选区时不打断选中
 const onBodyClick = (e: MouseEvent) => {
@@ -189,16 +110,6 @@ const onBodyClick = (e: MouseEvent) => {
   if (target.closest('.repl-log-line')) return;
   if (!(window.getSelection()?.isCollapsed ?? true)) return;
   replInputRef.value?.focus();
-};
-
-// 粘贴多行代码：input 元素会丢弃换行符，须拦截并手动置入（整体执行走 handleExecute 的多行分支）
-const handlePaste = (e: ClipboardEvent) => {
-  const pasted = e.clipboardData?.getData('text');
-  if (pasted && pasted.includes('\n')) {
-    e.preventDefault();
-    inputCommand.value = pasted.replace(/\r\n/g, '\n');
-    handleExecute();
-  }
 };
 
 // 异步输出（如流式 stdout）到达时同样按贴底规则滚动
@@ -249,13 +160,15 @@ const clearLogs = () => {
           <pre>{{ replWelcome }}</pre>
         </div>
 
-        <div v-for="log in logs" :key="log.id" class="repl-log-line" :class="`log-${log.type}`">
-          <button v-if="log.collapsible" class="repl-detail-toggle" type="button" @click="toggleLogDetail(log.id)">
-            <span class="material-symbols-rounded">{{ expandedLogs.has(log.id) ? 'expand_less' : 'expand_more'
+        <div v-for="line in displayLines" :key="line.key" class="repl-log-line" :class="semanticClassOf(line.out)">
+          <button v-if="isCollapsible(line.out)" class="repl-detail-toggle" type="button"
+            @click="toggleLogDetail(line.out.id)">
+            <span class="material-symbols-rounded">{{ expandedLogs.has(line.out.id) ? 'expand_less' : 'expand_more'
               }}</span>
-            <span>{{ expandedLogs.has(log.id) ? t('tracebackCollapse') : t('tracebackExpand') }}</span>
+            <span>{{ expandedLogs.has(line.out.id) ? t('tracebackCollapse') : t('tracebackExpand') }}</span>
           </button>
-          <pre v-show="!log.collapsible || expandedLogs.has(log.id)">{{ log.text }}</pre>
+          <pre v-if="!isImage(line.out)" v-show="!isCollapsible(line.out) || expandedLogs.has(line.out.id)">{{ line.text }}</pre>
+          <img v-else class="repl-img" :src="line.out.image" alt="matplotlib chart" />
         </div>
 
         <div ref="promptRowRef" class="repl-inline-prompt">
@@ -392,13 +305,16 @@ const clearLogs = () => {
   font-size: 1rem;
 }
 
-/* 日志语义色随代码主题深浅切换（浅色主题取深色调保证对比度；solarized 单独用其调色板） */
+/* 日志语义色随代码主题深浅切换（浅色主题取深色调保证对比度；solarized 单独用其调色板）。
+   system / warning 与输出终端（TerminalPanel.vue）同值，保证同一语义两端同色 */
 .repl-body.theme-github-dark,
 .repl-body.theme-monokai,
 .repl-body.theme-one-dark,
 .repl-body.theme-vs-code {
   --log-input-color: #ffd54f;
   --log-stdout-color: #81c784;
+  --log-system-color: #60a5fa;
+  --log-warning-color: #f59e0b;
   --log-error-color: #ffb4ab;
 }
 
@@ -408,12 +324,16 @@ const clearLogs = () => {
 .repl-body.theme-solarized-light {
   --log-input-color: #7d4e00;
   --log-stdout-color: #1a7f37;
+  --log-system-color: #1d4ed8;
+  --log-warning-color: #b45309;
   --log-error-color: #ba1a1a;
 }
 
 .repl-body.theme-solarized-light {
   --log-input-color: #b58900;
   --log-stdout-color: #859900;
+  --log-system-color: #268bd2;
+  --log-warning-color: #cb4b16;
   --log-error-color: #dc322f;
 }
 
@@ -426,9 +346,28 @@ const clearLogs = () => {
   color: var(--log-stdout-color, #81c784);
 }
 
-.log-stderr,
+/* 与输出终端的 .log-system / .log-warning 同一套语义色 */
+.log-system {
+  color: var(--log-system-color, #3b82f6);
+  font-weight: 600;
+}
+
+.log-warning {
+  color: var(--log-warning-color, #f59e0b);
+  font-weight: 600;
+}
+
 .log-error {
   color: var(--log-error-color, var(--error));
+}
+
+/* REPL 里的图表：与输出终端 .terminal-img 同一套视觉（等比缩放、白底、圆角） */
+.repl-img {
+  max-width: min(100%, 460px);
+  max-height: 240px;
+  margin: 4px 0;
+  border-radius: 8px;
+  background: #fff;
 }
 
 /* 行内输入提示行：位于输出区末尾，随内容一起滚动 */

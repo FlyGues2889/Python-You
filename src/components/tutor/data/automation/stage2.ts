@@ -1,4 +1,4 @@
-import { TutorialStage, TutorialTopic } from '../../tutorialData';
+import { TutorialStage } from '../../tutorialData';
 
 // 自动化系列 · 阶段二：定时与任务自动化
 export const autoStage2: TutorialStage = {

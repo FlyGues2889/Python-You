@@ -4,7 +4,7 @@
 // - 通过事件 "py-output" 把 stdout/stderr/完成信息流式推送给前端
 // - 进程保存在全局 State 中，前端可随时调用 python_stop 强制 kill（让"停止运行"真正可用）
 // - 脚本写入临时文件后以 `python -u <file>` 运行，支持超长代码，且以工作区为 cwd
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Mutex, OnceLock};
@@ -66,6 +66,9 @@ struct PyEvent {
     kind: String,
     text: String,
     session: String,
+    /// true = 这段文本后面还没有换行，属于「正在写的这一行」。
+    /// 前端据此把同一行的片段接起来，并把输入光标接在未结束的提示串后面。
+    partial: bool,
 }
 
 // Windows 下给子进程设置 CREATE_NO_WINDOW，避免 GUI 应用每次 spawn 都闪现控制台窗口
@@ -264,13 +267,14 @@ fn command_from_parts(parts: &[String]) -> Command {
     cmd
 }
 
-fn emit(app: &AppHandle, kind: &str, text: &str, session: &str) {
+fn emit(app: &AppHandle, kind: &str, text: &str, session: &str, partial: bool) {
     let _ = app.emit(
         "py-output",
         PyEvent {
             kind: kind.to_string(),
             text: text.to_string(),
             session: session.to_string(),
+            partial,
         },
     );
 }
@@ -278,6 +282,9 @@ fn emit(app: &AppHandle, kind: &str, text: &str, session: &str) {
 // 读取子进程输出并逐段转成 py-output 事件。
 // split_cr = true 时按 \r 与 \n 双双切分：pip 下载进度条以 \r 原地刷新，
 // 只按 \n 读取时进度要等整条进度条结束才到达前端，无法实时显示（FR-5.6）。
+//
+// 非 pip 流（脚本 / REPL）额外把「还没有终止符的尾巴」也实时送出（partial = true）：
+// input() 的提示串不带换行，若攒到下一行才发，提示会出现在用户输入之后，终端交互就反了。
 fn stream_reader<R: Read + Send + 'static>(
     app: AppHandle,
     mut reader: R,
@@ -286,13 +293,6 @@ fn stream_reader<R: Read + Send + 'static>(
     split_cr: bool,
 ) {
     std::thread::spawn(move || {
-        if !split_cr {
-            for line in BufReader::new(reader).lines().map_while(Result::ok) {
-                emit(&app, kind, line.trim_end_matches('\r'), &session);
-            }
-            return;
-        }
-        // 字节流切分：跨 read 边界的多字节字符留在 pending 里等下一个终止符
         let mut buf = [0u8; 4096];
         let mut pending: Vec<u8> = Vec::new();
         loop {
@@ -300,28 +300,67 @@ fn stream_reader<R: Read + Send + 'static>(
                 Ok(0) => break,
                 Ok(n) => {
                     pending.extend_from_slice(&buf[..n]);
-                    let mut start = 0usize;
-                    for i in 0..pending.len() {
-                        if pending[i] == b'\n' || pending[i] == b'\r' {
-                            if i > start {
-                                if let Ok(text) = std::str::from_utf8(&pending[start..i]) {
-                                    emit(&app, kind, text, &session);
-                                }
-                            }
-                            start = i + 1;
-                        }
+                    for (text, partial) in drain_segments(&mut pending, split_cr) {
+                        emit(&app, kind, &text, &session, partial);
                     }
-                    pending.drain(0..start);
                 }
                 Err(_) => break,
             }
         }
+        // 收尾：进程结束，残留的尾巴按完整片段送出
         if !pending.is_empty() {
             if let Ok(text) = std::str::from_utf8(&pending) {
-                emit(&app, kind, text, &session);
+                emit(&app, kind, text, &session, false);
             }
         }
     });
+}
+
+// 从缓冲区切出可发送的片段：(文本, partial)。纯函数，便于单测。
+// - 终止符（\n，split_cr 时还有 \r）之前的整段以 partial = false 送出，并连终止符一起消费；
+//   非 pip 流里行尾的 \r 属于 CRLF 终止符（Windows 子进程），随终止符一起剥掉；
+// - 非 pip 流里还没遇到终止符的尾巴也以 partial = true 送出并消费：input() 的提示串没有换行，
+//   攒到下一行才发会让提示出现在用户输入之后；
+// - 跨 read 边界的多字节字符（from_utf8 报 error_len 为 None）留在缓冲区等补齐。
+fn drain_segments(pending: &mut Vec<u8>, split_cr: bool) -> Vec<(String, bool)> {
+    let mut out = Vec::new();
+    let mut start = 0usize;
+    for i in 0..pending.len() {
+        let b = pending[i];
+        if b == b'\n' || (split_cr && b == b'\r') {
+            if i > start {
+                if let Ok(text) = std::str::from_utf8(&pending[start..i]) {
+                    // 非 pip 流按行切：Windows 的子进程按文本模式写出的 \r\n 里，\r 属于行尾终止符
+                    // 而不是内容。不剥掉的话片段文本以裸 \r 结尾，前端的错误摘要正则 (.+)$ 匹配不到
+                    // \r，整段 traceback 就只剩裸文本、无法折叠（旧按行读取用的正是 trim_end_matches('\r')）。
+                    // pip 流按 \r 切分（进度条原地刷新），\r 是分隔符，行为不变。
+                    let text = if split_cr { text } else { text.trim_end_matches('\r') };
+                    out.push((text.to_string(), false));
+                }
+            } else if !split_cr {
+                // 空片段也是「这一行到此结束」的信号：前面那段已经作为 partial 送出过，
+                // 不补这一下前端就永远不知道行结束了（空行同理，本来就该显示成空行）
+                out.push((String::new(), false));
+            }
+            start = i + 1;
+        }
+    }
+    pending.drain(0..start);
+    if !split_cr && !pending.is_empty() {
+        match std::str::from_utf8(pending) {
+            Ok(text) => {
+                out.push((text.to_string(), true));
+                pending.clear();
+            }
+            // 真的是坏字节：按替换字符送出，别让缓冲区无限增长
+            Err(e) if e.error_len().is_some() => {
+                out.push((String::from_utf8_lossy(pending).into_owned(), true));
+                pending.clear();
+            }
+            Err(_) => {}
+        }
+    }
+    out
 }
 
 // 通用：启动一个流式子进程（stdout/stderr -> 事件），并存下句柄以便 stop 强杀
@@ -344,7 +383,7 @@ fn spawn_streaming(
             let _ = child.kill();
             let _ = child.wait();
             if let Some(ps) = prev_session {
-                emit(&app, "done", "-1", &ps);
+                emit(&app, "done", "-1", &ps, false);
             }
         }
     }
@@ -400,7 +439,7 @@ fn spawn_streaming(
                         st.run_stdin.lock().unwrap().take();
                         *st.current_session.lock().unwrap() = None;
                     }
-                    emit(&app, "done", &code.to_string(), &session_done);
+                    emit(&app, "done", &code.to_string(), &session_done, false);
                     break;
                 }
                 Some(None) => break,
@@ -506,7 +545,7 @@ pub fn python_stop(app: AppHandle, state: State<PythonState>) -> Result<(), Stri
         guard.take();
     }
     // 通知前端该会话已结束，让 runCode 的 Promise 正常收尾
-    emit(&app, "done", "-1", &session);
+    emit(&app, "done", "-1", &session, false);
     Ok(())
 }
 
@@ -529,7 +568,7 @@ pub fn python_repl_start(
             let _ = child.kill();
             let _ = child.wait();
             if let Some(ps) = prev_session {
-                emit(&app, "done", "-1", &ps);
+                emit(&app, "done", "-1", &ps, false);
             }
         }
     }
@@ -575,19 +614,9 @@ builtins.help = _py_help";
     let stdout = child.stdout.take().expect("child stdout");
     let stderr = child.stderr.take().expect("child stderr");
 
-    let app_stdout = app.clone();
-    std::thread::spawn(move || {
-        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            emit(&app_stdout, "stdout", line.trim_end_matches('\r'), "repl");
-        }
-    });
-
-    let app_stderr = app.clone();
-    std::thread::spawn(move || {
-        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-            emit(&app_stderr, "stderr", line.trim_end_matches('\r'), "repl");
-        }
-    });
+    // 与脚本运行共用同一读取器：REPL 提示串同样是不带换行的部分行，需要实时送出
+    stream_reader(app.clone(), stdout, "stdout", "repl".to_string(), false);
+    stream_reader(app.clone(), stderr, "stderr", "repl".to_string(), false);
 
     *state.repl_stdin.lock().unwrap() = Some(stdin);
     *state.proc.lock().unwrap() = Some(child);
@@ -618,7 +647,7 @@ builtins.help = _py_help";
                         st.repl_stdin.lock().unwrap().take();
                         *st.current_session.lock().unwrap() = None;
                     }
-                    emit(&app, "done", &code.to_string(), "repl");
+                    emit(&app, "done", &code.to_string(), "repl", false);
                     break;
                 }
                 Some(None) => break,
@@ -794,4 +823,135 @@ pub fn python_pip_install_file(
     }
     cmd.arg(&path);
     spawn_streaming(app, &state, cmd, None, "pip", true, false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::drain_segments;
+
+    fn segs(input: &[u8], split_cr: bool) -> Vec<(String, bool)> {
+        let mut buf = input.to_vec();
+        drain_segments(&mut buf, split_cr)
+    }
+
+    #[test]
+    fn 完整行不带_partial() {
+        assert_eq!(segs(b"hello\n", false), vec![("hello".to_string(), false)]);
+    }
+
+    #[test]
+    fn 无换行的尾巴实时送出并标记_partial() {
+        // input("Test: ") 的提示串：没有换行也必须立刻可见
+        assert_eq!(segs(b"Test: ", false), vec![("Test: ".to_string(), true)]);
+    }
+
+    #[test]
+    fn 尾巴按增量送出不会重复() {
+        let mut buf = b"Tes".to_vec();
+        assert_eq!(drain_segments(&mut buf, false), vec![("Tes".to_string(), true)]);
+        buf.extend_from_slice(b"t: ");
+        assert_eq!(drain_segments(&mut buf, false), vec![("t: ".to_string(), true)]);
+        buf.extend_from_slice(b"world\n");
+        assert_eq!(drain_segments(&mut buf, false), vec![("world".to_string(), false)]);
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn 跨读取的半个多字节字符留在缓冲里() {
+        // "中" 的 UTF-8 是 E4 B8 AD，先给前两字节
+        let mut buf = vec![0xE4, 0xB8];
+        assert!(drain_segments(&mut buf, false).is_empty());
+        assert_eq!(buf.len(), 2);
+        buf.push(0xAD);
+        assert_eq!(drain_segments(&mut buf, false), vec![("中".to_string(), true)]);
+    }
+
+    #[test]
+    fn 坏字节按替换字符送出并清空() {
+        let mut buf = vec![0xFF, 0xFE];
+        let out = drain_segments(&mut buf, false);
+        assert_eq!(out.len(), 1);
+        assert!(out[0].1);
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn pip_流不送_partial_且按_cr_切分() {
+        // 末段没有终止符：pip 流按设计不送 partial，留在缓冲里等下一个 \r
+        let mut buf = b"Downloading 45%\rDownloading 80%".to_vec();
+        assert_eq!(drain_segments(&mut buf, true), vec![("Downloading 45%".to_string(), false)]);
+        assert_eq!(buf, b"Downloading 80%");
+        buf.push(b'\r');
+        assert_eq!(drain_segments(&mut buf, true), vec![("Downloading 80%".to_string(), false)]);
+    }
+
+    #[test]
+    fn 空行产生行结束信号() {
+        // 空片段 = 「这一行到此结束」：空行要显示成空行，且紧跟 partial 之后的行尾
+        // 也必须送这一下，否则前端不知道行结束了
+        assert_eq!(
+            segs(b"a\n\nb\n", false),
+            vec![
+                ("a".to_string(), false),
+                (String::new(), false),
+                ("b".to_string(), false),
+            ]
+        );
+    }
+
+    #[test]
+    fn partial_之后的行尾会补空片段() {
+        let mut buf = b"abc".to_vec();
+        assert_eq!(drain_segments(&mut buf, false), vec![("abc".to_string(), true)]);
+        buf.push(b'\n');
+        assert_eq!(drain_segments(&mut buf, false), vec![(String::new(), false)]);
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn crlf_行尾的_r_不混进片段() {
+        // Windows 子进程（脚本 / REPL）按文本模式写 \r\n：完整片段不能带裸 \r，
+        // 否则前端拿到的末行以 \r 结尾，错误摘要正则 (.+)$ 匹配不到，traceback 无法折叠
+        assert_eq!(
+            segs(b"Traceback (most recent call last):\r\nValueError: boom\r\n", false),
+            vec![
+                ("Traceback (most recent call last):".to_string(), false),
+                ("ValueError: boom".to_string(), false),
+            ]
+        );
+    }
+
+    #[test]
+    fn crlf_从_r_与_n_之间断读时补空片段收尾() {
+        // 读取边界正好落在 \r 与 \n 之间：先送 partial（前端拼回 \r\n），
+        // \n 到达时补空片段表示这一行结束——与「partial 之后补空片段」同一套语义
+        let mut buf = b"ValueError: boom\r".to_vec();
+        assert_eq!(
+            drain_segments(&mut buf, false),
+            vec![("ValueError: boom\r".to_string(), true)]
+        );
+        buf.push(b'\n');
+        assert_eq!(drain_segments(&mut buf, false), vec![(String::new(), false)]);
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn 只剩_rn_的片段剥_r_后按空行结束信号送出() {
+        // 行尾的 \r\n 里 \r 不是内容：剥掉后与裸 \n 一样补一个空片段
+        let mut buf = b"\r\n".to_vec();
+        assert_eq!(drain_segments(&mut buf, false), vec![(String::new(), false)]);
+    }
+
+    #[test]
+    fn pip_流的_crlf_不受影响() {
+        // pip 按 \r 切分（进度条原地刷新），\r 是分隔符不是内容，不走行尾剥离
+        let mut buf = b"Downloading 45%\rDownloading 100%\r\n".to_vec();
+        assert_eq!(
+            drain_segments(&mut buf, true),
+            vec![
+                ("Downloading 45%".to_string(), false),
+                ("Downloading 100%".to_string(), false),
+            ]
+        );
+    }
 }

@@ -15,8 +15,10 @@ const EXCEPTION_BARE = /^([A-Za-z_][A-Za-z0-9_.]*)$/;
 
 /** 提取错误摘要；没有 traceback 结构时返回 null */
 export function extractErrorSummary(text: string): string | null {
-  // 按 \r?\n 切：JS 正则里 \r 也是行终止符，行尾残留的 \r 会让 (.+)$ 匹配失败
-  const lines = text.split(/\r?\n/);
+  // 按 \r?\n 切，并逐行 trimEnd：上游（本机引擎的分段读取与汇流拼接）不保证行尾干净——
+  // 末行可能只剩一个裸 \r，而 JS 的 `.` 匹配不到 \r，(.+)$ 就会整体匹配失败、摘要退化成 null。
+  // 不依赖上游一定剥干净，这里再兜一道。
+  const lines = text.split(/\r?\n/).map((line) => line.trimEnd());
   for (let i = lines.length - 1; i >= 0; i--) {
     const withMessage = lines[i].match(EXCEPTION_LINE);
     const bare = withMessage ? null : lines[i].match(EXCEPTION_BARE);
@@ -68,14 +70,30 @@ export const createStderrSink = (onOutput: (out: ConsoleOutput) => void) => {
     emitError(onOutput, buffer.replace(/\n$/, ''));
     buffer = '';
   };
-  const push = (text: string) => {
-    if (!buffer && !/^(Traceback \(most recent call last\):|\s+File ")/.test(text)) {
-      onOutput({ id: uid(), type: 'stderr', text: text + '\n', timestamp: new Date().toLocaleTimeString() });
+  const TRACEBACK_START = /^(Traceback \(most recent call last\):|\s+File ")/;
+  // REPL 子进程的提示符写在 stderr 上，可能与 traceback 首行粘成同一片段
+  //（`>>> Traceback (most recent call last):`）。只在提示符后面确实跟着 traceback 时才剥，
+  // 免得把 stderr 里正常的 `>>> ` 前缀文本（例如 doctest 片段）改掉。
+  const stripPrompt = (line: string) => {
+    const m = /^(?:>>>|\.\.\.)[ \t]+/.exec(line);
+    return m && TRACEBACK_START.test(line.slice(m[0].length)) ? line.slice(m[0].length) : line;
+  };
+  const push = (raw: string, partial = false) => {
+    const text = stripPrompt(raw);
+    if (!buffer && !TRACEBACK_START.test(text)) {
+      // 未结束的行按 partial 实时送出（stderr 里的提示串同样要立刻可见）
+      onOutput({
+        id: uid(),
+        type: 'stderr',
+        text: partial ? text : text + '\n',
+        partial: partial || undefined,
+        timestamp: new Date().toLocaleTimeString(),
+      });
       return;
     }
-    buffer += text + '\n';
-    // 攒到异常末行（能提取出摘要）就整段输出
-    if (extractErrorSummary(buffer)) flush();
+    buffer += partial ? text : text + '\n';
+    // 只在片段收尾时判定：半截的异常行也能匹配摘要正则，会提前 flush 并把后面的内容重复输出
+    if (!partial && extractErrorSummary(buffer)) flush();
   };
   return { push, flush };
 };

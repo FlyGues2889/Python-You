@@ -5,7 +5,7 @@ import TutorialContent from './TutorialContent.vue';
 import QuizDirectory from './QuizDirectory.vue';
 import QuizView from './QuizView.vue';
 import LearningHome from './LearningHome.vue';
-import { type TutorialTopic, type TutorialSeries, getTutorialSeries, getSeriesById } from './tutorialData';
+import { type TutorialTopic, type TutorialSeries, getSeriesById } from './tutorialData';
 import { getTopicQuizScore } from './quizData';
 import { safeStorage } from '../../utils/storage';
 

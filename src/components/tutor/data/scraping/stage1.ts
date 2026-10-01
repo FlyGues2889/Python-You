@@ -1,4 +1,4 @@
-import { TutorialStage, TutorialTopic } from '../../tutorialData';
+import { TutorialStage } from '../../tutorialData';
 
 // 爬虫和数据分析系列 · 阶段一：用 pandas 处理数据
 export const spStage1: TutorialStage = {

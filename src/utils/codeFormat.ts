@@ -229,10 +229,6 @@ const renderTokens = (tokens: Token[], continues = false): string => {
   return out;
 };
 
-/**
- * 格式化一段「纯代码」（不含行首缩进、不在多行字符串内）：
- * 字符串与注释由词法切分整体保留，只重排其余部分的空格。
- */
 /** 格式化一段代码：切分后重排空格 */
 const formatCode = (code: string, continues = false): { text: string; openTriple: string | null } => {
   const scan = scanLine(code);

@@ -8,7 +8,8 @@ export interface TutorialTopic {
   content: {
     overview: string;
     sections: {
-      heading: string;
+      /** 参考手册（kind: 'reference'）只分段不出标题，故标题可选；两端渲染均按存在与否判断 */
+      heading?: string;
       text: string;
       table?: {
         headers: string[];
@@ -99,9 +100,5 @@ export function getTutorialSeries(): TutorialSeries[] {
 export function getSeriesById(seriesId: string | null): TutorialSeries | undefined {
   if (!seriesId) return undefined;
   return TUTORIAL_SERIES.find((series) => series.id === seriesId);
-}
-
-export function getSeriesStages(seriesId: string | null): TutorialStage[] {
-  return getSeriesById(seriesId)?.stages || [];
 }
 

@@ -1,4 +1,4 @@
-import { TutorialStage, TutorialTopic } from '../../tutorialData';
+import { TutorialStage } from '../../tutorialData';
 
 // Web 系列 · 阶段二：用 Python 处理 Web 数据
 export const webStage2: TutorialStage = {

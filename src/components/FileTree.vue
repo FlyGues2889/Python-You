@@ -188,8 +188,6 @@ const filteredItems = computed(() => {
       <m3e-list-item>
         <span slot="overline">{{ t('explorerLabel') }}</span>
         {{ rootName || t('workspace') }}
-        <div class="tree-header-actions" slot="trailing">
-        </div>
       </m3e-list-item>
 
       <!-- Quick Filter Search Input -->
@@ -254,12 +252,6 @@ const filteredItems = computed(() => {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-}
-
-.tree-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
 }
 
 .search-box {
