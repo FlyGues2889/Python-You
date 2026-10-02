@@ -391,6 +391,24 @@ function isAnswerCorrect(q, answer) {
   }
 }
 
+// 排序题未作答时的展示顺序：与桌面端同一套规则（每道题摇一次并缓存，模板反复取用时保持稳定；
+// 摇出来正好等于正确次序时重摇，避免"一打开就已经答对"）
+const initialOrders = new Map();
+function initialOrderFor(q) {
+  const cached = initialOrders.get(q.id);
+  if (cached) return cached.slice();
+  const order = q.items.map((_, i) => i);
+  for (let attempt = 0; attempt < 8; attempt++) {
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    if (order.some((v, i) => v !== q.correctOrder[i])) break;
+  }
+  initialOrders.set(q.id, order);
+  return order.slice();
+}
+
 function renderQuiz(topicId) {
   const quiz = QUIZZES.find(q => q.topicId === topicId);
   if (!quiz || !quiz.questions.length) return '';
@@ -464,7 +482,7 @@ function renderQuiz(topicId) {
       }
       html += `</div>`;
     } else if (q.type === 'order') {
-      const saved = Array.isArray(answers[q.id]) ? answers[q.id] : q.items.map((_, i) => i);
+      const saved = Array.isArray(answers[q.id]) ? answers[q.id] : initialOrderFor(q);
       const res = results[q.id];
       html += `<div class="quiz-item" data-qid="${q.id}">
         <div class="quiz-q">${esc(q.question)}<span class="quiz-type-tag">排序</span></div>
@@ -590,7 +608,7 @@ function bindQuizEvents(topicId) {
       const item = btn.closest('.quiz-item');
       const q = questionOf(item.dataset.qid);
       const answers = answerOf();
-      const order = Array.isArray(answers[topicId][q.id]) ? [...answers[topicId][q.id]] : q.items.map((_, i) => i);
+      const order = Array.isArray(answers[topicId][q.id]) ? [...answers[topicId][q.id]] : initialOrderFor(q);
       const pos = Number(btn.dataset.move);
       const target = pos + Number(btn.dataset.delta);
       if (target < 0 || target >= order.length) return;

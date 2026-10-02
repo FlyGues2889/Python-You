@@ -45,6 +45,30 @@ export interface QuizOrderQuestion {
   explanation?: string;
 }
 
+// 每道题一份的初始展示顺序（首次渲染时摇一次并缓存，之后稳定不变）
+const initialOrders = new Map<string, number[]>();
+
+/**
+ * 排序题未作答时的展示顺序。
+ * 契约要求 items 本身就是乱序的，但历史题库里有 18 道按正确次序排列（correctOrder 为 [0,1,2,…]），
+ * 那样一打开就等于已经答对、用户按题意重排反而判错。这里对未作答的题统一摇一次：
+ * 同一道题多次渲染结果不变（模板里会反复调用），摇出来正好等于正确次序时重摇，避免开局即答对。
+ */
+export function initialOrderFor(q: QuizOrderQuestion): number[] {
+  const cached = initialOrders.get(q.id);
+  if (cached) return [...cached];
+  const order = q.items.map((_, i) => i);
+  for (let attempt = 0; attempt < 8; attempt++) {
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    if (order.some((v, i) => v !== q.correctOrder[i])) break;
+  }
+  initialOrders.set(q.id, order);
+  return [...order];
+}
+
 export interface QuizCodeQuestion {
   id: string;
   type: 'code';

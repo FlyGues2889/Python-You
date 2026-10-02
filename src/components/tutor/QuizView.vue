@@ -13,6 +13,7 @@ import {
   getQuizAnswers,
   setQuizAnswer,
   clearQuizAnswers,
+  initialOrderFor,
   type QuizQuestion,
   type QuizInlineQuestion,
   type QuizMultiQuestion,
@@ -166,10 +167,10 @@ const setBlank = (q: QuizBlankQuestion, index: number, text: string) => {
   saveAnswer(q.id, next);
 };
 
-// 排序：当前顺序（未调整过时为打乱后的原始顺序）
+// 排序：当前顺序（未作答时为打乱后的初始顺序，见 initialOrderFor）
 const orderValues = (q: QuizOrderQuestion): number[] => {
   const value = answers.value[q.id];
-  return Array.isArray(value) ? [...(value as number[])] : q.items.map((_, i) => i);
+  return Array.isArray(value) ? [...(value as number[])] : initialOrderFor(q);
 };
 
 const moveOrderItem = (q: QuizOrderQuestion, position: number, delta: number) => {
