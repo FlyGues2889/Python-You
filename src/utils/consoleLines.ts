@@ -31,9 +31,10 @@ export const toDisplayLines = (outputs: ConsoleOutput[]): DisplayLine[] => {
       continue;
     }
     if (canMerge && !out.partial) {
-      // 开放行被完整行终结：完成行带上累计前缀另起一条显示行（如 input 提示串 + 回显），
-      // 原开放行保留 open——光标仍停在其后，完成行是它的最终形态
-      lines.push({ key: out.id, out, text: last.text + out.text, open: false });
+      // 开放行被完整行终结：就地补完（例如 input 提示串 + 用户回显变成同一行）。
+      // 不能另起一行——原开放行还在列表里，同一段文本会显示两次（"1" 变成两行 "1"）
+      last.text += out.text;
+      last.open = false;
       continue;
     }
     lines.push({ key: out.id, out, text: out.text, open: !!out.partial });
