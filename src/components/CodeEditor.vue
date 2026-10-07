@@ -267,6 +267,49 @@ const updateCursorPosition = () => {
   if (completionVisible.value && !isCompletionRangeCurrent()) closeCompletions();
 };
 
+/* ==================== 内容变更的唯一通道 ==================== */
+// 编辑器自己发起的内容变更一律从这里走：先把新内容与光标写进 textarea，再通知上游。
+// textarea 是 :value 单向绑定，若等上游把新值补丁回来，浏览器会把光标重置到文末
+// （补丁只在 DOM 值不同时赋值，先写 DOM 则补丁发现值已相等而跳过，光标不受影响）。
+const applyContentEdit = (tabId: string, newContent: string, selStart: number, selEnd = selStart) => {
+  const el = textareaRef.value;
+  if (el) {
+    const scrollTop = el.scrollTop;
+    el.value = newContent;
+    el.setSelectionRange(selStart, selEnd);
+    el.scrollTop = scrollTop;
+    updateCursorPosition();
+  }
+  emit('content-change', tabId, newContent);
+};
+
+// 整篇换快照（撤销 / 重做）后的落点：用共同前后缀划出本次变化的区间，
+// 光标放在区间末尾（新内容坐标）——「撤销把光标带回这次改动处」；
+// 沿用替换前的旧偏移会落在与本次改动无关的位置（文段长度已经变了）。
+const changeEndCaret = (oldText: string, newText: string): number => {
+  const maxPrefix = Math.min(oldText.length, newText.length);
+  let prefix = 0;
+  while (prefix < maxPrefix && oldText[prefix] === newText[prefix]) prefix++;
+  let suffix = 0;
+  while (
+    suffix < maxPrefix - prefix &&
+    oldText[oldText.length - 1 - suffix] === newText[newText.length - 1 - suffix]
+  ) suffix++;
+  return newText.length - suffix;
+};
+
+// 等行数的整篇替换（格式化、全部替换）后的落点：光标保持原来的行与列，
+// 行内容变短时夹到行尾
+const caretSameLineCol = (oldText: string, newText: string, oldCaret: number): number => {
+  const before = oldText.substring(0, oldCaret);
+  const line = before.split('\n').length - 1;
+  const col = oldCaret - (before.lastIndexOf('\n') + 1);
+  const offsets = lineStartOffsets(newText);
+  const lineStart = offsets[Math.min(line, offsets.length - 1)];
+  const lineEnd = line + 1 < offsets.length ? offsets[line + 1] - 1 : newText.length;
+  return Math.min(lineStart + col, lineEnd);
+};
+
 /* ==================== 行号点选整行 ==================== */
 // 与常见 IDE 一致：点行号选中整行，按住拖动按行扩展（Shift + 点从当前行扩选）
 let lineDragAnchor = 0;        // 拖动起点行（1 基）
@@ -507,11 +550,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
     const result = backspaceIndent(val, start, end, tabSize());
     if (result) {
       e.preventDefault();
-      emit('content-change', activeTab.value.id, result.content);
-      nextTick(() => {
-        el.selectionStart = el.selectionEnd = result.start;
-        updateCursorPosition();
-      });
+      applyContentEdit(activeTab.value.id, result.content, result.start);
       return;
     }
   }
@@ -522,12 +561,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
     const result = e.shiftKey
       ? outdentLines(val, start, end, tabSize())
       : indentLines(val, start, end, tabSize());
-    emit('content-change', activeTab.value.id, result.content);
-    nextTick(() => {
-      el.selectionStart = result.start;
-      el.selectionEnd = result.end;
-      updateCursorPosition();
-    });
+    applyContentEdit(activeTab.value.id, result.content, result.start, result.end);
     return;
   }
 
@@ -538,12 +572,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
     const docForIndent = start === end ? val : val.substring(0, start) + val.substring(end);
     const indent = ' '.repeat(indentForNewLine(docForIndent, start, tabSize()));
     const newContent = val.substring(0, start) + '\n' + indent + val.substring(end);
-    emit('content-change', activeTab.value.id, newContent);
-
-    nextTick(() => {
-      el.selectionStart = el.selectionEnd = start + 1 + indent.length;
-      updateCursorPosition();
-    });
+    applyContentEdit(activeTab.value.id, newContent, start + 1 + indent.length);
     return;
   }
 };
@@ -690,14 +719,9 @@ const acceptCompletion = () => {
   if (!el || !item || !activeTab.value || !rangeCurrent) return;
   const { start, end } = completionRange.value;
   const newContent = el.value.slice(0, start) + item.insertText + el.value.slice(end);
-  emit('content-change', activeTab.value.id, newContent);
-  nextTick(() => {
-    el.focus();
-    // 函数补全时光标落在括号内（如 print() 的光标在括号中间）
-    const caret = start + (item.caretOffset ?? item.insertText.length);
-    el.setSelectionRange(caret, caret);
-    updateCursorPosition();
-  });
+  // 函数补全时光标落在括号内（如 print() 的光标在括号中间）
+  el.focus();
+  applyContentEdit(activeTab.value.id, newContent, start + (item.caretOffset ?? item.insertText.length));
 };
 
 /* ==================== 代码悬停用法提示（VS Code hover 风格） ====================
@@ -807,12 +831,8 @@ const handleAutoPair = (ch: string) => {
     const close = PAIR_MAP[ch] ?? ch;
     const selected = val.slice(start, end);
     const newContent = val.slice(0, start) + ch + selected + close + val.slice(end);
-    emit('content-change', activeTab.value.id, newContent);
-    nextTick(() => {
-      el.focus();
-      el.setSelectionRange(end + ch.length + close.length, end + ch.length + close.length);
-      updateCursorPosition();
-    });
+    el.focus();
+    applyContentEdit(activeTab.value.id, newContent, end + ch.length + close.length);
     return;
   }
 
@@ -832,12 +852,8 @@ const handleAutoPair = (ch: string) => {
   // 开符：插入一对，光标落在中间
   const close = PAIR_MAP[ch] ?? ch;
   const newContent = val.slice(0, start) + ch + close + val.slice(end);
-  emit('content-change', activeTab.value.id, newContent);
-  nextTick(() => {
-    el.focus();
-    el.setSelectionRange(start + 1, start + 1);
-    updateCursorPosition();
-  });
+  el.focus();
+  applyContentEdit(activeTab.value.id, newContent, start + 1);
 };
 
 /* ==================== 轻量自动补空格（运算符/逗号/冒号） ==================== */
@@ -872,12 +888,8 @@ const maybeAutoSpace = (e: KeyboardEvent, val: string, pos: number): boolean => 
   e.preventDefault();
   const insert = left + key + right;
   const newContent = val.slice(0, pos) + insert + val.slice(pos);
-  emit('content-change', activeTab.value.id, newContent);
-  nextTick(() => {
-    el.focus();
-    el.setSelectionRange(pos + left.length + 1, pos + left.length + 1);
-    updateCursorPosition();
-  });
+  el.focus();
+  applyContentEdit(activeTab.value.id, newContent, pos + left.length + 1);
   return true;
 };
 
@@ -932,29 +944,15 @@ const canRedo = computed(() => {
   return !!h && h.index < h.stack.length - 1;
 });
 
-// 撤回/重做：整篇内容换成快照。textarea 是 :value 单向绑定，程序化赋值会把光标甩到文末，
-// 所以换之前记下位置，换完按新内容长度夹取后放回去（工具栏按钮与快捷键共用这两个函数）
-const applySnapshot = (tabId: string, targetContent: string) => {
-  const el = textareaRef.value;
-  const caret = el ? el.selectionStart : 0;
-  emit('content-change', tabId, targetContent);
-  nextTick(() => {
-    const next = textareaRef.value;
-    if (!next) return;
-    next.focus();
-    const pos = Math.min(caret, next.value.length);
-    next.setSelectionRange(pos, pos);
-    updateCursorPosition();
-  });
-};
-
+// 撤回 / 重做：整篇内容换成快照，光标落在本次变化的末尾（工具栏与快捷键共用）
 const handleUndo = () => {
   if (!activeTab.value) return;
   flushPendingSnapshot();
   const h = historyMap.value[activeTab.value.id];
   if (h && h.index > 0) {
     h.index--;
-    applySnapshot(activeTab.value.id, h.stack[h.index]);
+    textareaRef.value?.focus();
+    applyContentEdit(activeTab.value.id, h.stack[h.index], changeEndCaret(activeTab.value.content, h.stack[h.index]));
   }
 };
 
@@ -964,7 +962,8 @@ const handleRedo = () => {
   const h = historyMap.value[activeTab.value.id];
   if (h && h.index < h.stack.length - 1) {
     h.index++;
-    applySnapshot(activeTab.value.id, h.stack[h.index]);
+    textareaRef.value?.focus();
+    applyContentEdit(activeTab.value.id, h.stack[h.index], changeEndCaret(activeTab.value.content, h.stack[h.index]));
   }
 };
 
@@ -1148,10 +1147,7 @@ const triggerCut = async () => {
       return;
     }
     const newContent = val.substring(0, start) + val.substring(end);
-    emit('content-change', activeTab.value.id, newContent);
-    nextTick(() => {
-      el.selectionStart = el.selectionEnd = start;
-    });
+    applyContentEdit(activeTab.value.id, newContent, start);
   } else {
     emit('show-toast', t('toastSelectToCut'));
   }
@@ -1168,10 +1164,7 @@ const triggerPaste = async () => {
     const end = el.selectionEnd;
     const val = el.value;
     const newContent = val.substring(0, start) + pasted + val.substring(end);
-    emit('content-change', activeTab.value.id, newContent);
-    nextTick(() => {
-      el.selectionStart = el.selectionEnd = start + pasted.length;
-    });
+    applyContentEdit(activeTab.value.id, newContent, start + pasted.length);
     return;
   }
   // Clipboard API 不可用时回退到原生粘贴（会触发 @input 自动同步内容）
@@ -1202,11 +1195,8 @@ const handleReplaceOne = () => {
   const selected = el.value.substring(start, end);
   if (selected.toLowerCase() === findText.value.toLowerCase()) {
     const newContent = el.value.substring(0, start) + replaceText.value + el.value.substring(end);
-    emit('content-change', activeTab.value.id, newContent);
-    nextTick(() => {
-      el.selectionStart = el.selectionEnd = start + replaceText.value.length;
-      handleFindNext();
-    });
+    applyContentEdit(activeTab.value.id, newContent, start + replaceText.value.length);
+    handleFindNext();
   } else {
     handleFindNext();
   }
@@ -1215,8 +1205,10 @@ const handleReplaceOne = () => {
 const handleReplaceAll = () => {
   if (!activeTab.value || !findText.value) return;
   const regex = new RegExp(findText.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-  const newContent = activeTab.value.content.replace(regex, replaceText.value);
-  emit('content-change', activeTab.value.id, newContent);
+  const oldContent = activeTab.value.content;
+  const newContent = oldContent.replace(regex, replaceText.value);
+  const el = textareaRef.value;
+  applyContentEdit(activeTab.value.id, newContent, el ? caretSameLineCol(oldContent, newContent, el.selectionStart) : 0);
 };
 
 /* ==================== 任务5：工作区其它文件匹配内联显示 ==================== */
@@ -1287,7 +1279,8 @@ const formatDocument = () => {
   const content = activeTab.value.content;
   const formatted = reindentText(formatCodeText(content), tabSize());
   if (formatted !== content) {
-    emit('content-change', activeTab.value.id, formatted);
+    const el = textareaRef.value;
+    applyContentEdit(activeTab.value.id, formatted, el ? caretSameLineCol(content, formatted, el.selectionStart) : 0);
   }
   emit('show-toast', t('formattedDoc'));
 };
