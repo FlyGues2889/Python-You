@@ -11,6 +11,8 @@ import { safeStorage } from '../../utils/storage';
 
 const props = defineProps<{
   activeTopicIdProp?: string;
+  /** 已解析的代码主题（跟随设置；透传给文章正文的代码块） */
+  codeTheme?: string;
 }>();
 
 const emit = defineEmits<{
@@ -282,6 +284,7 @@ const handleLoadCode = (payload: { code: string; topicId: string; topicTitle: st
         :is-completed="completedTopics.has(activeTopicId)"
         :stages="seriesStages"
         :series-title="seriesTitle"
+        :code-theme="codeTheme"
         @select-topic="handleSelectTopic"
         @load-code-to-editor="handleLoadCode"
         @toggle-completed="toggleCompleted(activeTopicId)"

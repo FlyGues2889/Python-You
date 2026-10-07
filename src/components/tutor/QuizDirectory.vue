@@ -75,9 +75,9 @@ const stagesWithRows = computed(() =>
 
       <div class="quiz-dir-header">
         <!-- 返回学习首页：与文章正文标题栏、测验题头同一位置同一款式 -->
-        <m3e-icon-button class="dir-back-btn" variant="tonal" :title="t('backToLearnHome')"
-          @click="emit('back-to-home')">
-          <span class="material-symbols-rounded">arrow_back</span>
+        <m3e-icon-button class="dir-back-btn" variant="text" :title="t('backToLearnHome')"
+          @click="emit('back-to-home')"disabled>
+          <span class="material-symbols-rounded">done_all</span>
         </m3e-icon-button>
         <div>
           <div class="dir-title">{{ t('quizDirectoryTitle') }}</div>

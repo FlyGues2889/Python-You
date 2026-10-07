@@ -86,6 +86,8 @@ const translations = {
     updateCancelled: '已取消下载',
     updateFailed: '检查更新失败，请检查网络',
     updateUnsupported: '当前环境不支持自动更新，请手动下载新版本',
+    disableUpdateCheck: '不检查更新',
+    disableUpdateCheckSubtitle: '启动时不再自动检查新版本',
 
     // Code Editor & Tabs
     welcomeTitle: '工作区为空',
@@ -321,7 +323,7 @@ const translations = {
     progressTopicsDone: '完成 {done}/{total}',
     progressTopicsTooltip: '已完成主题数 / 课程主题总数',
     progressQuizAverage: '测验均分 {score}%',
-    progressNoQuiz: '测验均分 —',
+    progressNoQuiz: '测验均分 --',
     progressQuizTooltip: '已作答测验的平均得分',
 
     // Tutorial Article Content UI

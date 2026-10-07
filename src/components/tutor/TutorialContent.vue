@@ -7,7 +7,6 @@ import { copyToClipboard } from '../../utils/clipboard';
 import { paneScroller, whenPaneScroller } from '../../utils/contentPane';
 import { useI18n } from '../../utils/i18n';
 import { hljs } from '../../utils/highlightSetup';
-import 'highlight.js/styles/github-dark.css';
 import TutorialFormattedText from './TutorialFormattedText.vue';
 
 const props = defineProps<{
@@ -16,7 +15,12 @@ const props = defineProps<{
   /** 当前系列的阶段（用于上一节/下一节导航；由 TutorialView 传入） */
   stages?: TutorialStage[];
   seriesTitle?: string;
+  /** 已解析的代码主题（跟随设置；由 TutorialView 透传） */
+  codeTheme?: string;
 }>();
+
+// 代码块配色跟随设置里的代码主题：主题类挂在块上，底色/前景/词法色由 theme.css 的 .theme-* 提供
+const codeThemeClass = computed(() => `theme-${props.codeTheme || 'github-dark'}`);
 
 const emit = defineEmits<{
   (e: 'select-topic', topicId: string): void;
@@ -32,6 +36,11 @@ const copiedCode = ref(false);
 const { t } = useI18n();
 
 const hasQuiz = computed(() => !!getTopicQuiz(props.topic.id));
+
+// 组件库按钮（m3e-button）上不能用「带参数的内联语句」写事件（拿不到事件、回调不执行），
+// 统一包成方法引用，状态本身仍由父级持有（isCompleted prop + toggle-completed 事件）
+const onToggleCompleted = () => emit('toggle-completed');
+const onOpenQuiz = () => emit('open-quiz');
 
 const showBackToTop = ref(false);
 
@@ -247,9 +256,9 @@ const openInEditor = (code: string) => {
              「插槽内恰好一个元素且其尺寸 ≤28×28」判定图标项，而包裹元素在 slotchange 时
              尚未布局、量到 0×0 即被判为图标项，该项会被永久压成固定方块并裁掉文字。 -->
         <div class="article-header">
-          <m3e-icon-button class="article-back-btn" variant="tonal" :title="t('backToLearnHome')"
+          <m3e-icon-button class="article-back-btn" variant="outlined" :title="t('backToLearnHome')"
             @click="emit('back-to-home')">
-            <span class="material-symbols-rounded">arrow_back</span>
+            <span class="material-symbols-rounded">home</span>
           </m3e-icon-button>
           <m3e-breadcrumb class="article-breadcrumb density-3">
             <m3e-breadcrumb-item @click="emit('back-to-home')">{{ t('navTutorial') }}</m3e-breadcrumb-item>
@@ -304,7 +313,7 @@ const openInEditor = (code: string) => {
               </m3e-button>
             </div>
           </div>
-          <pre class="code-block"><code class="hljs" v-html="highlightPython(topic.content.codeExample!)"></code></pre>
+          <pre class="code-block" :class="codeThemeClass"><code class="hljs" v-html="highlightPython(topic.content.codeExample!)"></code></pre>
         </div>
 
         <!-- Sections -->
@@ -346,7 +355,7 @@ const openInEditor = (code: string) => {
                 {{ t('tutorialImportAndRun') }}
               </m3e-button>
             </div>
-            <pre class="code-block"><code class="hljs" v-html="highlightPython(section.code!)"></code></pre>
+            <pre class="code-block" :class="codeThemeClass"><code class="hljs" v-html="highlightPython(section.code!)"></code></pre>
           </div>
 
           <!-- Section Notes -->
@@ -384,42 +393,45 @@ const openInEditor = (code: string) => {
           </ul>
         </div>
 
-        <!-- Footer Navigation Buttons (Prev / Next) -->
+        <!-- 完成状态与测验入口：统一用组件库按钮（完成状态是切换，用 toggle + selected 表达） -->
         <div class="completed-bar">
-          <button class="completed-btn" :class="{ 'is-completed': isCompleted }" @click="emit('toggle-completed')">
-            <span class="material-symbols-rounded">{{ isCompleted ? 'check_circle' : 'radio_button_unchecked' }}</span>
-            <span>{{ isCompleted ? t('markedComplete') : t('markComplete') }}</span>
-          </button>
-          <button v-if="hasQuiz" class="completed-btn quiz-btn" :title="t('completeQuizTitle')"
-            @click="emit('open-quiz')">
-            <span class="material-symbols-rounded">fact_check</span>
-            <span>{{ t('quizBtn') }}</span>
-          </button>
+          <m3e-button toggle variant="filled" size="medium" :selected="!!isCompleted" @change="onToggleCompleted">
+            <span slot="icon" class="material-symbols-rounded">{{ isCompleted ? 'check_circle' : 'radio_button_unchecked' }}</span>
+            {{ isCompleted ? t('markedComplete') : t('markComplete') }}
+          </m3e-button>
+          <m3e-button v-if="hasQuiz" variant="filled" size="medium" :title="t('completeQuizTitle')"
+            @click="onOpenQuiz">
+            <span slot="icon" class="material-symbols-rounded">fact_check</span>
+            {{ t('quizBtn') }}
+          </m3e-button>
         </div>
 
         <div class="tutorial-nav-footer">
-          <button v-if="prevTopic" class="nav-page-btn prev-btn" @click="emit('select-topic', prevTopic.id)">
-            <span class="material-symbols-rounded">arrow_back</span>
+          <m3e-button v-if="prevTopic" class="nav-page-btn prev-btn" @click="emit('select-topic', prevTopic.id)"
+            variant="text" size="medium">
+            <span slot="icon" class="material-symbols-rounded">arrow_back</span>
             <div class="nav-text-group">
               <span class="nav-direction">{{ t('tutorialPrevious') }}</span>
               <span class="nav-title">{{ prevTopic.title }}</span>
             </div>
-          </button>
+
+          </m3e-button>
 
           <div v-else class="nav-placeholder"></div>
 
-          <button v-if="nextTopic" class="nav-page-btn next-btn" @click="emit('select-topic', nextTopic.id)">
+          <m3e-button v-if="nextTopic" class="nav-page-btn next-btn" @click="emit('select-topic', nextTopic.id)"
+            variant="text" size="medium">
             <div class="nav-text-group right-align">
               <span class="nav-direction">{{ t('tutorialNext') }}</span>
               <span class="nav-title">{{ nextTopic.title }}</span>
             </div>
-            <span class="material-symbols-rounded">arrow_forward</span>
-          </button>
+            <span slot="trailing-icon" class="material-symbols-rounded">arrow_forward</span>
+          </m3e-button>
         </div>
 
         <!-- Back to Top FAB -->
-        <m3e-fab v-show="showBackToTop" size="small" variant="secondary" :title="t('backToTop')"
-          @click="scrollToTop" style="position: fixed; bottom: 24px; right: 24px; z-index: 100">
+        <m3e-fab v-show="showBackToTop" size="small" variant="secondary" :title="t('backToTop')" @click="scrollToTop"
+          style="position: fixed; bottom: 24px; right: 24px; z-index: 100">
           <span class="material-symbols-rounded">arrow_upward</span>
         </m3e-fab>
       </div>
@@ -549,11 +561,12 @@ m3e-breadcrumb {
 }
 
 .code-example-card {
-  background-color: #1e1e1e;
+  background-color: var(--surface-color);
   border-radius: 12px;
   overflow: hidden;
   margin-bottom: 24px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  /* 描边与 m3e-card 同一套做法（secondary 半透明叠加，1px），不用投影 */
+  border: 1px solid color-mix(in srgb, var(--secondary) 10%, transparent);
 }
 
 .code-example-card.sub-card {
@@ -565,8 +578,8 @@ m3e-breadcrumb {
   align-items: center;
   justify-content: space-between;
   padding: 10px 16px;
-  background-color: #2d2d2d;
-  color: #e0e0e0;
+  background-color: var(--surface-variant);
+  color: var(--text-secondary);
 }
 
 .header-left {
@@ -578,7 +591,7 @@ m3e-breadcrumb {
 .code-title {
   font-size: 0.8125rem;
   font-weight: 600;
-  color: #ccc;
+  color: var(--text-secondary);
 }
 
 .header-actions {
@@ -601,7 +614,10 @@ pre code {
   font-family: var(--font-mono);
   font-size: 0.875rem;
   line-height: 1.6;
-  color: #d4d4d4;
+  /* 前景/底色跟随代码主题类（.theme-*，见 theme.css）；
+     .hljs 的基础配色来自 CodeEditor 全局引入的 github-dark.css，必须压掉 */
+  color: inherit;
+  background-color: transparent;
   overflow-x: auto;
   white-space: pre;
   display: block;
@@ -660,7 +676,6 @@ pre code {
   align-items: center;
   justify-content: space-between;
   padding-top: 24px;
-  border-top: 1px solid var(--border-color-muted);
   margin-bottom: 48px;
 }
 
@@ -668,22 +683,8 @@ pre code {
   display: flex;
   align-items: center;
   gap: 12px;
-  background-color: var(--surface-color);
-  border: 1px solid var(--border-color-muted);
-  padding: 12px 20px;
-  border-radius: 12px;
   cursor: pointer;
-  color: var(--text-color);
-  transition: background-color var(--motion-effects-fast), border-color var(--motion-effects-fast),
-    color var(--motion-effects-fast);
   max-width: 45%;
-  text-align: left;
-}
-
-.nav-page-btn:hover {
-  background-color: var(--secondary-container);
-  border-color: var(--secondary);
-  color: var(--on-secondary-container);
 }
 
 .nav-text-group {
@@ -833,43 +834,6 @@ pre code {
   align-items: center;
   gap: 12px;
   margin-bottom: 24px;
-}
-
-.completed-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 24px;
-  border-radius: 9999px;
-  border: 2px solid var(--border-color-muted);
-  background-color: var(--surface-color);
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color var(--motion-effects), border-color var(--motion-effects),
-    color var(--motion-effects);
-}
-
-.completed-btn:hover {
-  border-color: var(--primary);
-  color: var(--primary);
-}
-
-.completed-btn.quiz-btn {
-  border-color: var(--secondary);
-  color: var(--secondary);
-}
-
-.completed-btn.quiz-btn:hover {
-  background-color: var(--secondary-container);
-  color: var(--on-secondary-container);
-}
-
-.completed-btn.is-completed {
-  background-color: var(--primary-container);
-  color: var(--on-primary-container);
-  border-color: var(--primary);
 }
 
 /* --- Takeaways Box --- */

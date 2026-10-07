@@ -932,20 +932,29 @@ const canRedo = computed(() => {
   return !!h && h.index < h.stack.length - 1;
 });
 
+// 撤回/重做：整篇内容换成快照。textarea 是 :value 单向绑定，程序化赋值会把光标甩到文末，
+// 所以换之前记下位置，换完按新内容长度夹取后放回去（工具栏按钮与快捷键共用这两个函数）
+const applySnapshot = (tabId: string, targetContent: string) => {
+  const el = textareaRef.value;
+  const caret = el ? el.selectionStart : 0;
+  emit('content-change', tabId, targetContent);
+  nextTick(() => {
+    const next = textareaRef.value;
+    if (!next) return;
+    next.focus();
+    const pos = Math.min(caret, next.value.length);
+    next.setSelectionRange(pos, pos);
+    updateCursorPosition();
+  });
+};
+
 const handleUndo = () => {
   if (!activeTab.value) return;
   flushPendingSnapshot();
   const h = historyMap.value[activeTab.value.id];
   if (h && h.index > 0) {
     h.index--;
-    const targetContent = h.stack[h.index];
-    emit('content-change', activeTab.value.id, targetContent);
-    nextTick(() => {
-      if (textareaRef.value) {
-        textareaRef.value.focus();
-        updateCursorPosition();
-      }
-    });
+    applySnapshot(activeTab.value.id, h.stack[h.index]);
   }
 };
 
@@ -955,14 +964,7 @@ const handleRedo = () => {
   const h = historyMap.value[activeTab.value.id];
   if (h && h.index < h.stack.length - 1) {
     h.index++;
-    const targetContent = h.stack[h.index];
-    emit('content-change', activeTab.value.id, targetContent);
-    nextTick(() => {
-      if (textareaRef.value) {
-        textareaRef.value.focus();
-        updateCursorPosition();
-      }
-    });
+    applySnapshot(activeTab.value.id, h.stack[h.index]);
   }
 };
 

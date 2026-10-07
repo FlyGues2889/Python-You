@@ -24,6 +24,7 @@ import { revealItemInDir, openPath } from '@tauri-apps/plugin-opener';
 
 import { uid } from './utils/id';
 import { resolveCodeTheme } from './utils/theme';
+import { checkUpdateOnStartup } from './utils/appUpdate';
 import { backendTasks, addBackendTask, finishBackendTask, type BackendTask } from './utils/backendTasks';
 import { setQuizQuestionResult, syncQuizCompletion, getQuizQuestionResult } from './components/tutor/quizData';
 import { useSplitLayout } from './composables/useSplitLayout';
@@ -285,6 +286,7 @@ const config = ref<AppConfig>({
   enableWheelZoom: true,
   autoPairQuotes: true,
   demoMode: false,
+  disableUpdateCheck: false,
   interpreter: 'auto'
 });
 
@@ -554,6 +556,12 @@ onMounted(async () => {
 
   // 应用已保存的解释器选择（Rust 侧同步；detect 异步完成，不阻塞初始化）
   nativePython.applyInterpreter(config.value.interpreter);
+
+  // 每次启动静默检查一次更新（设置里可关）：不阻塞启动、失败不打扰用户；
+  // 查到新版时设置页的按钮会变成 filled 的「立即更新」（见 utils/appUpdate.ts）
+  if (!config.value.disableUpdateCheck) {
+    void checkUpdateOnStartup();
+  }
 });
 
 // Sync Workspace to LocalStorage
@@ -1383,7 +1391,7 @@ onMounted(() => {
         <main v-else class="main-workspace">
           <!-- Python Tutorial View -->
           <TutorialView ref="tutorialViewRef" v-if="activeNavTab === 'tutorial'"
-            :active-topic-id-prop="activeTutorialTopicId"
+            :active-topic-id-prop="activeTutorialTopicId" :code-theme="resolvedCodeTheme"
             @update-active-topic="setTutorialTopicId"
             @load-code-to-editor="handleLoadTutorialCodeToEditor"
             @contextmenu-tutorial="e => openContextMenu(e, 'tutorial')" />

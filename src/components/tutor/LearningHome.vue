@@ -96,9 +96,8 @@ const quizAverageLabel = (series: TutorialSeries): string => {
             <p class="card-summary">{{ series.summary }}</p>
 
             <div class="card-progress">
-              <div class="progress-track">
-                <div class="progress-fill" :style="{ width: progressMap[series.id].percent + '%' }"></div>
-              </div>
+              <m3e-linear-progress-indicator class="progress-bar" :value="progressMap[series.id].percent">
+              </m3e-linear-progress-indicator>
               <span class="progress-text">
                 {{ tf('learnSeriesProgress', { done: progressMap[series.id].done, total: progressMap[series.id].total }) }}
               </span>
@@ -248,21 +247,11 @@ const quizAverageLabel = (series: TutorialSeries): string => {
   padding-top: 14px;
 }
 
-.progress-track {
+/* 进度条用组件库的 m3e-linear-progress-indicator：厚度、圆角、轨道与活动段配色
+   都由它自己的 token 决定，这里只占位（与设置页、标题栏的进度条同一套） */
+.progress-bar {
   flex: 1;
   min-width: 0;
-  height: 6px;
-  border-radius: 9999px;
-  /* 轨道用 outline-variant：surface-2 与卡片容器色差过小，0% 时几乎看不出还有条轨道 */
-  background-color: var(--outline-variant);
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  border-radius: 9999px;
-  background-color: var(--secondary);
-  transition: width var(--motion-spatial-fast);
 }
 
 .progress-text {

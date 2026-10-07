@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, onBeforeUnmount } from 'vue';
+import { computed, ref, watch, onBeforeUnmount } from 'vue';
 import { AppConfig } from '../types';
 import { useI18n } from '../utils/i18n';
 import { resolveCodeTheme } from '../utils/theme';
 import { nativePython } from '../utils/nativePython';
 import { nativeApi } from '../utils/native';
 import { nativeUpdater, type UpdateInfo } from '../utils/nativeUpdater';
+import { appUpdate } from '../utils/appUpdate';
 import { addBackendTask, updateBackendTask, finishBackendTask } from '../utils/backendTasks';
 import { getVersion } from '@tauri-apps/api/app';
 import PageHeader from './PageHeader.vue';
@@ -56,11 +57,12 @@ const onInterpreterChange = async (e: Event) => {
   await nativePython.applyInterpreter(id);
 };
 
-const onSwitchChange = (e: Event, key: 'enableWheelZoom' | 'demoMode') => {
+const onSwitchChange = (e: Event, key: 'enableWheelZoom' | 'demoMode' | 'disableUpdateCheck') => {
   props.config[key] = !!(e.target as any).checked;
 };
 const onWheelZoomChange = (e: Event) => onSwitchChange(e, 'enableWheelZoom');
 const onDemoModeChange = (e: Event) => onSwitchChange(e, 'demoMode');
+const onDisableUpdateCheckChange = (e: Event) => onSwitchChange(e, 'disableUpdateCheck');
 
 // 添加自定义解释器：选择 Python 可执行文件 → Rust 探测版本与真实路径 → 并入列表并选中
 const interpreterError = ref('');
@@ -82,10 +84,13 @@ const handleAddInterpreter = async () => {
 const isDesktop = nativeApi.available();
 // 更新过程也登记到标题栏后台任务里（与包安装等长任务同一处，FR-1.3 / FR-5.6）
 const UPDATE_TASK_ID = 'app-update';
-const aboutVersion = ref('0.3.72'); // 兜底值；桌面端启动后从 tauri.conf.json 读真实版本
+const aboutVersion = ref('0.3.73'); // 兜底值；桌面端启动后从 tauri.conf.json 读真实版本
 const isUpdateDialogOpen = ref(false);
-const updateStage = ref<'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'preparing' | 'error'>('idle');
-const updateInfo = ref<UpdateInfo | null>(null);
+// 启动时的静默检查（App.vue 触发）可能已有结果：直接接手，按钮显示「立即更新」
+const updateStage = ref<'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'preparing' | 'error'>(
+  appUpdate.info?.hasUpdate ? 'available' : 'idle'
+);
+const updateInfo = ref<UpdateInfo | null>(appUpdate.info);
 const updateError = ref('');
 const updatePercent = ref<number | null>(null); // null = 还没拿到真实进度
 let downloadToken = 0;      // 每次下载的代号：过期的监听与回调一律忽略
@@ -154,6 +159,7 @@ const handleCheckUpdate = async () => {
   try {
     const info = await nativeUpdater.check();
     updateInfo.value = info;
+    appUpdate.info = info;
     updateStage.value = info.hasUpdate ? 'available' : 'latest';
     finishBackendTask(UPDATE_TASK_ID, 'done');
   } catch (err: any) {
@@ -215,6 +221,23 @@ const cancelUpdateDownload = async () => {
 
 // 弹窗动作区：有新版才给「稍后 / 立即更新」，其余状态给「确定」
 const canInstallUpdate = computed(() => updateStage.value === 'available' && !!updateInfo.value?.hasUpdate);
+
+// 设置页先于启动检查打开时，结果回来再补显示（用户没在手动检查/下载中才接管）
+watch(() => appUpdate.info, (info) => {
+  if (!info || updateStage.value !== 'idle') return;
+  updateInfo.value = info;
+  if (info.hasUpdate) updateStage.value = 'available';
+});
+
+// 「检查更新 / 立即更新」是同一个按钮：已知有新版就直接进入下载（弹窗里可取消）
+const onUpdateButtonClick = () => {
+  if (canInstallUpdate.value) {
+    isUpdateDialogOpen.value = true;
+    void startUpdate();
+  } else {
+    void handleCheckUpdate();
+  }
+};
 
 // 离开设置页时摘掉进度监听（下载本身在后端继续，回到标题栏后台任务可见）
 onBeforeUnmount(() => {
@@ -419,11 +442,24 @@ const clearLocalData = () => {
             {{ t('checkUpdate') }}
             <span slot="supporting-text">{{ updateStatusText }}</span>
             <div slot="trailing" class="settings-trailing">
-              <m3e-button variant="outlined" size="small" :disabled="updateStage === 'checking' || updateStage === 'downloading' || updateStage === 'preparing'"
-                @click="handleCheckUpdate">
-                <span slot="icon" class="material-symbols-rounded">refresh</span>
-                {{ t('checkUpdate') }}
+              <!-- 启动检查到新版后这个按钮变成 filled 的「立即更新」，点击直接进入下载 -->
+              <m3e-button :variant="canInstallUpdate ? 'filled' : 'outlined'" size="small"
+                :disabled="updateStage === 'checking' || updateStage === 'downloading' || updateStage === 'preparing'"
+                @click="onUpdateButtonClick">
+                <span slot="icon" class="material-symbols-rounded">{{ canInstallUpdate ? 'system_update_alt' : 'refresh'
+                  }}</span>
+                {{ canInstallUpdate ? t('updateNow') : t('checkUpdate') }}
               </m3e-button>
+            </div>
+          </m3e-list-item>
+
+          <!-- 启动自动检查更新的开关（默认开） -->
+          <m3e-list-item v-if="isDesktop">
+            <span slot="leading" class="material-symbols-rounded">update_disabled</span>
+            {{ t('disableUpdateCheck') }}
+            <span slot="supporting-text">{{ t('disableUpdateCheckSubtitle') }}</span>
+            <div slot="trailing" class="settings-trailing">
+              <m3e-switch :checked="!!config.disableUpdateCheck" @change="onDisableUpdateCheckChange" />
             </div>
           </m3e-list-item>
         </m3e-list>

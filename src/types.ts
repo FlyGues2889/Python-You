@@ -77,5 +77,7 @@ export interface AppConfig {
   enableWheelZoom?: boolean;
   autoPairQuotes?: boolean;
   demoMode?: boolean;
+  /** 关闭启动时的自动更新检查（默认开启，见 utils/appUpdate.ts） */
+  disableUpdateCheck?: boolean;
   interpreter?: string; // 'auto' | 'pyodide' | 本机解释器 id（python_detect versions[].id）
 }
