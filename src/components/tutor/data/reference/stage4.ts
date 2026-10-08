@@ -1,15 +1,14 @@
 import { TutorialStage } from '../../tutorialData';
 
-// 参考手册：内容只保留正文与表格（kind: 'reference' → 渲染时不出小节标题、不显示代码与贴士）
-export const cmdHelp: TutorialStage = {
-
-  id: 'cmd_help',
-  title: 'Python 参考手册',
+// 命令行与工具速查（原 python 系列「参考手册」阶段迁移至此）
+export const refStage4: TutorialStage = {
+  id: 'ref_stage4',
+  title: '命令行与工具',
   icon: 'terminal',
   topics: [
     {
       id: 'cmd_cli_flags',
-      title: 'Python 命令行',
+      title: '命令行用法',
       stage: 'Python 参考手册 > CLI 参数',
       kind: 'reference',
       summary: '在终端里给 python 命令加「开关」，控制它怎么运行。',
@@ -46,7 +45,7 @@ export const cmdHelp: TutorialStage = {
     },
     {
       id: 'cmd_m_modules',
-      title: 'python -m 模块',
+      title: '-m 运行模块',
       stage: 'Python 参考手册 > 内置模块 CLI',
       kind: 'reference',
       summary: 'python -m 能运行内置小工具，比如开个网页服务器。',
@@ -80,78 +79,8 @@ export const cmdHelp: TutorialStage = {
       }
     },
     {
-      id: 'cmd_keywords',
-      title: 'Python 关键字',
-      stage: 'Python 参考手册 > 保留关键字',
-      kind: 'reference',
-      summary: '关键字是 Python 的「规定动作」，37 个词先混个眼熟。',
-      content: {
-        overview: '关键字（Keywords）是 Python 预留的特殊单词，比如 if、for、while、def。它们有固定的语法含义，不能拿来当变量名或函数名。按下方分类合计共有 37 个。',
-        sections: [
-          {
-            text: '通过 `import keyword; print(keyword.kwlist)` 可实时获取完整列表，按功能分类如下：',
-            table: {
-              headers: ['功能分类', '包含关键字', '功能简述'],
-              rows: [
-                ['逻辑与单例', 'False, True, None', '布尔真值与空对象单例'],
-                ['条件控制', 'if, elif, else', '多分支流程控制'],
-                ['循环控制', 'for, while, break, continue, pass', '循环、跳出与空占位'],
-                ['函数与类', 'def, return, lambda, class', '定义函数、匿名函数与类'],
-                ['异常处理', 'try, except, finally, raise, assert', '捕获异常、抛出错误、断言'],
-                ['模块导入', 'import, from, as', '导入模块、提取符号与别名'],
-                ['作用域', 'global, nonlocal, del', '声明作用域与删除引用'],
-                ['逻辑运算', 'and, or, not, in, is', '布尔运算、成员与身份检测'],
-                ['上下文管理', 'with', '自动资源清理释放'],
-                ['协程生成', 'async, await, yield', '异步协程、生成器产出'],
-                ['模式匹配', 'match, case', '结构模式匹配（3.10+）']
-              ]
-            }
-          },
-          {
-            text: '关键字是 Python 保留词，不能当变量名；常用关键字：if、for、while、def、return、import、class；用 `keyword.kwlist` 可以查看全部 37 个。'
-          }
-        ]
-      }
-    },
-    {
-      id: 'cmd_builtins',
-      title: 'Python 内建函数',
-      stage: 'Python 参考手册 > 内置函数全集',
-      kind: 'reference',
-      summary: '内建函数是 Python 自带的「常用工具」，开箱即用。',
-      content: {
-        overview: '内置函数（Built-in Functions）是 Python 启动时就准备好的工具函数，不用 import 直接用，比如 print()、len()、int()、max()。',
-        sections: [
-          {
-            text: '按功能领域分类整理最常用的内置函数：',
-            table: {
-              headers: ['分类', '内置函数', '功能说明'],
-              rows: [
-                ['数值计算', 'abs, divmod, pow, round, sum, max, min', '绝对值、商余、乘方、四舍五入、求和、极值'],
-                ['类型转换', 'int, float, str, bool, list, tuple, set, dict, bytes, chr, ord, hex, oct, bin', '标量与容器类型转换、进制转换'],
-                ['对象反射', 'type, isinstance, issubclass, id, hash, getattr, setattr, hasattr, dir, vars, callable, repr', '类型检测、内存地址、动态属性访问'],
-                ['迭代容器', 'len, range, enumerate, zip, map, filter, iter, next, sorted, reversed, all, any, slice', '容器长度、索引配对、迭代器创建与取下一个、映射过滤、排序'],
-                ['输入输出', 'print, input, open, help, format', '控制台打印、输入、文件、格式化'],
-                ['代码执行', 'eval, exec, compile, globals, locals, super, breakpoint', '动态执行、作用域、继承调用'],
-                ['类与描述符', 'property, classmethod, staticmethod', '把方法当属性访问、定义类方法与静态方法']
-              ]
-            }
-          },
-          {
-            text: '易混淆函数对比：`sorted()` 返回新列表、不修改原数据，`list.sort()` 原位修改；`map()` 与列表推导式相比后者可读性更好，多数场景推荐推导式；类型判断优先用 `isinstance()`，它会考虑继承关系。'
-          },
-          {
-            text: '安全警告：`eval()` 和 `exec()` 会把字符串当作 Python 代码直接执行。不要对不可信输入使用，有代码注入风险——只要字符串来自用户、文件或网络，攻击者就可以借它执行任意代码。学习调试时只在自己写死的字符串上使用。'
-          },
-          {
-            text: 'print() 输出、len() 长度、type() 查类型、int()/str() 转换、max()/min() 求最值；全部内置函数用 `dir(builtins)` 或 `help()` 查看。'
-          }
-        ]
-      }
-    },
-    {
       id: 'cmd_pip',
-      title: 'pip 包管理',
+      title: 'pip 命令速查',
       stage: 'Python 参考手册 > 包管理',
       kind: 'reference',
       summary: '用 pip 安装、卸载、查看第三方包。',

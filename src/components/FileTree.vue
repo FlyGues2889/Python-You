@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { FSItem } from '../types';
 import FileTreeNode from './FileTreeNode.vue';
 import { useI18n } from '../utils/i18n';
+import { vAutofocus, isOverlayCloseBlur, focusInlineInput } from '../utils/inlineEdit';
 
 const props = defineProps<{
   workspaceItems: FSItem[];
@@ -37,16 +38,6 @@ const rootName = computed(() => {
 const creatingState = ref<{ parentId: string | null; isFolder: boolean } | null>(null);
 const editingItemId = ref<string | null>(null);
 const rootNewName = ref('');
-
-// Custom directive for autofocus & text select
-const vAutofocus = {
-  mounted: (el: HTMLElement) => {
-    el.focus();
-    if (el instanceof HTMLInputElement) {
-      el.select();
-    }
-  }
-};
 
 const ensureFolderOpen = (folderId: string) => {
   const findAndOpen = (items: FSItem[]): boolean => {
@@ -130,6 +121,16 @@ const handleConfirmCreateRoot = () => {
   handleConfirmCreate(creatingState.value.parentId, rootNewName.value, creatingState.value.isFolder);
 };
 
+// 失焦提交前先排除「浮层关闭抢焦」（右键菜单里点新建时会先被抢一次焦点，见 utils/inlineEdit.ts）
+const onRootCreateBlur = (e: FocusEvent) => {
+  const el = e.target as HTMLElement;
+  if (isOverlayCloseBlur(el)) {
+    focusInlineInput(el);
+    return;
+  }
+  handleConfirmCreateRoot();
+};
+
 const handleConfirmRename = (item: FSItem, newName: string) => {
   const finalName = newName.trim();
   if (finalName === item.name) {
@@ -210,7 +211,7 @@ const filteredItems = computed(() => {
           </span>
           <input v-autofocus v-model="rootNewName" type="text" class="node-inline-input"
             :placeholder="creatingState.isFolder ? t('folderNamePlaceholder') : t('fileNamePlaceholder')"
-            @keyup.enter="handleConfirmCreateRoot" @keyup.esc="cancelInline" @blur="handleConfirmCreateRoot"
+            @keyup.enter="handleConfirmCreateRoot" @keyup.esc="cancelInline" @blur="onRootCreateBlur"
             @click.stop />
         </div>
 
@@ -263,7 +264,9 @@ const filteredItems = computed(() => {
 
 .tree-search-bar {
   flex: 1;
-  min-width: 200px;
+  /* 不设下限：拉窄资源管理器时搜索条会顶出面板（输入框在组件内已是 min-width:0，
+     这里放手让它跟着面板收缩） */
+  min-width: 0;
 }
 
 .tree-node-list {
@@ -320,6 +323,9 @@ const filteredItems = computed(() => {
 
 .node-inline-input {
   flex: 1;
+  /* input 的固有宽度（默认 20 字符）会让「min-width:auto」拒绝收缩，重命名框在深层级
+     或窄面板里顶出可视范围 —— 显式归零让它跟着行宽收缩 */
+  min-width: 0;
   height: 26px;
   padding: 0 8px;
   font-size: 0.8125rem;

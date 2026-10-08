@@ -825,9 +825,193 @@ pub fn python_pip_install_file(
     spawn_streaming(app, &state, cmd, None, "pip", true, false)
 }
 
+/* ==================== 本机 Python 安装引导（解释器弹窗） ==================== */
+/// 清华镜像的 Python 目录（python.org/ftp/python 的镜像）：安装包按
+/// `<版本>/python-<版本>-amd64.exe` 存放
+const PYTHON_MIRROR_ROOT: &str = "https://mirrors.tuna.tsinghua.edu.cn/python";
+/// 版本列表拿不到时（离线 / 目录页结构变化）兜底给出的版本
+const PYTHON_INSTALLER_FALLBACK: &str = "3.13.9";
+/// 只列该次要版本及以后的 3.x（更老的版本对新版第三方库支持差）
+const PYTHON_MINOR_FLOOR: u32 = 10;
+/// 最多列出几个次要版本（每个次要版本取最新补丁，新的在前）
+const PYTHON_MINOR_LIMIT: usize = 6;
+
+fn python_installer_url(version: &str) -> String {
+    format!("{PYTHON_MIRROR_ROOT}/{version}/python-{version}-amd64.exe")
+}
+
+/// 版本号必须是 x.y.z 三段纯数字：它会被拼进下载地址，防注入
+fn is_valid_installer_version(version: &str) -> bool {
+    let parts: Vec<&str> = version.split('.').collect();
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+}
+
+/// 从镜像目录页提取「每个次要版本的最新补丁」（3.x.y，x ≥ 下限），新的在前
+fn parse_installer_versions(html: &str) -> Vec<String> {
+    let Ok(re) = regex::Regex::new(r#"href="(\d+)\.(\d+)\.(\d+)/""#) else {
+        return Vec::new();
+    };
+    let mut best: std::collections::BTreeMap<(u32, u32), u32> = std::collections::BTreeMap::new();
+    for caps in re.captures_iter(html) {
+        let (major, minor, patch): (u32, u32, u32) = (
+            caps[1].parse().unwrap_or(0),
+            caps[2].parse().unwrap_or(0),
+            caps[3].parse().unwrap_or(0),
+        );
+        if major != 3 || minor < PYTHON_MINOR_FLOOR {
+            continue;
+        }
+        let cur = best.entry((major, minor)).or_insert(0);
+        if patch > *cur {
+            *cur = patch;
+        }
+    }
+    best.into_iter()
+        .rev()
+        .take(PYTHON_MINOR_LIMIT)
+        .map(|((major, minor), patch)| format!("{major}.{minor}.{patch}"))
+        .collect()
+}
+
+/// 会话内缓存：镜像目录页不小，每次开弹窗都拉一遍不划算
+static PYTHON_VERSION_CACHE: Mutex<Option<Vec<String>>> = Mutex::new(None);
+
+async fn fetch_installer_versions() -> Option<Vec<String>> {
+    let client = reqwest::Client::builder()
+        .connect_timeout(crate::download::CONNECT_TIMEOUT)
+        .build()
+        .ok()?;
+    let resp = client
+        .get(format!("{PYTHON_MIRROR_ROOT}/"))
+        .header("User-Agent", crate::download::USER_AGENT)
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let html = resp.text().await.ok()?;
+
+    // 目录页会列出镜像还没同步完安装包的版本（实测 3.15.0 / 3.10.22 的目录里
+    // 没有 amd64 安装包），逐个确认能下才列给用户
+    let mut list = Vec::new();
+    for version in parse_installer_versions(&html) {
+        let ok = client
+            .head(python_installer_url(&version))
+            .header("User-Agent", crate::download::USER_AGENT)
+            .send()
+            .await
+            .map(|r| r.status().is_success())
+            .unwrap_or(false);
+        if ok {
+            list.push(version);
+        }
+    }
+    if list.is_empty() {
+        None
+    } else {
+        Some(list)
+    }
+}
+
+/// 可选的安装版本（新的在前）；网络失败 / 页面结构变化时退回内置默认版本
+#[tauri::command]
+pub async fn list_python_installers() -> Result<Vec<String>, String> {
+    if let Ok(guard) = PYTHON_VERSION_CACHE.lock() {
+        if let Some(cached) = guard.as_ref() {
+            return Ok(cached.clone());
+        }
+    }
+    let list = match fetch_installer_versions().await {
+        Some(list) => list,
+        None => vec![PYTHON_INSTALLER_FALLBACK.to_string()],
+    };
+    if let Ok(mut guard) = PYTHON_VERSION_CACHE.lock() {
+        *guard = Some(list.clone());
+    }
+    Ok(list)
+}
+
+/// 后台下载指定版本的官方安装包到系统临时目录，返回文件路径；进度发到
+/// "python-download-progress"。已下过的同版本直接复用；先下 .part 再改名，
+/// 中断不会留下半个 exe 被当成完整安装包。
+#[tauri::command]
+pub async fn download_python_installer(app: AppHandle, version: String) -> Result<String, String> {
+    let version = version.trim().to_string();
+    if !is_valid_installer_version(&version) {
+        return Err(format!("版本号不合法：{version}"));
+    }
+    let name = format!("python-{version}-amd64.exe");
+    let target = std::env::temp_dir().join(&name);
+    if target.is_file() {
+        return Ok(target.to_string_lossy().to_string());
+    }
+    let part = std::env::temp_dir().join(format!("{name}.part"));
+    crate::download::stream_download(
+        &app,
+        &python_installer_url(&version),
+        &part,
+        "python-download-progress",
+        None,
+        None,
+    )
+    .await?;
+    std::fs::rename(&part, &target).map_err(|e| format!("安装包落盘失败：{e}"))?;
+    Ok(target.to_string_lossy().to_string())
+}
+
+/// 启动官方安装程序：/passive 显示进度但不提问，装到当前用户（免管理员）并写入 PATH
+/// 与 py 启动器（应用检测本机 Python 走的正是 python / py 这两条命令）。
+#[tauri::command]
+pub fn run_python_installer(path: String) -> Result<(), String> {
+    if !PathBuf::from(&path).is_file() {
+        return Err("安装包不存在，请重新下载".to_string());
+    }
+    Command::new(&path)
+        .args([
+            "/passive",
+            "InstallAllUsers=0",
+            "PrependPath=1",
+            "Include_launcher=1",
+        ])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("无法启动安装程序：{e}"))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::drain_segments;
+    use super::{drain_segments, is_valid_installer_version, parse_installer_versions};
+
+    #[test]
+    fn 安装包版本号只接受三段数字() {
+        assert!(is_valid_installer_version("3.13.9"));
+        assert!(!is_valid_installer_version("3.13"));
+        assert!(!is_valid_installer_version("v3.13.9"));
+        assert!(!is_valid_installer_version("3.13.9/../x"));
+        assert!(!is_valid_installer_version("3.13.9?q=1"));
+        assert!(!is_valid_installer_version(""));
+    }
+
+    #[test]
+    fn 目录页解析出每个次要版本的最新补丁_新的在前() {
+        // 预发布目录（3.14.0a5）与 2.x 都不算；同一次要版本取最大补丁
+        let html = r#"
+            <a href="3.13.9/">3.13.9/</a>
+            <a href="3.13.10/">3.13.10/</a>
+            <a href="3.12.11/">3.12.11/</a>
+            <a href="3.9.23/">3.9.23/</a>
+            <a href="3.14.0a5/">3.14.0a5/</a>
+            <a href="2.7.18/">2.7.18/</a>
+        "#;
+        assert_eq!(
+            parse_installer_versions(html),
+            vec!["3.13.10".to_string(), "3.12.11".to_string()]
+        );
+    }
 
     fn segs(input: &[u8], split_cr: bool) -> Vec<(String, bool)> {
         let mut buf = input.to_vec();

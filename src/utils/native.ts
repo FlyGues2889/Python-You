@@ -137,6 +137,19 @@ export const nativeApi = {
   addInterpreter(path: string): Promise<PythonVersion> {
     return invoke('python_add_interpreter', { path });
   },
+  // 本机未装 Python 时的安装引导：从清华镜像下载官方安装包，完成后启动安装程序
+  listPythonInstallers(): Promise<string[]> {
+    return invoke('list_python_installers');
+  },
+  downloadPythonInstaller(version: string): Promise<string> {
+    return invoke('download_python_installer', { version });
+  },
+  runPythonInstaller(path: string): Promise<void> {
+    return invoke('run_python_installer', { path });
+  },
+  onPythonDownloadProgress(cb: (percent: number) => void): Promise<() => void> {
+    return listen<number>('python-download-progress', (event) => cb(event.payload));
+  },
 
   onPythonEvent(cb: (e: PyOutputEvent) => void): Promise<() => void> {
     return listen<PyOutputEvent>('py-output', (event) => cb(event.payload));

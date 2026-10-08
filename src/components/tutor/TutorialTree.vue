@@ -4,6 +4,7 @@ import { type TutorialStage, type TutorialTopic } from './tutorialData';
 import { getTopicQuizScore, type QuizScore } from './quizData';
 import { useI18n } from '../../utils/i18n';
 import { paneScroller } from '../../utils/contentPane';
+import TutorSearchResults from './TutorSearchResults.vue';
 
 const { t, tf } = useI18n();
 
@@ -93,6 +94,14 @@ const quizTotalCount = computed(() =>
   quizStages.value.reduce((acc, { rows }) => acc + rows.length, 0)
 );
 
+// 本系列有没有测验（quizStages 已排除参考手册主题）
+const hasQuizzes = computed(() => quizStages.value.length > 0);
+
+// 本系列有没有「可标完成」的主题（参考手册整册 kind: 'reference'，不标完成）
+const hasCompletableTopics = computed(() =>
+  stages.value.some(stage => stageTopicsOf(stage).some(topic => topic.kind !== 'reference'))
+);
+
 const openQuiz = (topicId: string) => {
   if (getScore(topicId).total === 0) return;
   emit('open-quiz', topicId);
@@ -120,6 +129,12 @@ const filteredQuizStages = computed(() => {
 });
 
 const searchQuery = ref('');
+
+// 搜索结果里选中一条：清空输入回到目录（搜索视图只在输入时占据列表区），再跳到该主题
+const onOpenSearchResult = (topicId: string) => {
+  searchQuery.value = '';
+  emit('select-topic', topicId);
+};
 
 // 阶段/子分类的展开状态。
 // 只记录用户「折叠过」的那些（collapsed*），默认值算出来 —— 以前写死 stage1/stage2/cmd_help，
@@ -295,8 +310,9 @@ const filteredStages = computed(() => {
         </m3e-breadcrumb>
       </div>
 
-      <!-- 进度：文章目录看完成篇数 + 测验平均分；测验目录看已通过的测验数 -->
-      <div class="progress-summary">
+      <!-- 进度：文章目录看完成篇数 + 测验平均分；测验目录看已通过的测验数。
+           参考手册整册是查阅材料：标不了完成、也没有测验，两个卡片都不出现 -->
+      <div v-if="isQuizMode || hasCompletableTopics || hasQuizzes" class="progress-summary">
         <template v-if="isQuizMode">
           <span class="progress-chip is-score" :title="t('progressQuizTooltip')">
             <span class="material-symbols-rounded">scoreboard</span>
@@ -304,11 +320,11 @@ const filteredStages = computed(() => {
           </span>
         </template>
         <template v-else>
-          <span class="progress-chip" :title="t('progressTopicsTooltip')">
+          <span v-if="hasCompletableTopics" class="progress-chip" :title="t('progressTopicsTooltip')">
             <span class="material-symbols-rounded">task_alt</span>
             <span>{{ tf('progressTopicsDone', { done: completedCount, total: allTopicIds.length }) }}</span>
           </span>
-          <span class="progress-chip is-score" :class="{ 'is-empty': quizAverage === null }"
+          <span v-if="hasQuizzes" class="progress-chip is-score" :class="{ 'is-empty': quizAverage === null }"
             :title="t('progressQuizTooltip')">
             <span class="material-symbols-rounded">scoreboard</span>
             <span>{{ quizAverage === null ? t('progressNoQuiz') : tf('progressQuizAverage', { score: quizAverage })
@@ -367,6 +383,9 @@ const filteredStages = computed(() => {
             {{ t('noTutorialMatch') }}
           </div>
         </template>
+
+        <!-- 搜索视图：输入即列命中（函数 / 方法 / API 与主题），点一条跳过去 -->
+        <TutorSearchResults v-else-if="searchQuery.trim()" :query="searchQuery" @open-topic="onOpenSearchResult" />
 
         <template v-else>
         <div v-for="stage in filteredStages" :key="stage.id" class="stage-block">

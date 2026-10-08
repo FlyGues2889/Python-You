@@ -3,16 +3,16 @@
 //! 不用 tauri-plugin-updater：它在 Windows 上只支持 NSIS/MSI 安装包，本项目只发单文件 exe。
 //! 仓库地址在构建期由 build.rs 从 `git remote get-url origin` 取（终端用户机器上不一定有 git）。
 //! 新旧判定看 release 的发布时间与本地构建时间，**不比较版本号大小** —— 本项目的版本号
-//! 是 0.3.5 / 0.3.51 / 0.3.52 / 0.3.6 / 0.3.62 / 0.3.7 / 0.3.71 / 0.3.72 / 0.3.73 这种「系列号 + 修订号」写法，数值与字符串
+//! 是 0.3.5 / 0.3.51 / 0.3.52 / 0.3.6 / 0.3.62 / 0.3.7 / 0.3.71 / 0.3.72 / 0.3.73 / 0.3.74 这种「系列号 + 修订号」写法，数值与字符串
 //! 都排不出正确顺序，按号比迟早会判错方向。
 
 use serde::Serialize;
-use sha2::{Digest, Sha256};
-use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
+
+use crate::download::{stream_download, USER_AGENT};
 
 /// 取消标志：设置页点「取消下载」时置位，下载循环每个分块检查一次
 static CANCEL_DOWNLOAD: AtomicBool = AtomicBool::new(false);
@@ -23,14 +23,10 @@ const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Release 资产命名约定：Python-You-green-<版本>-windows-x64.exe
 const ASSET_SUFFIX: &str = "-windows-x64.exe";
 const ASSET_PATTERN: &str = r"Python-You-green-(.+)-windows-x64\.exe";
-/// GitHub API 要求带 User-Agent，缺了直接 403
-const USER_AGENT: &str = concat!("Python-You/", env!("CARGO_PKG_VERSION"));
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// 下载中的临时文件与替换脚本都放系统临时目录
 const NEW_EXE_NAME: &str = "python-you-new.exe";
 const SCRIPT_NAME: &str = "python-you-update.bat";
-/// 取消下载时返回的固定文案，前端据此区分「用户取消」与「真失败」
-const CANCELLED: &str = "已取消下载";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -152,70 +148,16 @@ pub async fn download_update(
     url: String,
     expected_sha256: Option<String>,
 ) -> Result<String, String> {
-    let client = reqwest::Client::builder()
-        .connect_timeout(REQUEST_TIMEOUT)
-        .build()
-        .map_err(|e| format!("初始化网络客户端失败：{e}"))?;
-
-    let mut resp = client
-        .get(&url)
-        .header("User-Agent", USER_AGENT)
-        .send()
-        .await
-        .map_err(|e| format!("下载失败，请检查网络：{e}"))?;
-
-    if !resp.status().is_success() {
-        return Err(format!("下载失败：服务器返回 {}", resp.status().as_u16()));
-    }
-
-    CANCEL_DOWNLOAD.store(false, Ordering::SeqCst);
     let target = temp_path(NEW_EXE_NAME);
-    let mut file = std::fs::File::create(&target).map_err(|e| format!("无法写入临时文件：{e}"))?;
-    let total = resp.content_length().unwrap_or(0);
-    let mut hasher = Sha256::new();
-    let mut downloaded: u64 = 0;
-    let mut last_percent = u64::MAX;
-
-    // 流式写入并推进度：只有拿到了 Content-Length 才报百分比，拿不到就不报（不伪造进度）
-    while let Some(chunk) = resp
-        .chunk()
-        .await
-        .map_err(|e| format!("下载中断：{e}"))?
-    {
-        if CANCEL_DOWNLOAD.load(Ordering::SeqCst) {
-            drop(file);
-            let _ = std::fs::remove_file(&target);
-            return Err(CANCELLED.to_string());
-        }
-        hasher.update(&chunk);
-        if let Err(e) = file.write_all(&chunk) {
-            drop(file);
-            let _ = std::fs::remove_file(&target);
-            return Err(format!("写入临时文件失败：{e}"));
-        }
-        downloaded += chunk.len() as u64;
-        if total > 0 {
-            // 钳到 0-100：服务端声明长度与实际字节数不一致时不让进度越界
-            let percent = (downloaded.saturating_mul(100) / total).min(100);
-            if percent != last_percent {
-                last_percent = percent;
-                let _ = app.emit("download-progress", percent);
-            }
-        }
-    }
-    file.flush().map_err(|e| format!("写入临时文件失败：{e}"))?;
-    drop(file);
-
-    let actual = hex::encode(hasher.finalize());
-    if let Some(expected) = expected_sha256.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        if !expected.eq_ignore_ascii_case(&actual) {
-            let _ = std::fs::remove_file(&target);
-            return Err(format!(
-                "下载文件的 SHA256 与发布说明不一致，已丢弃：期望 {expected}，实际 {actual}"
-            ));
-        }
-    }
-
+    stream_download(
+        &app,
+        &url,
+        &target,
+        "download-progress",
+        Some(&CANCEL_DOWNLOAD),
+        expected_sha256.as_deref(),
+    )
+    .await?;
     Ok(target.to_string_lossy().to_string())
 }
 

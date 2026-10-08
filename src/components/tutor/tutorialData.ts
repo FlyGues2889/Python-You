@@ -47,6 +47,7 @@ export interface TutorialSeries {
 
 // 文章数据按系列分目录：data/<系列 id>/{index,stageN}.ts
 import { pythonStages } from './data/python';
+import { referenceStages } from './data/reference';
 import { databaseStages } from './data/database';
 import { scrapingStages } from './data/scraping';
 import { webStages } from './data/web';
@@ -60,8 +61,15 @@ export const TUTORIAL_SERIES: TutorialSeries[] = [
     id: 'python',
     title: 'Python教程',
     icon: 'code',
-    summary: 'Python 从零到进阶：语法、容器、控制流、函数与对象、标准库、数据可视化、参考手册。',
+    summary: 'Python 从零到进阶：语法、容器、控制流、函数与对象、标准库、数据可视化。',
     stages: TUTORIAL_STAGES,
+  },
+  {
+    id: 'reference',
+    title: 'Python 参考手册',
+    icon: 'menu_book',
+    summary: '写法速查：关键字、内建函数与异常、容器方法、标准库 API、命令行工具，按用途分类随查随用。',
+    stages: referenceStages,
   },
   {
     id: 'database',
@@ -100,5 +108,15 @@ export function getTutorialSeries(): TutorialSeries[] {
 export function getSeriesById(seriesId: string | null): TutorialSeries | undefined {
   if (!seriesId) return undefined;
   return TUTORIAL_SERIES.find((series) => series.id === seriesId);
+}
+
+/** 主题 → 所属系列（搜索结果跳转用：拿到主题 id 后要知道进哪个系列） */
+export function getSeriesByTopicId(topicId: string): TutorialSeries | undefined {
+  return TUTORIAL_SERIES.find((series) =>
+    series.stages.some((stage) =>
+      stage.topics?.some((topic) => topic.id === topicId) ||
+      stage.subcategories?.some((sub) => sub.topics.some((topic) => topic.id === topicId))
+    )
+  );
 }
 

@@ -84,7 +84,7 @@ const handleAddInterpreter = async () => {
 const isDesktop = nativeApi.available();
 // 更新过程也登记到标题栏后台任务里（与包安装等长任务同一处，FR-1.3 / FR-5.6）
 const UPDATE_TASK_ID = 'app-update';
-const aboutVersion = ref('0.3.73'); // 兜底值；桌面端启动后从 tauri.conf.json 读真实版本
+const aboutVersion = ref('0.3.74'); // 兜底值；桌面端启动后从 tauri.conf.json 读真实版本
 const isUpdateDialogOpen = ref(false);
 // 启动时的静默检查（App.vue 触发）可能已有结果：直接接手，按钮显示「立即更新」
 const updateStage = ref<'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'preparing' | 'error'>(

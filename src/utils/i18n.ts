@@ -54,11 +54,22 @@ const translations = {
     interpreterSubtitle: '选择用于运行代码的解释器',
     interpreterAuto: '自动选择',
     interpreterPyodide: 'Pyodide (WASM)',
-    interpreterLocal: '本机 Python',
+    interpreterLocal: '本机 Python 解释器',
     // 网页端（无 Tauri）只有内置 WASM 引擎，不给解释器选择
     interpreterWebOnly: '网页端使用内置的 WASM 引擎，无需选择',
     interpreterWasmFixed: '内置 WASM 引擎（Pyodide）',
     interpreterAdd: '添加自定义解释器',
+    pythonGuideTitle: '未检测到本机 Python 解释器',
+    pythonGuideDesc: '没有本地安装的 Python 解释器可能会使 IDE 部分无法工作。点击清华镜像下载官方安装包。',
+    pythonGuideDownload: '下载并安装',
+    pythonGuideDownloading: '正在下载安装包…',
+    pythonGuideDownloadingPercent: '正在下载安装包… {percent}%',
+    pythonGuideInstalling: '安装程序已启动：按提示完成后请点击「重新检测」。',
+    pythonGuideRescan: '重新检测',
+    pythonGuideDownloadedToast: '安装包下载完成，正在启动安装程序',
+    pythonGuideFailedToast: '安装包下载失败：',
+    pythonGuideStillMissing: '仍未检测到本机 Python 解释器：检查并重试你的操作。',
+    pythonGuideDetected: '检测到 {count} 个本机 Python 解释器',
     interpreterAdded: '已添加解释器：{label}',
     interpreterAddFailed: '添加解释器失败：',
     statusAddingInterpreter: '正在检测解释器…',
@@ -163,6 +174,10 @@ const translations = {
     depsConfirmTitle: '运行前需要安装依赖',
     depsConfirmMsg: '代码引用了尚未安装的包：{packages}',
     depsConfirmInstall: '安装并运行',
+    depsUnsupportedTitle: '当前引擎无法安装外部库',
+    depsUnsupportedMsg: '代码引用了尚未安装的包：{packages}',
+    depsUnsupportedHint: 'Pyodide 引擎只能使用内置的常用库，装不了其它第三方库；安装本机 Python 解释器后即可用 pip 安装。',
+    depsInstallPython: '安装本机 Python 解释器',
     pkgReferencedHint: '代码中已引用',
 
     // Dialogs & Toasts
@@ -337,7 +352,18 @@ const translations = {
     backToTop: '回到顶部',
 
     // Tutorial Catalog (原 tutorialUI)
-    tutorialSearchPlaceholder: '搜索课程或知识点...',
+    tutorialSearchPlaceholder: '搜索主题、函数或方法…',
+    learnSearchPlaceholder: '搜索主题、函数、方法或 API…',
+    searchGroupApi: '函数 / 方法 / API（{count}）',
+    searchGroupTopic: '主题（{count}）',
+    searchNoResult: '没有找到匹配的内容',
+    searchKindFunction: '函数',
+    searchKindMethod: '方法',
+    searchKindModule: '模块',
+    searchKindKeyword: '关键字',
+    searchKindException: '异常',
+    searchKindCommand: '命令',
+    searchKindApi: 'API',
     tutorialClickToRun: '点击在编辑器中直接运行',
     tutorialCopyCode: '复制源码',
     tutorialCopied: '已复制到剪贴板',
@@ -362,7 +388,7 @@ const translations = {
 
     // Python Engine Status & Messages（面向用户的提示）
     engineLocal: 'Python {version}',
-    runLocalPython: '▶ 使用本机 Python {version} 执行...',
+    runLocalPython: '▶ 使用本机 Python 解释器 {version} 执行...',
     processExited: '[INFO] 进程已结束，退出码 {code}，耗时 {duration}ms',
     replSessionEnded: '[INFO] REPL 会话已结束',
     replStartFailed: '无法启动本地 REPL: {err}',
@@ -422,7 +448,7 @@ const translations = {
 
     // 标题栏后台任务指示器
     statusIdle: '后台无内容',
-    statusDetectingPython: '正在检测本机 Python…',
+    statusDetectingPython: '正在检测本机 Python 解释器…',
     statusLoadingPyodide: '正在加载 Pyodide 引擎…',
     statusApplyingInterpreter: '正在应用解释器设置…',
     statusInstallingPkg: '正在安装 {name}…',
@@ -434,7 +460,7 @@ const translations = {
     backendTaskDone: '完成',
     backendTaskFailed: '失败',
 
-otherFilesMatches: '其他文件：{count} 处匹配',
+    otherFilesMatches: '其他文件：{count} 处匹配',
     jump: '跳转',
     formatDoc: '格式化文档 (Shift+Alt+F)',
     formattedDoc: '已格式化文档',

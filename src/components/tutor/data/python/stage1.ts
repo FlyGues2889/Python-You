@@ -8,7 +8,7 @@ export const stage1: TutorialStage = {
   topics: [
     {
       id: 'p1_home',
-      title: 'Python 概览',
+      title: '教程导览',
       stage: 'Python 基础语法',
       summary: '欢迎来到 Python 世界！先认识这门语言，再一步步学会用它写程序。',
       content: {
@@ -49,7 +49,7 @@ export const stage1: TutorialStage = {
     },
     {
       id: 'p1_intro',
-      title: 'Python 是什么',
+      title: '认识 Python',
       stage: 'Python 基础语法',
       summary: 'Python 为什么流行？了解它的来历、特点和能做什么。',
       content: {
@@ -83,7 +83,7 @@ export const stage1: TutorialStage = {
     },
     {
       id: 'p1_setup',
-      title: 'Python 入门',
+      title: '第一个程序',
       stage: 'Python 基础语法',
       summary: '在 Python You 里写第一个 Python 程序，理解程序是怎么运行的。',
       content: {
@@ -119,7 +119,7 @@ export const stage1: TutorialStage = {
     },
     {
       id: 'p1_syntax',
-      title: 'Python 语法',
+      title: '语法与缩进',
       stage: 'Python 基础语法',
       summary: 'Python 靠缩进划分代码块，学会这个规则就不容易踩坑。',
       content: {
@@ -160,7 +160,7 @@ export const stage1: TutorialStage = {
     },
     {
       id: 'p1_comments',
-      title: 'Python 注释',
+      title: '注释',
       stage: 'Python 基础语法',
       summary: '注释是写给人的说明，学会用 # 和文档字符串给代码做笔记。',
       content: {
@@ -184,7 +184,7 @@ export const stage1: TutorialStage = {
     },
     {
       id: 'p1_variables',
-      title: 'Python 变量',
+      title: '变量',
       stage: 'Python 基础语法',
       summary: '变量就是给数据贴标签，学会命名和赋值的各种写法。',
       content: {
@@ -227,7 +227,7 @@ export const stage1: TutorialStage = {
     },
     {
       id: 'p1_input',
-      title: 'Python 输入',
+      title: '输入 input()',
       stage: 'Python 基础语法',
       summary: '程序怎么读入用户敲的内容？认识 input()，并用写死变量模拟输入。',
       content: {
@@ -251,7 +251,7 @@ export const stage1: TutorialStage = {
     },
     {
       id: 'p1_datatypes',
-      title: 'Python 数据类型',
+      title: '数据类型',
       stage: 'Python 基础语法',
       summary: '数据有不同的种类，学会分辨数字、文字、真假等常见类型。',
       content: {
@@ -300,7 +300,7 @@ export const stage1: TutorialStage = {
     },
     {
       id: 'p1_numbers',
-      title: 'Python 数字',
+      title: '数字',
       stage: 'Python 基础语法',
       summary: '整数、小数怎么算？还有一个小知识：小数运算偶尔有误差。',
       content: {
@@ -355,7 +355,7 @@ export const stage1: TutorialStage = {
     },
     {
       id: 'p1_casting',
-      title: 'Python Casting',
+      title: '类型转换',
       stage: 'Python 基础语法',
       summary: '把文字变成数字、把数字变成文字，学会类型转换。',
       content: {
@@ -394,7 +394,7 @@ export const stage1: TutorialStage = {
     },
     {
       id: 'p1_strings',
-      title: 'Python 字符串',
+      title: '字符串',
       stage: 'Python 基础语法',
       summary: '字符串就是一串文字，学会拼接、截取和常用处理方法。',
       content: {
@@ -465,7 +465,7 @@ export const stage1: TutorialStage = {
     },
     {
       id: 'p1_booleans',
-      title: 'Python 布尔',
+      title: '布尔值与真假',
       stage: 'Python 基础语法',
       summary: 'True 和 False 表示真假，是程序做判断的基础。',
       content: {
@@ -504,7 +504,7 @@ export const stage1: TutorialStage = {
     },
     {
       id: 'p1_operators',
-      title: 'Python 运算符',
+      title: '运算符',
       stage: 'Python 基础语法',
       summary: '加减乘除、比大小、判断真假，运算符一学就会。',
       content: {

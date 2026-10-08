@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue';
 import { FSItem } from '../types';
 import { useI18n } from '../utils/i18n';
+import { vAutofocus, isOverlayCloseBlur, focusInlineInput } from '../utils/inlineEdit';
 import MD3IconButton from './selfComponents/iconButton.vue';
 
 const props = defineProps<{
@@ -33,17 +34,6 @@ const emit = defineEmits<{
 const isHovered = ref(false);
 const editingName = ref(props.item.name);
 const newChildName = ref('');
-
-// Custom directive for autofocus & text select
-const vAutofocus = {
-  mounted: (el: HTMLElement) => {
-    (el as any).__autofocusMountedAt = Date.now();
-    el.focus();
-    if (el instanceof HTMLInputElement) {
-      el.select();
-    }
-  }
-};
 
 watch(() => props.item.name, (val) => {
   editingName.value = val;
@@ -105,14 +95,12 @@ const saveRename = () => {
   }
 };
 
-// 右键菜单(Teleport 到 body)关闭时会还原焦点，导致刚 autofocus 的 input 立即 blur。
-// 挂载后极短窗口内的 blur 视为菜单关闭副作用，抢回焦点并忽略，保持内联编辑态。
+// 失焦提交前先排除「浮层关闭抢焦」（右键菜单里点重命名/新建时会先被抢一次焦点，
+// 判定见 utils/inlineEdit.ts；旧的固定 250ms 窗口会随菜单关闭动画时长变化而失效）
 const onRenameBlur = (e: FocusEvent) => {
-  const el = e.target as HTMLInputElement;
-  const mountedAt = (el as any).__autofocusMountedAt ?? 0;
-  if (mountedAt && Date.now() - mountedAt < 250) {
-    el.focus();
-    el.select();
+  const el = e.target as HTMLElement;
+  if (isOverlayCloseBlur(el)) {
+    focusInlineInput(el);
     return;
   }
   saveRename();
@@ -126,6 +114,15 @@ const saveCreateChild = () => {
   } else {
     emit('cancel-inline');
   }
+};
+
+const onCreateChildBlur = (e: FocusEvent) => {
+  const el = e.target as HTMLElement;
+  if (isOverlayCloseBlur(el)) {
+    focusInlineInput(el);
+    return;
+  }
+  saveCreateChild();
 };
 
 const cancelInline = () => {
@@ -277,7 +274,7 @@ const cancelInline = () => {
             :placeholder="creatingIsFolder ? t('folderNamePlaceholder') : t('fileNamePlaceholder')"
             @keyup.enter="saveCreateChild"
             @keyup.esc="cancelInline"
-            @blur="saveCreateChild"
+            @blur="onCreateChildBlur"
             @click.stop
           />
         </div>
@@ -383,6 +380,9 @@ const cancelInline = () => {
 
 .node-inline-input {
   flex: 1;
+  /* input 的固有宽度（默认 20 字符）会让「min-width:auto」拒绝收缩，重命名框在深层级
+     或窄面板里顶出可视范围 —— 显式归零让它跟着行宽收缩 */
+  min-width: 0;
   height: 26px;
   padding: 0 8px;
   font-size: 0.8125rem;

@@ -8,7 +8,7 @@ export const stage2: TutorialStage = {
   topics: [
     {
       id: 'p2_list',
-      title: 'Python 列表',
+      title: '列表 list',
       stage: 'Python 容器',
       summary: '列表是能随手修改的「购物车」，学会增删改查和常用操作。',
       content: {
@@ -79,7 +79,7 @@ print("二维矩阵展平列表:", flattened)`,
     },
     {
       id: 'p2_tuple',
-      title: 'Python 元组',
+      title: '元组 tuple',
       stage: 'Python 容器',
       summary: '元组是「定好就不改」的清单，适合放固定不变的数据。',
       content: {
@@ -137,7 +137,7 @@ print(f"响应码: {code}, 状态: {status}, 延迟: {latency}s")`,
     },
     {
       id: 'p2_set',
-      title: 'Python 集合',
+      title: '集合 set',
       stage: 'Python 容器',
       summary: '集合是「自动去重」的袋子，还能做交、并、差运算。',
       content: {
@@ -194,7 +194,7 @@ print("过滤重复 IP 列表:", unique_ips)`,
     },
     {
       id: 'p2_dict',
-      title: 'Python 字典',
+      title: '字典 dict',
       stage: 'Python 容器',
       summary: '字典是「查名字找答案」的键值对，像真正的字典一样好用。',
       content: {

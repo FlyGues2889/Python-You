@@ -7,6 +7,7 @@ import { copyToClipboard, readClipboard } from '../utils/clipboard';
 import { uid } from '../utils/id';
 import { getCompletions, getWordAt, getUsage, collectWorkspaceIdentifiers, type CompletionItem } from '../utils/pythonCompletions';
 import { hljs } from '../utils/highlightSetup';
+import { focusInlineInput, isOverlayCloseBlur } from '../utils/inlineEdit';
 import { formatCodeText } from '../utils/codeFormat';
 import { backspaceIndent, indentForNewLine, indentLines, isInsideStringAt, outdentLines, reindentText, stringAndCommentRanges } from '../utils/pythonIndent';
 import 'highlight.js/styles/github-dark.css';
@@ -1086,11 +1087,18 @@ const jumpToMatch = (idx: number, focusEditor = false) => {
   handleScroll();
 };
 
+// 查找/替换框的失焦：与文件树内联输入同一套「浮层抢焦」防护 —— 右键菜单里点
+// 「查找/替换」时，菜单关闭会还原焦点，刚聚焦的输入框被抢走后键入会落进正文
+const onFindInputBlur = (e: FocusEvent) => {
+  const el = e.target as HTMLElement;
+  if (isOverlayCloseBlur(el)) focusInlineInput(el);
+};
+
 const openFindBar = () => {
   showFindBar.value = true;
   showReplaceBar.value = false;
   nextTick(() => {
-    findInputRef.value?.focus();
+    if (findInputRef.value) focusInlineInput(findInputRef.value);
     if (matchIndices.value.length > 0) {
       jumpToMatch(currentMatchIndex.value);
     }
@@ -1101,7 +1109,7 @@ const openReplaceBar = () => {
   showFindBar.value = true;
   showReplaceBar.value = true;
   nextTick(() => {
-    findInputRef.value?.focus();
+    if (findInputRef.value) focusInlineInput(findInputRef.value);
     if (matchIndices.value.length > 0) {
       jumpToMatch(currentMatchIndex.value);
     }
@@ -1468,7 +1476,7 @@ onBeforeUnmount(() => {
           <m3e-search-bar class="find-search-bar">
             <span slot="leading" class="material-symbols-rounded">search</span>
             <input slot="input" ref="findInputRef" v-model="findText" :placeholder="t('findPlaceholder')"
-              @keydown.enter.prevent="handleFindNext" @keydown.esc="closeFindBar" />
+              @keydown.enter.prevent="handleFindNext" @keydown.esc="closeFindBar" @blur="onFindInputBlur" />
           </m3e-search-bar>
           <m3e-badge v-if="findText" size="medium" class="find-badge">
             {{ matchIndices.length > 0 ? currentMatchNum + '/' + matchIndices.length : t('noMatches') }}
@@ -1487,7 +1495,7 @@ onBeforeUnmount(() => {
           <m3e-search-bar class="find-search-bar">
             <span slot="leading" class="material-symbols-rounded">find_replace</span>
             <input slot="input" v-model="replaceText" :placeholder="t('replacePlaceholder')"
-              @keydown.enter.prevent="handleReplaceOne" @keydown.esc="closeFindBar" />
+              @keydown.enter.prevent="handleReplaceOne" @keydown.esc="closeFindBar" @blur="onFindInputBlur" />
           </m3e-search-bar>
 
           <m3e-button class="replace-btn" variant="tonal" size="extra-small" :disabled="isExecuting"
@@ -1849,6 +1857,10 @@ kbd {
 
 .find-badge {
   flex-shrink: 0;
+  /* 徽标默认是错误红（Material 里 badge 的默认语义色）；查找/替换计数不是错误状态，
+     改用 tertiary 色系（容器 tertiary-container + 文字 on-tertiary-container） */
+  --m3e-badge-container-color: var(--md-sys-color-tertiary-container);
+  --m3e-badge-color: var(--md-sys-color-on-tertiary-container);
 }
 
 .replace-btn {

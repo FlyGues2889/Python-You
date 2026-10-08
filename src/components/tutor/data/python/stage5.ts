@@ -8,7 +8,7 @@ export const stage5: TutorialStage = {
   topics: [
     {
       id: 'p5_modules',
-      title: 'Python 模块',
+      title: '模块与 import',
       stage: 'Python 标准库',
       summary: '模块是把代码「分门别类」存放，用 import 随时调用。',
       content: {
@@ -82,7 +82,7 @@ export const stage5: TutorialStage = {
     },
     {
       id: 'p5_datetime',
-      title: 'Python 日期',
+      title: '日期时间 datetime',
       stage: 'Python 标准库',
       summary: 'datetime 是「日期时间」工具箱，算时间差、格式化都靠它。',
       content: {
@@ -139,7 +139,7 @@ export const stage5: TutorialStage = {
     },
     {
       id: 'p5_math',
-      title: 'Python 数学',
+      title: '数学 math',
       stage: 'Python 标准库',
       summary: 'math 是「数学计算器」，开方、取整、三角函数都有。',
       content: {
@@ -182,7 +182,7 @@ export const stage5: TutorialStage = {
     },
     {
       id: 'p5_json',
-      title: 'Python JSON',
+      title: 'JSON 模块',
       stage: 'Python 标准库',
       summary: 'json 是「数据搬运工」，把数据变成文字、文字变回数据。',
       content: {
@@ -232,7 +232,7 @@ export const stage5: TutorialStage = {
     },
     {
       id: 'p5_regex',
-      title: 'Python RegEx',
+      title: '正则表达式 re',
       stage: 'Python 标准库',
       summary: '正则表达式是「文本搜索」高手，按规则找字符、验格式。',
       content: {
@@ -299,7 +299,7 @@ export const stage5: TutorialStage = {
     },
     {
       id: 'p5_pip',
-      title: 'Python PIP',
+      title: 'pip 与第三方库',
       stage: 'Python 标准库',
       summary: 'pip 是 Python 的「应用商店」，一键安装别人写好的工具库。',
       content: {
@@ -345,7 +345,7 @@ export const stage5: TutorialStage = {
     },
     {
       id: 'p5_tryexcept',
-      title: 'Python Try Except',
+      title: '异常处理 try / except',
       stage: 'Python 标准库',
       summary: 'try/except 是「安全网」，程序出错也不怕崩。',
       content: {
@@ -398,7 +398,7 @@ export const stage5: TutorialStage = {
     },
     {
       id: 'p5_file',
-      title: 'Python 文件打开',
+      title: '文件读写 open',
       stage: 'Python 标准库',
       summary: '文件操作就是「打开-读写-关闭」，with 帮你自动关门。',
       content: {
@@ -453,7 +453,7 @@ print("一共", len(content.splitlines()), "行")`,
     },
     {
       id: 'p5_os',
-      title: 'Python 路径处理',
+      title: '路径处理 os.path',
       stage: 'Python 标准库',
       summary: 'os.path.join 和 pathlib 帮你拼出跨平台的文件路径。',
       content: {

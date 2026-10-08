@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue';
-import { getTutorialSeries, type TutorialSeries } from './tutorialData';
-import { getTopicQuizScore } from './quizData';
+import { computed, ref } from 'vue';
+import { getTutorialSeries, type TutorialSeries, type TutorialTopic } from './tutorialData';
+import { getTopicQuizScore, getTopicQuiz } from './quizData';
 import { useI18n } from '../../utils/i18n';
+import TutorSearchResults from './TutorSearchResults.vue';
 
 const props = defineProps<{
   /** 已完成主题 id 集合（由 TutorialView 传入，与目录树的进度同源） */
@@ -12,6 +13,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'open-series', seriesId: string): void;
   (e: 'open-quiz-directory', seriesId: string): void;
+  (e: 'open-topic', topicId: string): void;
 }>();
 
 const { t, tf } = useI18n();
@@ -26,14 +28,16 @@ interface SeriesProgress {
   quizAverage: number | null;
 }
 
-const topicIdsOf = (series: TutorialSeries): string[] => {
-  const ids: string[] = [];
+const topicsOf = (series: TutorialSeries): TutorialTopic[] => {
+  const list: TutorialTopic[] = [];
   for (const stage of series.stages) {
-    stage.topics?.forEach(topic => ids.push(topic.id));
-    stage.subcategories?.forEach(sub => sub.topics.forEach(topic => ids.push(topic.id)));
+    stage.topics?.forEach(topic => list.push(topic));
+    stage.subcategories?.forEach(sub => sub.topics.forEach(topic => list.push(topic)));
   }
-  return ids;
+  return list;
 };
+
+const topicIdsOf = (series: TutorialSeries): string[] => topicsOf(series).map(topic => topic.id);
 
 // 每个系列的进度：完成篇数与测验平均分（与目录树的 FR-6.6 统计口径一致）
 const progressOf = (series: TutorialSeries): SeriesProgress => {
@@ -63,6 +67,22 @@ const quizAverageLabel = (series: TutorialSeries): string => {
   const average = progressMap.value[series.id].quizAverage;
   return average === null ? t('learnSeriesQuizNone') : tf('learnSeriesQuizAvg', { score: average });
 };
+
+// 有测验的系列才给「测验」入口（参考手册整册无测验，按钮会指向空目录）
+const seriesHasQuiz = (series: TutorialSeries): boolean =>
+  topicIdsOf(series).some(id => !!getTopicQuiz(id));
+
+// 有可标完成主题的系列才显示进度条（参考手册整册是查阅材料，标不了完成）
+const seriesCompletable = (series: TutorialSeries): boolean =>
+  topicsOf(series).some(topic => topic.kind !== 'reference');
+
+// 首页搜索：与教程侧栏共用同一个结果视图（同一份索引），点结果直接进对应主题
+const searchQuery = ref('');
+
+const onOpenSearchResult = (topicId: string) => {
+  searchQuery.value = '';
+  emit('open-topic', topicId);
+};
 </script>
 
 <template>
@@ -75,8 +95,20 @@ const quizAverageLabel = (series: TutorialSeries): string => {
         <p class="home-hero-text">{{ t('learnWelcomeText') }}</p>
       </header>
 
+      <!-- 全站搜索：主题 + 各板块的函数 / 方法 / API（与教程侧栏同一份索引） -->
+      <div class="home-search">
+        <m3e-search-bar class="home-search-bar" clearable @clear="searchQuery = ''">
+          <span slot="leading" class="material-symbols-rounded">search</span>
+          <input slot="input" v-model="searchQuery" :placeholder="t('learnSearchPlaceholder')" />
+        </m3e-search-bar>
+      </div>
+
+      <!-- 输入即出结果视图，清空输入回到系列卡片 -->
+      <TutorSearchResults v-if="searchQuery.trim()" class="home-search-results" :query="searchQuery"
+        @open-topic="onOpenSearchResult" />
+
       <!-- 系列卡片：简介 + 进度 + 「测验」outlined / 「进入」filled 图标按钮 -->
-      <div class="series-grid">
+      <div v-else class="series-grid">
         <m3e-card
           v-for="series in seriesList"
           :key="series.id"
@@ -95,7 +127,7 @@ const quizAverageLabel = (series: TutorialSeries): string => {
           <div slot="content" class="card-body">
             <p class="card-summary">{{ series.summary }}</p>
 
-            <div class="card-progress">
+            <div v-if="seriesCompletable(series)" class="card-progress">
               <m3e-linear-progress-indicator class="progress-bar" :value="progressMap[series.id].percent">
               </m3e-linear-progress-indicator>
               <span class="progress-text">
@@ -107,8 +139,8 @@ const quizAverageLabel = (series: TutorialSeries): string => {
           <div slot="actions" end class="card-actions">
             <span v-if="series.stages.length === 0" class="card-chip chip-pending">{{ t('learnSeriesPending') }}</span>
             <template v-else>
-              <span class="quiz-avg">{{ quizAverageLabel(series) }}</span>
-              <m3e-button variant="outlined" size="small" :title="t('toggleQuizCatalog')"
+              <span v-if="seriesHasQuiz(series)" class="quiz-avg">{{ quizAverageLabel(series) }}</span>
+              <m3e-button v-if="seriesHasQuiz(series)" variant="outlined" size="small" :title="t('toggleQuizCatalog')"
                 @click="emit('open-quiz-directory', series.id)">
                 <span slot="icon" class="material-symbols-rounded">fact_check</span>
                 {{ t('quizShort') }}
@@ -174,6 +206,17 @@ const quizAverageLabel = (series: TutorialSeries): string => {
   font-size: 0.875rem;
   line-height: 1.7;
   color: var(--text-secondary);
+}
+
+/* 首页搜索：宽度对齐欢迎语，结果视图略宽一点便于看说明列 */
+.home-search {
+  max-width: 40rem;
+  margin: 0 auto 20px;
+}
+
+.home-search-results {
+  max-width: 48rem;
+  margin: 0 auto;
 }
 
 /* 一行三张：容器留够 3×300 + 2×16 的宽度，窄窗口再自动降为两列/一列 */

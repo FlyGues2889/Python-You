@@ -1,3 +1,4 @@
+mod download;
 mod fs;
 mod python;
 mod updater;
@@ -36,6 +37,9 @@ pub fn run() {
             python::python_run_input,
             python::python_repl_stop,
             python::python_pip_install,
+            python::download_python_installer,
+            python::list_python_installers,
+            python::run_python_installer,
             python::python_pip_uninstall,
             updater::check_update,
             updater::download_update,

@@ -8,7 +8,7 @@ export const stage4: TutorialStage = {
   topics: [
     {
       id: 'p4_functions',
-      title: 'Python 函数',
+      title: '函数定义',
       stage: 'Python 函数与对象',
       summary: '函数是把重复代码「打包」成工具，随取随用。',
       content: {
@@ -95,7 +95,7 @@ export const stage4: TutorialStage = {
     },
     {
       id: 'p4_lambda',
-      title: 'Python Lambda',
+      title: 'lambda 匿名函数',
       stage: 'Python 函数与对象',
       summary: 'lambda 是「一句话」的小函数，适合临时用一下。',
       content: {
@@ -172,7 +172,7 @@ export const stage4: TutorialStage = {
     },
     {
       id: 'p4_array',
-      title: 'Python 数组',
+      title: 'array 紧凑数组',
       stage: 'Python 函数与对象',
       summary: 'array 是「统一类型」的紧凑数组，存大量数字更省内存。',
       content: {
@@ -214,7 +214,7 @@ export const stage4: TutorialStage = {
     },
     {
       id: 'p4_class',
-      title: 'Python 类/对象',
+      title: '类与对象',
       stage: 'Python 函数与对象',
       summary: '类是「设计图」，对象是照图做出来的「实物」。',
       content: {
@@ -296,7 +296,7 @@ export const stage4: TutorialStage = {
     },
     {
       id: 'p4_inheritance',
-      title: 'Python 继承',
+      title: '继承',
       stage: 'Python 函数与对象',
       summary: '继承让新类「继承」老类的能力，还能自己修改。',
       content: {
@@ -325,7 +325,7 @@ export const stage4: TutorialStage = {
     },
     {
       id: 'p4_iterators',
-      title: 'Python 迭代',
+      title: '迭代与生成器',
       stage: 'Python 函数与对象',
       summary: '迭代就是「一个一个地取」，生成器边算边给、省内存。',
       content: {
@@ -364,7 +364,7 @@ export const stage4: TutorialStage = {
     },
     {
       id: 'p4_polymorphism',
-      title: 'Python 多态',
+      title: '多态与鸭子类型',
       stage: 'Python 函数与对象',
       summary: '多态就是「鸭子类型」：会走会叫，就当它是鸭子。',
       content: {
@@ -392,7 +392,7 @@ export const stage4: TutorialStage = {
     },
     {
       id: 'p4_scope',
-      title: 'Python 作用域',
+      title: '作用域 LEGB',
       stage: 'Python 函数与对象',
       summary: '作用域决定变量「在哪里有效」，记住 LEGB 规则。',
       content: {

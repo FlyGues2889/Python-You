@@ -248,7 +248,11 @@ export class ExecutionOrchestrator {
     const missing = candidates.filter((name) => !installed.has(name.toLowerCase()));
     if (missing.length === 0) return;
 
-    if (!(await requestInstallConfirm(missing))) return;
+    // 本机 Python 才真的能装（pip）；Pyodide / 演示模式装不了第三方库，
+    // 对话框改用「装不了 + 引导安装本机 Python」的说明形态（canInstall=false）
+    const canInstall = await this.native.available();
+    const confirmed = await requestInstallConfirm(missing, canInstall);
+    if (!canInstall || !confirmed) return;
 
     addBackendTask('run-deps', tf('statusInstallingPkg', { name: missing.join(', ') }));
     try {

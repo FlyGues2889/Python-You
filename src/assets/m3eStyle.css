@@ -6,6 +6,9 @@
 /* 搜索栏统一尺寸：40px 高、全圆角、--text-size-sm 输入文字（查找/替换/文件搜索等全部搜索框共用）；
    内部 clear 按钮随容器缩小为 32px/18px（否则默认 56px 按钮会撑爆容器）。 */
 m3e-search-bar {
+  /* 容器可能被放在很窄的面板里：作为 flex item 时 min-width:auto 会取内部最小内容宽度，
+     键入后出现的清除按钮（内部 48px）会把条整体顶宽 -> 归零允许收缩 */
+  min-width: 0;
   --m3e-search-bar-container-height: 40px;
   --m3e-search-bar-container-shape: 9999px;
   --m3e-search-bar-input-text-font-size: var(--text-size-sm) !important;

@@ -5,7 +5,7 @@ import TutorialContent from './TutorialContent.vue';
 import QuizDirectory from './QuizDirectory.vue';
 import QuizView from './QuizView.vue';
 import LearningHome from './LearningHome.vue';
-import { type TutorialTopic, type TutorialSeries, getSeriesById } from './tutorialData';
+import { type TutorialTopic, type TutorialSeries, getSeriesById, getSeriesByTopicId } from './tutorialData';
 import { getTopicQuizScore } from './quizData';
 import { safeStorage } from '../../utils/storage';
 
@@ -112,6 +112,14 @@ const backToHome = () => {
   activeSeriesId.value = null;
   // 回首页就退出测验视图，否则再次进入系列会先闪一下上次的测验界面
   viewMode.value = 'article';
+};
+
+// 学习首页搜索结果：查到主题所属系列后进入该系列并打开这篇（跨系列搜索用）
+const openTopicFromSearch = (topicId: string) => {
+  const series = getSeriesByTopicId(topicId);
+  if (!series) return;
+  activeSeriesId.value = series.id;
+  handleSelectTopic(topicId);
 };
 
 // 学习首页卡片上的「测验」按钮：先进入该系列，再切到它的测验目录
@@ -258,6 +266,7 @@ const handleLoadCode = (payload: { code: string; topicId: string; topicTitle: st
       :completed-topics="completedTopics"
       @open-series="openSeries"
       @open-quiz-directory="openQuizDirectory"
+      @open-topic="openTopicFromSearch"
     />
 
     <template v-else>

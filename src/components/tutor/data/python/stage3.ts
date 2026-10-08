@@ -8,7 +8,7 @@ export const stage3: TutorialStage = {
   topics: [
     {
       id: 'p3_ifelse',
-      title: 'Python If Else',
+      title: '条件判断 if / else',
       stage: 'Python 控制流',
       summary: '用 if 让程序「看情况办事」，像红绿灯一样分流。',
       content: {
@@ -78,7 +78,7 @@ else:
     },
     {
       id: 'p3_while',
-      title: 'Python While 循环',
+      title: 'while 循环',
       stage: 'Python 控制流',
       summary: 'while 循环是「只要条件满足就一直重复」的循环。',
       content: {
@@ -134,7 +134,7 @@ while idx < 10:
     },
     {
       id: 'p3_for',
-      title: 'Python For 循环',
+      title: 'for 循环',
       stage: 'Python 控制流',
       summary: 'for 循环是「挨个处理」的循环，遍历列表、字符串超方便。',
       content: {
@@ -190,7 +190,7 @@ print("1 到 5 的平方和:", squares)`,
     },
     {
       id: 'p3_input',
-      title: 'Python 命令输入',
+      title: '交互输入 input()',
       stage: 'Python 控制流',
       summary: '用 input() 让程序「问用户问题」，拿到回答再继续。',
       content: {
@@ -251,7 +251,7 @@ print("解析浮点数据列表:", float_numbers)`,
     },
     {
       id: 'p3_formatting',
-      title: 'Python 字符串格式化',
+      title: '字符串格式化',
       stage: 'Python 控制流',
       summary: '把变量「塞进」句子里，用 f-string 最方便。',
       content: {

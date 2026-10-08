@@ -25,7 +25,7 @@ import { revealItemInDir, openPath } from '@tauri-apps/plugin-opener';
 import { uid } from './utils/id';
 import { resolveCodeTheme } from './utils/theme';
 import { checkUpdateOnStartup } from './utils/appUpdate';
-import { backendTasks, addBackendTask, finishBackendTask, type BackendTask } from './utils/backendTasks';
+import { backendTasks, addBackendTask, updateBackendTask, finishBackendTask, type BackendTask } from './utils/backendTasks';
 import { setQuizQuestionResult, syncQuizCompletion, getQuizQuestionResult } from './components/tutor/quizData';
 import { useSplitLayout } from './composables/useSplitLayout';
 import { useEditorTabs } from './composables/useEditorTabs';
@@ -403,6 +403,105 @@ const handleAddInterpreter = async () => {
 };
 const onInterpreterDialogChange = async (e: Event) => {
   await selectInterpreter((e.target as any).value as string);
+};
+
+// 依赖提示里的「安装本机 Python」：关掉提示，打开解释器弹窗 ——
+// 本机一个 Python 都没检测到时，弹窗正文里会出现安装引导项（含后台下载）
+const openInterpreterGuide = () => {
+  resolveInstallConfirm(false);
+  isInterpreterOpen.value = true;
+};
+
+/* ==================== 本机 Python 安装引导（解释器弹窗内） ==================== */
+// 只在本机一个解释器都没检测到时出现：从清华镜像后台下载官方安装包（官方签名文件，
+// 按版本号缓存在临时目录），下载完直接拉起安装程序；装好后点「重新检测」刷新列表，
+// 引导项随本机解释器出现而消失。
+const PYTHON_GUIDE_TASK = 'python-install';
+const pythonGuideState = ref<'idle' | 'downloading' | 'installing'>('idle');
+const pythonGuidePercent = ref<number | null>(null);
+const pythonInstallerPath = ref('');
+let stopPythonProgress: (() => void) | null = null;
+
+const showPythonGuide = computed(
+  () => nativeApi.available() && nativePython.versions.value.length === 0
+);
+
+// 可选的安装版本：列表来自镜像目录（Rust 侧会话内缓存，拉不到时退回内置默认版本），
+// 默认选最新的一个
+const pythonVersions = ref<string[]>([]);
+const pythonVersion = ref('');
+
+const loadPythonVersions = async () => {
+  if (pythonVersions.value.length > 0) return;
+  try {
+    pythonVersions.value = await nativeApi.listPythonInstallers();
+    pythonVersion.value = pythonVersions.value[0] || '';
+  } catch {
+    // 列表拿不到时不挡路：下载按钮在没选中版本时禁用，重开弹窗会再试
+  }
+};
+
+const onPythonVersionChange = (e: Event) => {
+  pythonVersion.value = String((e.target as any).value || '');
+};
+
+// 打开解释器弹窗时才去取版本列表（对话场景下用户就在等这个弹窗）
+watch(isInterpreterOpen, (open) => {
+  if (open) void loadPythonVersions();
+});
+
+const pythonGuideText = computed(() => {
+  if (pythonGuideState.value === 'downloading') {
+    return pythonGuidePercent.value === null
+      ? t('pythonGuideDownloading')
+      : tf('pythonGuideDownloadingPercent', { percent: pythonGuidePercent.value });
+  }
+  if (pythonGuideState.value === 'installing') return t('pythonGuideInstalling');
+  return t('pythonGuideDesc');
+});
+
+const runPythonInstaller = async () => {
+  try {
+    await nativeApi.runPythonInstaller(pythonInstallerPath.value);
+    pythonGuideState.value = 'installing';
+  } catch (err: any) {
+    pythonGuideState.value = 'idle';
+    showToast(String(err?.message || err));
+  }
+};
+
+const downloadPythonInstaller = async () => {
+  if (pythonGuideState.value !== 'idle') return;
+  pythonGuideState.value = 'downloading';
+  pythonGuidePercent.value = null;
+  addBackendTask(PYTHON_GUIDE_TASK, t('pythonGuideDownloading'));
+  try {
+    stopPythonProgress = await nativeApi.onPythonDownloadProgress((p) => {
+      const percent = Math.min(100, Math.max(0, Math.round(p)));
+      // 只接受单调递增：服务端长度与实际字节数不符时不来回跳
+      if (pythonGuidePercent.value !== null && percent < pythonGuidePercent.value) return;
+      pythonGuidePercent.value = percent;
+      updateBackendTask(PYTHON_GUIDE_TASK, { progress: percent });
+    });
+    pythonInstallerPath.value = await nativeApi.downloadPythonInstaller(pythonVersion.value);
+    finishBackendTask(PYTHON_GUIDE_TASK, 'done');
+    showToast(t('pythonGuideDownloadedToast'));
+    await runPythonInstaller();
+  } catch (err: any) {
+    finishBackendTask(PYTHON_GUIDE_TASK, 'failed');
+    pythonGuideState.value = 'idle';
+    showToast(t('pythonGuideFailedToast') + (err?.message || err));
+  } finally {
+    stopPythonProgress?.();
+    stopPythonProgress = null;
+  }
+};
+
+// 安装完成后重新检测：列表刷新，引导项随本机解释器出现而消失
+const rescanInterpreters = async () => {
+  await nativePython.applyInterpreter(config.value.interpreter);
+  const count = nativePython.versions.value.length;
+  showToast(count > 0 ? tf('pythonGuideDetected', { count }) : t('pythonGuideStillMissing'));
 };
 
 
@@ -1488,24 +1587,41 @@ onMounted(() => {
       </div>
     </m3e-dialog>
 
-    <!-- 运行前依赖确认 Dialog：代码引用了未安装的第三方包（安装后自动继续运行） -->
+    <!-- 运行前依赖确认 Dialog：代码引用了未安装的第三方包（安装后自动继续运行）。
+         非本机引擎（Pyodide / 演示模式）装不了第三方库：同一弹窗改为说明 + 引导安装本机 Python -->
     <m3e-dialog :open="!!pendingDependencies" @cancel="resolveInstallConfirm(false)"
       @closed="resolveInstallConfirm(false)">
       <span slot="header" class="m3e-dialog-title-row">
-        <span class="material-symbols-rounded m3e-dialog-icon">download</span>
-        <span class="m3e-dialog-title">{{ t('depsConfirmTitle') }}</span>
+        <span class="material-symbols-rounded m3e-dialog-icon">{{ pendingDependencies?.canInstall ? 'download' : 'block'
+        }}</span>
+        <span class="m3e-dialog-title">{{ pendingDependencies?.canInstall ? t('depsConfirmTitle') :
+          t('depsUnsupportedTitle') }}</span>
       </span>
-      <p class="m3e-dialog-desc">{{ tf('depsConfirmMsg', { packages: (pendingDependencies || []).join('、') }) }}</p>
-      <p class="m3e-dialog-desc">{{ t('pkgConfirmRisk') }}</p>
+      <template v-if="pendingDependencies?.canInstall">
+        <p class="m3e-dialog-desc">{{ tf('depsConfirmMsg', { packages: pendingDependencies.packages.join('、') }) }}</p>
+        <p class="m3e-dialog-desc">{{ t('pkgConfirmRisk') }}</p>
+      </template>
+      <template v-else>
+        <p class="m3e-dialog-desc">{{ tf('depsUnsupportedMsg', { packages: pendingDependencies?.packages.join('、') || '' })
+        }}</p>
+        <p class="m3e-dialog-desc">{{ t('depsUnsupportedHint') }}</p>
+      </template>
       <div slot="actions" class="m3e-dialog-actions">
-        <m3e-button variant="text" size="small" @click="resolveInstallConfirm(false)">{{ t('cancel') }}</m3e-button>
-        <m3e-button variant="filled" size="small" @click="resolveInstallConfirm(true)">{{ t('depsConfirmInstall')
-        }}</m3e-button>
+        <m3e-button variant="text" size="small" @click="resolveInstallConfirm(false)">{{
+          pendingDependencies?.canInstall ? t('cancel') : t('helpGotIt') }}</m3e-button>
+        <m3e-button v-if="pendingDependencies?.canInstall" variant="filled" size="small"
+          @click="resolveInstallConfirm(true)">{{ t('depsConfirmInstall') }}</m3e-button>
+        <!-- 二级（outlined）引导按钮：桌面端才装得了本机 Python，浏览器环境不给 -->
+        <m3e-button v-else-if="nativeApi.available()" variant="outlined" size="small" @click="openInterpreterGuide">
+          <span slot="icon" class="material-symbols-rounded">download</span>
+          {{ t('depsInstallPython') }}
+        </m3e-button>
       </div>
     </m3e-dialog>
 
-    <!-- 解释器版本管理器 Dialog -->
-    <m3e-dialog :open="isInterpreterOpen" @cancel="isInterpreterOpen = false" @closed="isInterpreterOpen = false">
+    <!-- 解释器版本管理器 Dialog（内容比一般弹窗宽：选择框 + 安装引导项） -->
+    <m3e-dialog class="interpreter-dialog" :open="isInterpreterOpen" @cancel="isInterpreterOpen = false"
+      @closed="isInterpreterOpen = false">
       <span slot="header" class="m3e-dialog-title-row">
         <span class="material-symbols-rounded m3e-dialog-icon">terminal</span>
         <span class="m3e-dialog-title">{{ t('interpreter') }}</span>
@@ -1533,6 +1649,36 @@ onMounted(() => {
             </m3e-option>
           </m3e-optgroup>
         </m3e-select>
+
+        <!-- 本机一个 Python 都没检测到时的安装引导：后台下载官方安装包（清华镜像），
+             下载完拉起安装程序，装好后点「重新检测」 -->
+        <div v-if="showPythonGuide" class="python-guide-card">
+          <m3e-list class="python-guide">
+            <m3e-list-item>
+              <span slot="leading" class="material-symbols-rounded">warning</span>
+              {{ t('pythonGuideTitle') }}
+              <span slot="supporting-text">{{ pythonGuideText }}</span>
+            </m3e-list-item>
+            <!-- 版本选择与下载 / 重新检测另起一行：挤在标题行的 trailing 里放不下 -->
+            <div class="python-guide-actions">
+              <m3e-select class="python-guide-select" :disabled="pythonGuideState !== 'idle'"
+                @change="onPythonVersionChange">
+                <m3e-option v-for="v in pythonVersions" :key="v" :value="v" :selected="pythonVersion === v">
+                  Python {{ v }}
+                </m3e-option>
+              </m3e-select>
+              <m3e-button v-if="pythonGuideState === 'idle'" class="python-guide-primary" variant="filled"
+                size="small" :disabled="!pythonVersion" @click="downloadPythonInstaller">
+                <span slot="icon" class="material-symbols-rounded">download</span>
+                {{ t('pythonGuideDownload') }}
+              </m3e-button>
+              <m3e-button v-else-if="pythonGuideState === 'installing'" class="python-guide-secondary"
+                variant="outlined" size="small" @click="rescanInterpreters">{{ t('pythonGuideRescan') }}</m3e-button>
+              <span v-else class="python-guide-status">{{ pythonGuidePercent === null ? t('pythonGuideDownloading')
+                : pythonGuidePercent + '%' }}</span>
+            </div>
+          </m3e-list>
+        </div>
       </div>
       <div slot="actions" class="m3e-dialog-actions">
         <m3e-button variant="outlined" size="small" @click="handleAddInterpreter">
@@ -1640,7 +1786,7 @@ onMounted(() => {
       @find="sendEditorCommand('find')" @replace="sendEditorCommand('replace')"
       @new-file="handleCreateFile(contextMenuState.targetItem?.isFolder ? contextMenuState.targetItem.id : null, 'untitled.py')"
       @new-folder="handleCreateFolder(contextMenuState.targetItem?.isFolder ? contextMenuState.targetItem.id : null, 'new_folder')"
-      @rename="item => fileTreeRef.value?.startRename(item)" @delete="item => requestDeleteItem(item)"
+      @rename="item => fileTreeRef?.startRename(item)" @delete="item => requestDeleteItem(item)"
       @run="item => handleRunFile(item)" @reveal-in-explorer="handleRevealInExplorer" />
 
     <!-- Hidden file inputs for menu open file/folder -->
@@ -1921,7 +2067,7 @@ m3e-snackbar.app-snackbar {
   margin: 0 0.2rem 0.5rem 0.2rem;
   display: flex;
   align-items: center;
-  background-color: var(--surface-color);
+  background-color: unset;
   position: relative;
   flex-shrink: 0;
 }
@@ -2002,6 +2148,11 @@ m3e-snackbar.app-snackbar {
 }
 
 /* 解释器版本管理器弹窗：select 撑满、底部显示当前引擎状态 */
+/* 默认全局上限 26rem 会把选择框与安装引导项挤在一起，这里放宽 */
+.interpreter-dialog {
+  --m3e-dialog-max-width: 48rem;
+}
+
 .interpreter-dialog-body {
   display: flex;
   flex-direction: column;
@@ -2017,6 +2168,53 @@ m3e-snackbar.app-snackbar {
   font-size: 0.8125rem;
   color: var(--text-tertiary);
   margin: 0;
+}
+
+/* 安装引导卡片：tertiary 色系容器（容器色 tertiary-container、文字 on-tertiary-container），
+   按钮同色系 —— filled 用 tertiary / on-tertiary，outlined 的文字与描边用 tertiary */
+.python-guide-card {
+  background-color: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+  border-radius: var(--md-sys-shape-corner-medium);
+  overflow: hidden;
+}
+
+.python-guide-card m3e-list-item {
+  --m3e-list-item-label-text-color: var(--md-sys-color-on-tertiary-container);
+  --m3e-list-item-supporting-text-color: var(--md-sys-color-on-tertiary-container);
+  --m3e-list-item-leading-color: var(--md-sys-color-on-tertiary-container);
+}
+
+.python-guide-card .python-guide-primary {
+  --m3e-filled-button-container-color: var(--md-sys-color-tertiary);
+  --m3e-filled-button-label-text-color: var(--md-sys-color-on-tertiary);
+  --m3e-filled-button-icon-color: var(--md-sys-color-on-tertiary);
+}
+
+.python-guide-card .python-guide-secondary {
+  --m3e-outlined-button-outline-color: var(--md-sys-color-tertiary);
+  --m3e-outlined-button-label-text-color: var(--md-sys-color-tertiary);
+  --m3e-outlined-button-icon-color: var(--md-sys-color-tertiary);
+}
+
+/* 安装引导项（只在本机没有 Python 时出现）：选择框与按钮另起一行，整行靠右
+   （选择框、按钮 / 进度文字依序排在右端），底部与 list-item 内容对齐留 12px */
+.python-guide-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 16px 12px 16px;
+}
+
+.python-guide-status {
+  font-size: 0.75rem;
+  color: var(--md-sys-color-on-tertiary-container);
+  white-space: nowrap;
+}
+
+.python-guide-select {
+  width: 10rem;
 }
 
 /* 解释器选项样式在全局 m3eStyle.css（与设置页共用） */

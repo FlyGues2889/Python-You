@@ -393,8 +393,9 @@ const openInEditor = (code: string) => {
           </ul>
         </div>
 
-        <!-- 完成状态与测验入口：统一用组件库按钮（完成状态是切换，用 toggle + selected 表达） -->
-        <div class="completed-bar">
+        <!-- 完成状态与测验入口：统一用组件库按钮（完成状态是切换，用 toggle + selected 表达）。
+             参考手册（kind: 'reference'）是查阅材料，不标完成、也没有测验 -->
+        <div v-if="!isReference" class="completed-bar">
           <m3e-button toggle variant="filled" size="medium" :selected="!!isCompleted" @change="onToggleCompleted">
             <span slot="icon" class="material-symbols-rounded">{{ isCompleted ? 'check_circle' : 'radio_button_unchecked' }}</span>
             {{ isCompleted ? t('markedComplete') : t('markComplete') }}

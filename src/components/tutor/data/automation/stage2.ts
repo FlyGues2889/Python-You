@@ -8,7 +8,7 @@ export const autoStage2: TutorialStage = {
   topics: [
     {
       id: 'auto_datetime',
-      title: '时间与计时',
+      title: '时间计算与定时',
       stage: '自动化 > 定时任务',
       summary: 'datetime 获取当前时间，timedelta 做时间推算，是定时脚本的基础。',
       content: {

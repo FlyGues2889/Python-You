@@ -3,12 +3,12 @@ import { TutorialStage } from '../../tutorialData';
 // Web 系列 · 阶段二：用 Python 处理 Web 数据
 export const webStage2: TutorialStage = {
   id: 'web_stage2',
-  title: '用 Python 处理 Web 数据',
+  title: '调用接口与数据',
   icon: 'data_object',
   topics: [
     {
       id: 'web_json_module',
-      title: 'json 模块',
+      title: 'json 编解码',
       stage: 'Web > 处理 Web 数据',
       summary: 'json 模块把 JSON 文本转成 Python 字典，也能把字典转回 JSON，是处理接口数据的必备工具。',
       content: {
