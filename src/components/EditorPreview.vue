@@ -101,5 +101,8 @@ const currentThemeClass = computed(() => {
   background: transparent;
   padding: 0;
   font-family: var(--font-mono);
+  /* 与编辑器/教程代码块统一：基础色继承主题容器前景色，
+     不落到 github-dark.css 的 .hljs 默认 #c9d1d9（浅色主题下会看不清） */
+  color: inherit;
 }
 </style>

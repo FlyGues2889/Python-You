@@ -15,7 +15,10 @@ export const stage5: TutorialStage = {
         overview: '模块（Module）就是一个 .py 文件，把相关的函数和变量放在一起；包（Package）是一组模块的集合。有了模块，代码可以「分门别类」存放，想用哪个就 import 哪个。',
         sections: [
           { heading: '常见导入语法', text: '就像工具箱：螺丝刀、扳手、钳子各有各的抽屉。Python 里 import math 就是打开「数学」抽屉，里面的 sqrt 开平方、pi 圆周率随时能拿。\n\n• `import module_name`：导入整个模块\n• `from module import xxx`：导入模块中的指定符号\n• `import module as alias`：导入并重命名\n• `from module import *`：导入所有（不推荐，容易命名冲突）',
-            code: `import math as m\nprint("圆周率 π:", m.pi)\n\nfrom random import randint, choice\nprint("随机 1-100 整数:", randint(1, 100))\nprint("随机抽取:", choice(["Apple", "Banana", "Cherry"]))`
+            code: `import math as m\nprint("圆周率 π:", m.pi)\n\nfrom random import randint, choice\nprint("随机 1-100 整数:", randint(1, 100))\nprint("随机抽取:", choice(["Apple", "Banana", "Cherry"]))`,
+            callouts: [
+              { variant: 'error', label: '注意', content: 'from module import * 会导入所有公开符号，容易造成命名冲突且难以追踪来源，PEP 8 明确不推荐；需要简写时用 import module as alias。' }
+            ]
           },
           {
             heading: '模块与包的区别',
@@ -31,7 +34,10 @@ export const stage5: TutorialStage = {
           {
             heading: '__name__ 与入口判断',
             text: '每个模块都有 `__name__` 属性：\n• 直接运行脚本时，`__name__ == "__main__"`\n• 被其他模块导入时，`__name__ == 模块名`\n\n`if __name__ == "__main__":` 块里的代码只在直接运行时执行，被导入时不执行，常用于写模块测试代码。',
-            code: `# 模块入口测试模板\ndef main():\n    print("程序主逻辑")\n\nif __name__ == "__main__":\n    # 直接运行该文件才执行\n    main()\n    print("模块自测代码")`
+            code: `# 模块入口测试模板\ndef main():\n    print("程序主逻辑")\n\nif __name__ == "__main__":\n    # 直接运行该文件才执行\n    main()\n    print("模块自测代码")`,
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: 'if __name__ == "__main__": 让模块被导入时不执行测试代码，只有直接运行才执行，这是 Python 模块的标准入口写法。' }
+            ]
           },
           {
             heading: '查看模块内容：dir 与 help',
@@ -41,7 +47,10 @@ export const stage5: TutorialStage = {
           {
             heading: 'sys.path 搜索顺序',
             text: '执行 `import 模块名` 时，Python 按 sys.path 列表里的目录顺序逐个查找：先找当前脚本所在目录，再找标准库目录，最后找第三方包目录（site-packages）。想知道某个模块是从哪个文件加载的，打印 `模块名.__file__` 即可。\n\nPyodide 环境下 sys.path 已预置好，无需手动配置；本机开发时如果 import 报 ModuleNotFoundError，通常是模块所在目录不在 sys.path 里。',
-            code: `import sys\nprint("Python 版本:", sys.version.split()[0])\nprint("搜索路径数量:", len(sys.path))\nfor p in sys.path[:3]:\n    print(" -", p)`
+            code: `import sys\nprint("Python 版本:", sys.version.split()[0])\nprint("搜索路径数量:", len(sys.path))\nfor p in sys.path[:3]:\n    print(" -", p)`,
+            callouts: [
+              { variant: 'error', label: '常见错误', content: 'import 报 ModuleNotFoundError 通常是模块所在目录不在 sys.path 里；多版本 Python 共存时用 python -m pip 确保调用当前 Python 对应的 pip。' }
+            ]
           },
           {
             heading: '标准库概览',
@@ -70,7 +79,10 @@ export const stage5: TutorialStage = {
           {
             heading: '包内相对导入',
             text: '在同一个包内部导入兄弟模块时，用「点」表示当前包层级，叫相对导入：\n• `from . import 兄弟模块`：导入当前包下的模块\n• `from .. import 上层模块`：导入上一级包的模块\n• `from .utils import helper`：从当前包的 utils 模块导入 helper 函数\n\n相对导入靠点定位层级，不依赖包名，以后重命名包目录也不用改代码。注意：相对导入只能在包内部使用，直接运行某个文件会报 Attempted relative import 错误。',
-            code: `# 包结构示例（仅作讲解，实际运行需先建包目录）\n# mypackage/\n#   __init__.py\n#   core.py\n#   utils.py\n#\n# 在 core.py 里写：\n# from .utils import format_data\n# from ..shared import common_config\n#\n# 直接运行脚本时请用绝对导入（import mypackage.utils）。\nprint("相对导入适合包内部复用，脚本直接运行时请用绝对导入。")`
+            code: `# 包结构示例（仅作讲解，实际运行需先建包目录）\n# mypackage/\n#   __init__.py\n#   core.py\n#   utils.py\n#\n# 在 core.py 里写：\n# from .utils import format_data\n# from ..shared import common_config\n#\n# 直接运行脚本时请用绝对导入（import mypackage.utils）。\nprint("相对导入适合包内部复用，脚本直接运行时请用绝对导入。")`,
+            callouts: [
+              { variant: 'error', label: '注意', content: '相对导入只能在包内部使用，直接运行包含相对导入的脚本会报 Attempted relative import 错误；脚本入口文件请用绝对导入。' }
+            ]
           },
         ],
         codeExample: `import math, sys\nprint("sys.path 搜索路径数量:", len(sys.path))\nfuncs = [n for n in dir(math) if not n.startswith("_")]\nprint("math 公开函数数量:", len(funcs))`,
@@ -102,7 +114,10 @@ export const stage5: TutorialStage = {
           {
             heading: '常用操作方法',
             text: '• `datetime.now()`：获取当前本地时间\n• `date.today()`：获取今天的日期（只有年月日）\n• `.strftime(format)`：时间对象 → 格式化字符串\n• `.strptime(string, format)`：字符串 → 时间对象\n• 时间加减：datetime + timedelta 得到新时间\n• 时间差：两个 datetime 相减得到 timedelta\n• `.replace(...)`：返回替换了部分字段的新时间对象，不改动原值',
-            code: `from datetime import datetime, date, timedelta\n\n# date.today() 拿到今天的日期\ntoday = date.today()\nprint("今天:", today)\n\n# timedelta 支持 hours、weeks 等参数，不只 days\ndt = datetime(2026, 9, 28, 12, 0, 0)\nnew_dt = dt + timedelta(hours=3, weeks=1)\nprint("3 小时又 1 周后:", new_dt)\n\n# total_seconds() 把时间差换算成总秒数\ndelta = timedelta(days=1, hours=2)\nprint("一天两小时等于多少秒:", delta.total_seconds())\n\n# replace() 替换年、月等字段，原对象不变\nfixed = dt.replace(year=2030, month=1)\nprint("替换后:", fixed)`
+            code: `from datetime import datetime, date, timedelta\n\n# date.today() 拿到今天的日期\ntoday = date.today()\nprint("今天:", today)\n\n# timedelta 支持 hours、weeks 等参数，不只 days\ndt = datetime(2026, 9, 28, 12, 0, 0)\nnew_dt = dt + timedelta(hours=3, weeks=1)\nprint("3 小时又 1 周后:", new_dt)\n\n# total_seconds() 把时间差换算成总秒数\ndelta = timedelta(days=1, hours=2)\nprint("一天两小时等于多少秒:", delta.total_seconds())\n\n# replace() 替换年、月等字段，原对象不变\nfixed = dt.replace(year=2030, month=1)\nprint("替换后:", fixed)`,
+            callouts: [
+              { variant: 'tertiary', label: '小技巧', content: 'datetime 对象运算优先用 timedelta 加减和 replace 替换字段，不要手动算天数；strptime/strftime 负责字符串与时间对象互转。' }
+            ]
           },
           {
             heading: '常用格式化符号速查',
@@ -132,7 +147,7 @@ export const stage5: TutorialStage = {
         ],
         codeExample: `from datetime import datetime\nd_str = "2026-07-30 18:00:00"\nd_obj = datetime.strptime(d_str, "%Y-%m-%d %H:%M:%S")\nprint("字符串成功解析为 datetime 对象:", d_obj.year, d_obj.month)`,
         tips: [
-          '跨时区开发场景下，推荐结合 `zoneinfo` 模块使用 UTC 标准时区时间。',
+          '跨时区开发用 `zoneinfo` 配合 UTC 时间。',
           '处理时间优先用 datetime 对象运算，不要自己手动计算日期。'
         ]
       }
@@ -161,12 +176,18 @@ export const stage5: TutorialStage = {
           {
             heading: '角度与弧度转换',
             text: 'math 模块的三角函数都使用弧度制，角度转弧度用 `math.radians()`，弧度转角度用 `math.degrees()`。',
-            code: `import math\nangle_deg = 45\nangle_rad = math.radians(angle_deg)\nprint(f"45° 正弦值: {math.sin(angle_rad):.4f}")\nprint(f"45° 余弦值: {math.cos(angle_rad):.4f}")`
+            code: `import math\nangle_deg = 45\nangle_rad = math.radians(angle_deg)\nprint(f"45° 正弦值: {math.sin(angle_rad):.4f}")\nprint(f"45° 余弦值: {math.cos(angle_rad):.4f}")`,
+            callouts: [
+              { variant: 'error', label: '常见错误', content: 'math 的三角函数使用弧度制而非角度制，直接传 45 会得到错误结果；必须先用 math.radians() 把角度转成弧度。' }
+            ]
           },
           {
             heading: '浮点数判断与比较',
             text: '浮点数有两个特殊值：无穷大 inf 和非数值 nan，直接用 == 判断不可靠，math 提供了专门的判定函数：\n• `math.fabs(x)`：浮点数绝对值，返回 float（内置 abs 对 int 返回 int）\n• `math.exp(x)`：计算 e 的 x 次方\n• `math.isclose(a, b)`：判断两个浮点数是否近似相等，自动考虑精度误差\n• `math.isfinite(x)`：判断是不是有限值（既不是 inf 也不是 nan）\n• `math.isnan(x)`：判断是不是 nan',
-            code: `import math\n\nprint("fabs(-3.14):", math.fabs(-3.14))\nprint("exp(1):", round(math.exp(1), 4))\n\n# 经典坑：0.1 + 0.2 在浮点数里不等于 0.3\na = 0.1 + 0.2\nprint("a == 0.3 ?", a == 0.3)\nprint("isclose(a, 0.3) ?", math.isclose(a, 0.3))\n\nprint("isfinite(1.5):", math.isfinite(1.5))\nprint("isnan(float('nan')):", math.isnan(float("nan")))`
+            code: `import math\n\nprint("fabs(-3.14):", math.fabs(-3.14))\nprint("exp(1):", round(math.exp(1), 4))\n\n# 经典坑：0.1 + 0.2 在浮点数里不等于 0.3\na = 0.1 + 0.2\nprint("a == 0.3 ?", a == 0.3)\nprint("isclose(a, 0.3) ?", math.isclose(a, 0.3))\n\nprint("isfinite(1.5):", math.isfinite(1.5))\nprint("isnan(float('nan')):", math.isnan(float("nan")))`,
+            callouts: [
+              { variant: 'tertiary', label: '小技巧', content: '比较浮点数用 math.isclose() 而非 ==，它自动考虑精度误差；判断 inf 和 nan 用 math.isfinite() 和 math.isnan()，直接 == 不可靠。' }
+            ]
           },
           {
             heading: '注意事项',
@@ -175,7 +196,7 @@ export const stage5: TutorialStage = {
         ],
         codeExample: `import math\nangle_deg = 45\nangle_rad = math.radians(angle_deg)\nprint(f"45度角的 sin 值: {math.sin(angle_rad):.4f}")`,
         tips: [
-          '`math` 模块针对浮点数优化，复数数学计算需要使用 `cmath` 模块。',
+          '`math` 只处理浮点数，复数计算用 `cmath`。',
           '大规模数值计算优先用 NumPy，比 math 逐个计算高效得多。'
         ]
       }
@@ -205,7 +226,10 @@ export const stage5: TutorialStage = {
           {
             heading: '四大核心 API',
             text: '• `json.loads(s)`：JSON 字符串 → Python 对象\n• `json.dumps(obj)`：Python 对象 → JSON 字符串\n• `json.load(fp)`：从文件对象读取并解析\n• `json.dump(obj, fp)`：序列化后写入文件对象\n\ns 结尾表示 string，处理字符串；不带 s 处理文件句柄。',
-            code: `import json\n\n# Python 字典\nuser_data = {\n    "id": 1001,\n    "username": "developer",\n    "roles": ["admin", "editor"],\n    "is_active": True\n}\n\n# 序列化为 JSON 字符串\njson_str = json.dumps(user_data, indent=2, ensure_ascii=False)\nprint("序列化结果:\\n", json_str)\n\n# 反序列化还原\nparsed = json.loads(json_str)\nprint("还原用户名:", parsed["username"])`
+            code: `import json\n\n# Python 字典\nuser_data = {\n    "id": 1001,\n    "username": "developer",\n    "roles": ["admin", "editor"],\n    "is_active": True\n}\n\n# 序列化为 JSON 字符串\njson_str = json.dumps(user_data, indent=2, ensure_ascii=False)\nprint("序列化结果:\\n", json_str)\n\n# 反序列化还原\nparsed = json.loads(json_str)\nprint("还原用户名:", parsed["username"])`,
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: 'dumps/loads 处理字符串（s 结尾），dump/load 处理文件对象；ensure_ascii=False 保留中文不转义，indent 让输出更美观。' }
+            ]
           },
           {
             heading: '读写 JSON 文件',
@@ -220,12 +244,15 @@ export const stage5: TutorialStage = {
           {
             heading: 'JSONDecodeError',
             text: 'json.loads 遇到格式错误的 JSON 字符串会抛出 `json.JSONDecodeError`，而不是静默返回 None。解析网络响应、用户输入等外部数据时务必捕获，否则一个坏字符串就会让程序崩溃。',
-            code: `import json\n\nfor bad in ['{"a": 1}', '这不是 JSON', '{missing: quote}']:\n    try:\n        obj = json.loads(bad)\n        print("解析成功:", obj)\n    except json.JSONDecodeError as e:\n        print(f"[{bad}] 解析失败，位置 {e.pos} 附近出错")`
+            code: `import json\n\nfor bad in ['{"a": 1}', '这不是 JSON', '{missing: quote}']:\n    try:\n        obj = json.loads(bad)\n        print("解析成功:", obj)\n    except json.JSONDecodeError as e:\n        print(f"[{bad}] 解析失败，位置 {e.pos} 附近出错")`,
+            callouts: [
+              { variant: 'error', label: '常见错误', content: 'json.loads 遇到格式错误的字符串会抛 JSONDecodeError 而非返回 None，解析外部数据务必捕获；绝对不要用 eval 替代 json.loads，有安全风险。' }
+            ]
           },
         ],
         codeExample: `import json\nraw_json = '{"code": 200, "message": "Success"}'\ndata = json.loads(raw_json)\nprint("响应状态码:", data["code"])`,
         tips: [
-          '在 `dumps` 中设置 `ensure_ascii=False` 可防止中文字符串被编码为 `\\uXXXX` 形式。',
+          '`dumps` 加 `ensure_ascii=False` 保留中文，不被转成 `\\uXXXX`。',
           '解析不可信来源的 JSON 不要用 eval，必须用 json.loads。'
         ]
       }
@@ -273,7 +300,10 @@ export const stage5: TutorialStage = {
                 ['()', '分组捕获', '(\\d+)-(\\d+) 提取两组数字']
               ]
             },
-            code: `import re\n\ntext = "电话: 010-88886666, 手机: 13800138000, 邮箱: admin@python-you.io"\n\n# 提取手机号\nmobiles = re.findall(r"1[3-9]\\d{9}", text)\nprint("手机号列表:", mobiles)\n\n# 脱敏邮箱\nmasked = re.sub(r"[\\w.-]+@[\\w.-]+\\.[a-zA-Z]{2,}", "***@***", text)\nprint("脱敏后文本:", masked)`
+            code: `import re\n\ntext = "电话: 010-88886666, 手机: 13800138000, 邮箱: admin@python-you.io"\n\n# 提取手机号\nmobiles = re.findall(r"1[3-9]\\d{9}", text)\nprint("手机号列表:", mobiles)\n\n# 脱敏邮箱\nmasked = re.sub(r"[\\w.-]+@[\\w.-]+\\.[a-zA-Z]{2,}", "***@***", text)\nprint("脱敏后文本:", masked)`,
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: 're.search 找第一个匹配，re.findall 找所有匹配返回列表，re.sub 替换匹配内容；正则要始终用原始字符串 r"..." 避免反斜杠转义问题。' }
+            ]
           },
           {
             heading: 'compile、split、finditer 与 Match 对象',
@@ -283,7 +313,10 @@ export const stage5: TutorialStage = {
           {
             heading: '标志位与高级用法',
             text: '• `re.I`（IGNORECASE）：忽略大小写\n• `re.M`（MULTILINE）：让 ^ 和 $ 匹配每一行的开头和结尾，而不只是整个字符串\n• `re.subn()`：和 sub 一样替换，但返回 (新字符串, 替换次数) 元组\n• `\\b`：单词边界，匹配英文单词的起止位置\n• 贪婪与非贪婪：`*`、`+` 默认贪婪（尽可能多匹配）；加 `?` 变非贪婪（尽可能少匹配），如 `*?`、`+?`',
-            code: `import re\n\ntext = "Hello hello HELLO"\nprint("忽略大小写匹配:", re.findall(r"hello", text, re.I))\n\n# subn 返回替换后的字符串和替换次数\nnew_text, count = re.subn(r"\\d", "#", "订单号 20260928")\nprint("替换后:", new_text, "替换次数:", count)\n\n# 贪婪 vs 非贪婪\ns = "<a><b>"\nprint("贪婪 .*:", re.findall(r"<.*>", s))\nprint("非贪婪 .*?:", re.findall(r"<.*?>", s))`
+            code: `import re\n\ntext = "Hello hello HELLO"\nprint("忽略大小写匹配:", re.findall(r"hello", text, re.I))\n\n# subn 返回替换后的字符串和替换次数\nnew_text, count = re.subn(r"\\d", "#", "订单号 20260928")\nprint("替换后:", new_text, "替换次数:", count)\n\n# 贪婪 vs 非贪婪\ns = "<a><b>"\nprint("贪婪 .*:", re.findall(r"<.*>", s))\nprint("非贪婪 .*?:", re.findall(r"<.*?>", s))`,
+            callouts: [
+              { variant: 'error', label: '注意', content: '* 和 + 默认贪婪（尽可能多匹配），加 ? 变非贪婪（尽可能少匹配）；提取 HTML 标签等场景必须用非贪婪，否则会从第一个 < 匹配到最后一个 >。' }
+            ]
           },
           {
             heading: '正则最佳实践',
@@ -292,7 +325,7 @@ export const stage5: TutorialStage = {
         ],
         codeExample: `import re\ns = "2026-07-30"\nmatch = re.match(r"(\\d{4})-(\\d{2})-(\\d{2})", s)\nif match:\n    print("提取年份:", match.group(1), "月份:", match.group(2))\n    print("分组元组:", match.groups())`,
         tips: [
-          '编写正则表达式时推荐使用原始字符串 `r"..."`，以避免繁琐的反斜杠转义。',
+          '正则用原始字符串 `r"..."` 写，省去反斜杠转义的麻烦。',
           '正则不是万能的，简单文本处理优先用字符串内置方法。'
         ]
       }
@@ -324,21 +357,27 @@ export const stage5: TutorialStage = {
           {
             heading: '国内镜像源（重要）',
             text: 'pip 默认从国外的 PyPI 下载，国内网络经常很慢甚至超时。换成国内镜像源能快十几倍：\n\n临时使用（单次命令加 `-i` 参数）：\n`pip install pandas -i https://pypi.tuna.tsinghua.edu.cn/simple`\n\n永久配置（写入 pip 配置文件，之后所有安装都走镜像）：\n`pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple`\n\n其他常用镜像：阿里云 `https://mirrors.aliyun.com/pypi/simple/`、中科大 `https://pypi.mirrors.ustc.edu.cn/simple/`。配置后用 `pip config list` 查看是否生效。',
-            code: `# 以下命令在本机终端执行，不是在 Python 解释器里运行\n# pip install requests -i https://pypi.tuna.tsinghua.edu.cn/simple\n# pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple\n# pip config list\nprint("镜像源配置在终端执行，不在 .py 代码里运行。")`
+            code: `# 以下命令在本机终端执行，不是在 Python 解释器里运行\n# pip install requests -i https://pypi.tuna.tsinghua.edu.cn/simple\n# pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple\n# pip config list\nprint("镜像源配置在终端执行，不在 .py 代码里运行。")`,
+            callouts: [
+              { variant: 'tertiary', label: '小技巧', content: '国内开发先配清华或阿里云镜像源能快十几倍，用 pip config set global.index-url 永久生效；临时加速在命令后加 -i 参数即可。' }
+            ]
           },
           {
             heading: '虚拟环境与依赖清单',
             text: '不同项目可能依赖不同版本的包，虚拟环境为每个项目创建一套独立的 Python 环境，互不干扰：\n• 创建：`python -m venv .venv`\n• 激活：Windows `.venv\\Scripts\\activate`，macOS/Linux `source .venv/bin/activate`\n• 退出：在终端直接敲 `deactivate`\n• 导出依赖：`pip freeze > requirements.txt`\n• 按清单安装：`pip install -r requirements.txt`\n\nrequirements.txt 里常见的版本约束符号：\n• `pandas==2.0.3`：精确版本\n• `pandas>=2.0.0`：大于等于\n• `pandas>=1.0,<3.0`：区间\n• `pandas~=2.0`：兼容版本（2.0.x，不跨大版本）',
-            code: `# 虚拟环境标准工作流（在终端执行）\n# python -m venv .venv\n# .venv\\Scripts\\activate    # Windows 激活\n# pip install requests==2.31.0\n# pip freeze > requirements.txt\n# deactivate                # 退出虚拟环境\nprint("虚拟环境命令在终端运行，用于隔离不同项目的依赖。")`
+            code: `# 虚拟环境标准工作流（在终端执行）\n# python -m venv .venv\n# .venv\\Scripts\\activate    # Windows 激活\n# pip install requests==2.31.0\n# pip freeze > requirements.txt\n# deactivate                # 退出虚拟环境\nprint("虚拟环境命令在终端运行，用于隔离不同项目的依赖。")`,
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: '虚拟环境为每个项目创建独立的 Python 环境，互不干扰；项目一定要用 requirements.txt 锁定依赖版本，换环境后才不会运行异常。' }
+            ]
           },
           {
             heading: '包管理器',
-            text: '在 IDE 界面左侧工具栏中点击【包管理器】按钮，即可在线一键搜索安装 NumPy、Pandas、SymPy 等众多第三方库，无需手动敲命令。'
+            text: 'IDE 左侧工具栏点【包管理器】，可在线搜索安装 NumPy、Pandas、SymPy 等第三方库，不用手动敲命令。'
           },
         ],
         codeExample: `import sys\nprint("当前环境已装载的内嵌路径与模块总数:", len(sys.modules))`,
         tips: [
-          '你可以使用侧边栏【包管理器】快速安装与管理项目中所需的各种依赖包。',
+          '侧边栏【包管理器】可一键搜索安装和管理依赖包。',
           '项目一定要锁定依赖版本，换环境后才不会运行异常；国内开发先配清华镜像源。'
         ]
       }
@@ -352,7 +391,10 @@ export const stage5: TutorialStage = {
         overview: '程序运行时会遇到意外，比如用户输入了数字却写成了字母。try/except 就像安全网：把可能出错的代码放进去，出错时不会直接崩溃，而是走「补救」分支。',
         sections: [
           { heading: '完整异常结构', text: '让用户输入年龄：用户手滑输了「abc」，int("abc") 会报错。用 try: age = int(input(...)) except: 提示「请输入数字」。程序不会崩，还能友好提醒。\n\n`try-except-else-finally` 四部分组成：\n• `try`：可能抛出异常的代码\n• `except 异常类型`：捕获指定异常并处理\n• `else`：没有异常时执行\n• `finally`：无论是否异常都执行，用于资源清理',
-            code: `def safe_divide(a, b):\n    try:\n        result = a / b\n    except ZeroDivisionError as e:\n        print(f"捕获异常：除数不能为零 ({e})")\n        return None\n    except TypeError as e:\n        print(f"捕获异常：参数类型错误 ({e})")\n        return None\n    else:\n        print("计算正常无报错")\n        return result\n    finally:\n        print("清理工作执行完毕。")\n\nprint("计算结果:", safe_divide(10, 2))\nprint("计算结果:", safe_divide(10, 0))`
+            code: `def safe_divide(a, b):\n    try:\n        result = a / b\n    except ZeroDivisionError as e:\n        print(f"捕获异常：除数不能为零 ({e})")\n        return None\n    except TypeError as e:\n        print(f"捕获异常：参数类型错误 ({e})")\n        return None\n    else:\n        print("计算正常无报错")\n        return result\n    finally:\n        print("清理工作执行完毕。")\n\nprint("计算结果:", safe_divide(10, 2))\nprint("计算结果:", safe_divide(10, 0))`,
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: 'try 放可能出错的代码，except 捕获指定异常，else 无异常时执行，finally 无论是否异常都执行用于资源清理；四部分按需使用。' }
+            ]
           },
           {
             heading: '常见内置异常类型',
@@ -376,7 +418,10 @@ export const stage5: TutorialStage = {
           {
             heading: '合并捕获与兜底姿势',
             text: '多个异常类型的处理方式相同时，可以用元组合并，避免重复写 except 块：\n`except (ValueError, TypeError) as e:`\n\n如果想兜底所有「非系统退出类」异常，用 `except Exception:`，而不是裸 `except:`（裸 except 会连 KeyboardInterrupt、SystemExit 都吞掉，导致程序关不掉）。注意兜底只放在最外层，内部代码仍要尽量精确捕获。',
-            code: `def parse_age(s):\n    try:\n        age = int(s)\n        if age < 0:\n            raise ValueError("年龄不能为负")\n        return age\n    except (ValueError, TypeError) as e:\n        print(f"输入 [{s}] 不合法: {e}")\n        return None\n    except Exception:\n        print("未知错误，兜底处理")\n        return None\n\nprint(parse_age("18"))\nprint(parse_age("abc"))\nprint(parse_age(-5))`
+            code: `def parse_age(s):\n    try:\n        age = int(s)\n        if age < 0:\n            raise ValueError("年龄不能为负")\n        return age\n    except (ValueError, TypeError) as e:\n        print(f"输入 [{s}] 不合法: {e}")\n        return None\n    except Exception:\n        print("未知错误，兜底处理")\n        return None\n\nprint(parse_age("18"))\nprint(parse_age("abc"))\nprint(parse_age(-5))`,
+            callouts: [
+              { variant: 'error', label: '避免踩坑', content: '裸 except: 会连 KeyboardInterrupt 和 SystemExit 都吞掉导致程序关不掉，兜底用 except Exception:；且只捕获你能处理的异常，不要默默吞掉。' }
+            ]
           },
           {
             heading: '自定义异常',
@@ -391,7 +436,7 @@ export const stage5: TutorialStage = {
         ],
         codeExample: `class CustomAppError(Exception):\n    """自定义业务逻辑异常类"""\n    pass\n\ntry:\n    raise CustomAppError("主动触发自定义业务逻辑异常")\nexcept CustomAppError as err:\n    print("捕获自定义异常:", err)`,
         tips: [
-          '避免滥用无类型的裸 `except:`，应当显式指明所需捕获的具体异常类。',
+          '别用裸 `except:`，要显式写出捕获的异常类型。',
           '只捕获你能处理的异常，不要捕获所有异常然后默默吞掉。'
         ]
       }
@@ -414,12 +459,18 @@ export const stage5: TutorialStage = {
                 ['"r+"', '读写', '可读可写', '抛出错误', '指针在开头，覆盖'],
                 ['"rb" / "wb"', '二进制读/写', '字节流', '读时报错 / 写时新建', '处理图片、视频等非文本']
               ]
-            }
+            },
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: '"w" 模式会清空原文件再写，"a" 模式在末尾追加；打开文本文件务必指定 encoding="utf-8" 避免跨系统乱码，二进制文件用 "rb"/"wb"。' }
+            ]
           },
           {
             heading: 'with 上下文管理器',
             text: '推荐始终使用 `with open(...) as f:` 语法：\n• 代码块结束自动关闭文件\n• 即使发生异常也能正确关闭\n• 不用手动写 f.close()',
-            code: `# 写入文件\nwith open("demo_output.txt", "w", encoding="utf-8") as f:\n    f.write("Python You 虚拟文件系统\\n")\n    f.write("第一行数据\\n第二行数据")\n\n# 读取文件\nwith open("demo_output.txt", "r", encoding="utf-8") as f:\n    lines = f.readlines()\n    for idx, line in enumerate(lines, 1):\n        print(f"第 [{idx}] 行: {line.strip()}")`
+            code: `# 写入文件\nwith open("demo_output.txt", "w", encoding="utf-8") as f:\n    f.write("Python You 虚拟文件系统\\n")\n    f.write("第一行数据\\n第二行数据")\n\n# 读取文件\nwith open("demo_output.txt", "r", encoding="utf-8") as f:\n    lines = f.readlines()\n    for idx, line in enumerate(lines, 1):\n        print(f"第 [{idx}] 行: {line.strip()}")`,
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: 'with open(...) as f: 会在代码块结束时自动关闭文件，即使发生异常也能正确关闭，不用手动写 f.close()，是文件操作的标准写法。' }
+            ]
           },
           {
             heading: '常用文件操作方法',
@@ -429,7 +480,10 @@ export const stage5: TutorialStage = {
           {
             heading: 'writelines 与二进制读写',
             text: '• `.writelines(列表)`：批量写入多行字符串，比循环 write 更高效，但不会自动在行末加换行\n• 二进制模式：模式后加 `b`，如 `"rb"` 读、`"wb"` 写，处理图片、音频、压缩包等非文本文件，读写的都是 bytes 对象\n\n二进制文件需要真实磁盘路径，当前 Pyodide 环境下请在本机 Python 中运行。下面用 io.StringIO 演示 writelines：',
-            code: `from io import StringIO\n\n# 注意每个字符串末尾要自己加 \\n\nlines = ["第一行\\n", "第二行\\n", "第三行\\n"]\nbuf = StringIO()\nbuf.writelines(lines)\nprint("writelines 写入结果:\\n" + buf.getvalue())\n\n# 二进制读写（需本机运行，在此处仅展示写法）：\n# with open("pic.png", "rb") as f:\n#     data = f.read()\n# with open("copy.png", "wb") as f:\n#     f.write(data)`
+            code: `from io import StringIO\n\n# 注意每个字符串末尾要自己加 \\n\nlines = ["第一行\\n", "第二行\\n", "第三行\\n"]\nbuf = StringIO()\nbuf.writelines(lines)\nprint("writelines 写入结果:\\n" + buf.getvalue())\n\n# 二进制读写（需本机运行，在此处仅展示写法）：\n# with open("pic.png", "rb") as f:\n#     data = f.read()\n# with open("copy.png", "wb") as f:\n#     f.write(data)`,
+            callouts: [
+              { variant: 'error', label: '注意', content: 'writelines 不会自动在行末加换行，需要自己在每个字符串末尾加 \\n；二进制模式加 b 后缀，读写的是 bytes 对象而非字符串。' }
+            ]
           },
         ],
         codeExample: `import io
@@ -462,7 +516,10 @@ print("一共", len(content.splitlines()), "行")`,
           {
             heading: 'os.path.join（重点）',
             text: '拼接路径时永远用 os.path.join，不要自己写斜杠：\n• 自动按当前操作系统选择分隔符（Windows 是 \\，其他系统是 /）\n• 自动处理多余的斜杠\n• 遇到绝对路径会重置之前的拼接结果\n\n配合 os.path.dirname、os.path.basename、os.path.splitext 可以方便地拆解路径。',
-            code: `import os\n\n# 跨平台拼接：Windows 输出 folder\\sub\\file.txt，其他系统输出 folder/sub/file.txt\npath = os.path.join("folder", "sub", "file.txt")\nprint("拼接结果:", path)\n\n# 拆解路径\nprint("目录名:", os.path.dirname(path))\nprint("文件名:", os.path.basename(path))\nprint("拆分扩展名:", os.path.splitext("data.csv"))`
+            code: `import os\n\n# 跨平台拼接：Windows 输出 folder\\sub\\file.txt，其他系统输出 folder/sub/file.txt\npath = os.path.join("folder", "sub", "file.txt")\nprint("拼接结果:", path)\n\n# 拆解路径\nprint("目录名:", os.path.dirname(path))\nprint("文件名:", os.path.basename(path))\nprint("拆分扩展名:", os.path.splitext("data.csv"))`,
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: '拼路径永远用 os.path.join 或 pathlib，不要手写斜杠；它们自动选择当前系统的分隔符，是写跨平台程序的必备工具。' }
+            ]
           },
           {
             heading: 'pathlib.Path（面向对象）',

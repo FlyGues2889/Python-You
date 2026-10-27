@@ -12,9 +12,12 @@ export const webStage1: TutorialStage = {
       stage: 'Web > Web 基础',
       summary: 'Web 就是浏览器和服务器之间通过 HTTP 交换数据的系统，理解一次访问发生了什么。',
       content: {
-        overview: '每天都在打开网页、刷手机，但 Web 背后到底发生了什么？简单说：你的浏览器是客户端，远方一台服务器存着网页和数据，两者通过 HTTP 协议一问一答。这一课建立整体认识，为后面学写后端和调用接口打基础。',
+        overview: '每天都在打开网页、刷手机，但 Web 背后到底发生了什么？简单说：你的浏览器是客户端，远方一台服务器存着网页和数据，两者通过 HTTP 协议一问一答。先把整体图景建立起来，后面写后端、调接口就有底了。',
         sections: [
-          { heading: '客户端与服务器', text: 'Web 像点外卖：你在手机 App（客户端）下单，餐厅（服务器）做好后送来。区别在于，浏览器每次打开网页都是重新问服务器要一次内容，服务器只负责把数据发回来。\n\nWeb 的两端：\n• 客户端（Client）：你用的浏览器、手机 App，负责发起请求、展示界面。\n• 服务器（Server）：24 小时在线的计算机，存着网页和数据，负责响应请求。\n两端通过 HTTP（超文本传输协议）通信，约定好用什么格式发请求、怎么回响应。',
+          { heading: '客户端与服务器', text: 'Web 像点外卖：你在手机 App（客户端）下单，餐厅（服务器）做好后送来。只是浏览器每次打开网页都要重新问服务器要一次内容，服务器只负责把数据发回来。\n\nWeb 的两端：\n• 客户端（Client）：你用的浏览器、手机 App，负责发起请求、展示界面。\n• 服务器（Server）：24 小时在线的计算机，存着网页和数据，负责响应请求。\n两端通过 HTTP（超文本传输协议）通信，约定好用什么格式发请求、怎么回响应。',
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: 'Web 的本质是请求-响应循环：客户端主动发起，服务器被动响应，角色不能互换。' }
+            ],
             table: {
               headers: ['角色', '角色名', '做什么'],
               rows: [
@@ -27,7 +30,10 @@ export const webStage1: TutorialStage = {
           {
             heading: '一次访问发生了什么',
             text: '在地址栏输入网址回车后：\n1. 浏览器把网址翻译成服务器地址。\n2. 向服务器发出 HTTP 请求。\n3. 服务器找到对应资源，返回响应（网页 HTML 或数据）。\n4. 浏览器把 HTML 渲染成你看到的页面。\n后面学的「接口」就是服务器返回结构化数据（而非整页 HTML）给程序用。',
-            code: `# 用字典模拟一次浏览器与服务器的对话\nbrowser = "请求: GET /index.html"\nserver = "响应: 200 OK, 返回首页网页内容"\n\nprint("浏览器发出:", browser)\nprint("服务器返回:", server)`
+            code: `# 用字典模拟一次浏览器与服务器的对话\nbrowser = "请求: GET /index.html"\nserver = "响应: 200 OK, 返回首页网页内容"\n\nprint("浏览器发出:", browser)\nprint("服务器返回:", server)`,
+            callouts: [
+              { variant: 'secondary', label: '补充说明', content: '接口（API）是这一流程的变体：服务器返回结构化 JSON 而非整页 HTML，供程序直接读取。' }
+            ]
           },
         ],
         codeExample: `request = "GET /users/profile"\nresponse = "200 OK, 用户资料数据"\nprint("客户端发送:", request)\nprint("服务器返回:", response)`,
@@ -49,9 +55,12 @@ export const webStage1: TutorialStage = {
       stage: 'Web > Web 基础',
       summary: '网址由协议、域名、路径、参数组成，看懂它就知道浏览器在请求什么。',
       content: {
-        overview: 'URL（统一资源定位符）就是网址，比如 https://example.com/users?id=1。它不是一串乱码，而是有结构的：协议、域名、路径、查询参数。学会拆解 URL，就能看懂浏览器到底在请求什么。',
+        overview: 'URL（统一资源定位符）就是网址，比如 https://example.com/users?id=1。它有固定结构：协议、域名、路径、查询参数。会拆解 URL，就看懂浏览器到底在请求什么。',
         sections: [
           { heading: 'URL 的组成部分', text: 'URL 像一个完整收件地址：https 是「用什么快递」，example.com 是「哪个城市」，/users 是「哪条街」，?id=1 是「门牌号」。拼起来就能找到唯一资源。\n\n以 https://example.com/users?id=1&sort=name 为例：\n• https：协议（http 是明文，https 是加密）。\n• example.com：域名，服务器的名字。\n• /users：路径，请求服务器上的哪个资源。\n• ?id=1&sort=name：查询参数，传给服务器的附加条件。',
+            callouts: [
+              { variant: 'error', label: '注意', content: 'http 是明文传输，密码等敏感数据会暴露在网络上；https 才是加密传输，生产环境一律用 https。' }
+            ],
             table: {
               headers: ['部分', '示例', '含义'],
               rows: [
@@ -65,7 +74,10 @@ export const webStage1: TutorialStage = {
           {
             heading: '拆解一个 URL',
             text: 'Python 标准库 urllib.parse 能自动拆解 URL。下面这段代码离线运行，把一个 URL 拆成各部分。',
-            code: `from urllib.parse import urlparse, parse_qs\n\nurl = "https://example.com/users?id=1&sort=name"\nparts = urlparse(url)\nprint("协议:", parts.scheme)\nprint("域名:", parts.netloc)\nprint("路径:", parts.path)\nprint("参数:", parts.query)`
+            code: `from urllib.parse import urlparse, parse_qs\n\nurl = "https://example.com/users?id=1&sort=name"\nparts = urlparse(url)\nprint("协议:", parts.scheme)\nprint("域名:", parts.netloc)\nprint("路径:", parts.path)\nprint("参数:", parts.query)`,
+            callouts: [
+              { variant: 'tertiary', label: '小技巧', content: '想进一步把查询串拆成字典，用 parse_qs(parts.query)，会得到 {"id": ["1"], "sort": ["name"]}。' }
+            ]
           },
         ],
         codeExample: `from urllib.parse import urlparse\n\nurl = "https://shop.com/products?category=book&page=2"\np = urlparse(url)\nprint("域名:", p.netloc)\nprint("路径:", p.path)\nprint("查询串:", p.query)`,
@@ -90,6 +102,10 @@ export const webStage1: TutorialStage = {
         overview: '每次响应都带一个三位数字的状态码，它是服务器给你的「回执」：200 表示成功，404 表示页面不存在，500 表示服务器自己出错了。看懂状态码，遇到问题就知道该找谁。',
         sections: [
           { heading: '状态码按开头数字分类', text: '状态码像快递状态：已签收（200）、地址不存在（404）、拒收（403）、仓库着火（500）。看到数字就知道快递卡在哪一环。\n\n第一位数字代表大类：\n• 2xx：成功（200 最常见）。\n• 3xx：重定向，页面搬走了。\n• 4xx：客户端错误，是你请求的问题（404 不存在、403 无权限）。\n• 5xx：服务器错误，是对方的问题（500 内部错误）。',
+            callouts: [
+              { variant: 'primary', label: '重点', content: '拿到响应先看状态码：2xx 才能解析数据，4xx 查自己的请求，5xx 等对方修复。' },
+              { variant: 'error', label: '避免踩坑', content: '别一遇到非 200 就抛异常，3xx 重定向、304 缓存命中都是正常情况。' }
+            ],
             table: {
               headers: ['状态码', '含义', '常见原因'],
               rows: [
@@ -126,6 +142,9 @@ export const webStage1: TutorialStage = {
         overview: '请求除了网址和参数，还会带一组「请求头」（Headers），它是附加的说明信息：我是什么浏览器、能接受什么语言、是否带登录凭证。理解常见请求头，才能正确调用接口。',
         sections: [
           { heading: '常见请求头', text: '请求头像你进图书馆时的读者证：上面写着你是谁、能借什么类型的书。服务器看了请求头才知道怎么正确回应你。\n\n几个高频请求头：\n• User-Agent：客户端标识（什么浏览器）。\n• Content-Type：发送数据的格式（通常是 application/json）。\n• Accept：希望服务器返回什么格式。\n• Authorization：登录凭证（令牌），证明你已登录。',
+            callouts: [
+              { variant: 'error', label: '常见错误', content: '令牌、API Key 等凭证绝不能硬编码进代码或提交到 Git，应放环境变量或配置文件。' }
+            ],
             table: {
               headers: ['请求头', '作用', '示例值'],
               rows: [
@@ -139,7 +158,10 @@ export const webStage1: TutorialStage = {
           {
             heading: '用字典表示请求头',
             text: '在 Python 里，请求头就是一个字典。下面模拟一个带登录凭证的请求头。',
-            code: `headers = {\n    "User-Agent": "Python-learning/1.0",\n    "Content-Type": "application/json",\n    "Authorization": "Bearer my-token-123"\n}\n\nprint("请求头字段数:", len(headers))\nprint("内容类型:", headers["Content-Type"])\nprint("是否带凭证:", "Authorization" in headers)`
+            code: `headers = {\n    "User-Agent": "Python-learning/1.0",\n    "Content-Type": "application/json",\n    "Authorization": "Bearer my-token-123"\n}\n\nprint("请求头字段数:", len(headers))\nprint("内容类型:", headers["Content-Type"])\nprint("是否带凭证:", "Authorization" in headers)`,
+            callouts: [
+              { variant: 'tertiary', label: '最佳实践', content: '发送 JSON 数据时 Content-Type 必须设为 application/json，否则服务器可能无法正确解析请求体。' }
+            ]
           },
         ],
         codeExample: `headers = {\n    "Accept": "application/json",\n    "User-Agent": "Python-learning/1.0"\n}\nprint("接受格式:", headers["Accept"])\nprint("客户端标识:", headers["User-Agent"])`,
@@ -163,12 +185,18 @@ export const webStage1: TutorialStage = {
       content: {
         overview: '服务器返回给程序的数据，绝大多数是 JSON 格式。它长得和 Python 字典几乎一样：用花括号包键值对，用方括号包列表。学会 JSON，就拿到了 Web 数据的通用语言。',
         sections: [
-          { heading: 'JSON 长什么样', text: '如果说 HTML 是给人看的网页排版，JSON 就是给程序看的数据表格：结构清晰、机器好解析。接口返回的数据基本都是 JSON。\n\nJSON 的规则：\n• 对象用 {}，键值对用 "键": 值。\n• 数组用 []。\n• 字符串用双引号，数字直接写，true/false/null 对应 Python 的 True/False/None。\n注意：JSON 的键和字符串必须用双引号，不能用单引号。',
-            code: `# 一段典型的 JSON 文本（注意全是双引号）\njson_text = '{"name": "小林", "age": 16, "scores": [88, 92, 75]}'\nprint("原始 JSON 文本:")\nprint(json_text)`
+          { heading: 'JSON 长什么样', text: 'HTML 是给人看的网页排版，JSON 是给程序看的数据表格：结构清晰、机器好解析。接口返回的数据基本都是 JSON。\n\nJSON 的规则：\n• 对象用 {}，键值对用 "键": 值。\n• 数组用 []。\n• 字符串用双引号，数字直接写，true/false/null 对应 Python 的 True/False/None。\n注意：JSON 的键和字符串必须用双引号，不能用单引号。',
+            code: `# 一段典型的 JSON 文本（注意全是双引号）\njson_text = '{"name": "小林", "age": 16, "scores": [88, 92, 75]}'\nprint("原始 JSON 文本:")\nprint(json_text)`,
+            callouts: [
+              { variant: 'error', label: '常见错误', content: 'JSON 字符串和键只能用双引号，写成单引号会解析失败；这是从 Python 字典转 JSON 时最常踩的坑。' }
+            ]
           },
           {
             heading: 'JSON 和 Python 类型对照',
             text: 'JSON 和 Python 数据类型几乎一一对应：',
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: '记住三对易错映射：true→True、false→False、null→None，首字母和大小写都不一样。' }
+            ],
             table: {
               headers: ['JSON', 'Python', '示例'],
               rows: [
@@ -203,7 +231,10 @@ export const webStage1: TutorialStage = {
       content: {
         overview: 'API（应用程序接口）就是服务器开放给程序用的「窗口」：你请求一个网址，它返回 JSON 数据。REST 是目前最流行的 API 设计风格，它约定用 URL 表示资源、用 HTTP 方法表示要做什么操作。',
         sections: [
-          { heading: 'URL 表示资源，方法表示操作', text: 'API 像餐厅的取餐口：你不用进厨房，只要对着窗口说「我要 1 号套餐」（请求），服务员把餐递给你（响应）。REST 就是约定取餐口的点餐话术。\n\nREST 的核心约定：\n• URL 指向资源，如 /users 表示用户集合、/users/1 表示 1 号用户。\n• HTTP 方法表示操作：GET 查、POST 增、PUT 改、DELETE 删。',
+          { heading: 'URL 表示资源，方法表示操作', text: 'API 像餐厅的取餐口：你不用进厨房，对着窗口说「我要 1 号套餐」（请求），服务员把餐递给你（响应）。REST 就是这套取餐口的点餐约定。\n\nREST 的核心约定：\n• URL 指向资源，如 /users 表示用户集合、/users/1 表示 1 号用户。\n• HTTP 方法表示操作：GET 查、POST 增、PUT 改、DELETE 删。',
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: 'REST 的精髓是「动词+名词」：方法（GET/POST…）是动词，URL（/users/1）是名词，两者组合表达操作意图。' }
+            ],
             table: {
               headers: ['请求', '操作', '含义'],
               rows: [

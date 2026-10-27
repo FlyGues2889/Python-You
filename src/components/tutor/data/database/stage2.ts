@@ -12,21 +12,30 @@ export const dbStage2: TutorialStage = {
       stage: '数据库 > 进阶查询',
       summary: '用 ORDER BY 排序，用 COUNT / SUM / AVG 做统计，用 GROUP BY 分组汇总。',
       content: {
-        overview: '存了一堆数据后，最常见的需求不是「把数据都列出来」，而是「告诉我平均分是多少」「成绩最高的是谁」「按班级分组统计人数」。这一课学习排序和聚合函数，让数据库替你做统计计算。',
+        overview: '存了一堆数据后，最常见的需求不是「把数据都列出来」，而是「告诉我平均分是多少」「成绩最高的是谁」「按班级分组统计人数」。学习排序和聚合函数，让数据库替你做统计计算。',
         sections: [
           { heading: '排序 ORDER BY', text: '老师拿到全班成绩单，不想一张张翻：他想按分数从高到低排队（排序），想知道全班总分和平均分（聚合），还想按小组分组统计每组平均成绩（分组聚合）。这些数据库一句话就能完成。\n\n查询结果默认按数据插入顺序返回。加 ORDER BY 可以排序：\n• ORDER BY 字段 ASC：升序（从小到大，默认）。\n• ORDER BY 字段 DESC：降序（从大到小）。\n• 配合 LIMIT 取前 N 条，常用于「前三名」「最高的五条」。',
-            code: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT, score REAL)")\ncur.executemany("INSERT INTO students (name, score) VALUES (?, ?)",\n                [("小林", 88.5), ("小陈", 92.0), ("小王", 75.5), ("小赵", 81.0)])\n\n# 按成绩从高到低排序，取前两名\nfor row in cur.execute("SELECT name, score FROM students ORDER BY score DESC LIMIT 2"):\n    print(row[0], row[1])\nconn.close()`
+            code: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT, score REAL)")\ncur.executemany("INSERT INTO students (name, score) VALUES (?, ?)",\n                [("小林", 88.5), ("小陈", 92.0), ("小王", 75.5), ("小赵", 81.0)])\n\n# 按成绩从高到低排序，取前两名\nfor row in cur.execute("SELECT name, score FROM students ORDER BY score DESC LIMIT 2"):\n    print(row[0], row[1])\nconn.close()`,
+            callouts: [
+              { variant: 'tertiary', label: '小技巧', content: 'ORDER BY score DESC LIMIT 3 就是「取前三名」，排序配 LIMIT 是取 Top N 的标准写法。' }
+            ]
           },
           {
             heading: '聚合函数',
             text: '聚合函数把多行数据算成一个值：\n• COUNT(*)：行数。\n• SUM(字段)：求和。\n• AVG(字段)：平均值。\n• MAX(字段) / MIN(字段)：最大、最小值。',
             code: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT, score REAL)")\ncur.executemany("INSERT INTO students (name, score) VALUES (?, ?)",\n                [("小林", 88.5), ("小陈", 92.0), ("小王", 75.5)])\n\ncur.execute("SELECT COUNT(*), SUM(score), AVG(score), MAX(score) FROM students")\ncount, total, avg, best = cur.fetchone()\nprint(f"人数={count} 总分={total} 平均分={avg:.2f} 最高分={best}")\nconn.close()`,
-            notes: 'AVG 返回的是小数，打印时用 f-string 的 :.2f 保留两位，避免出现 85.3333333 这种长尾巴。'
+            notes: 'AVG 返回的是小数，打印时用 f-string 的 :.2f 保留两位，避免出现 85.3333333 这种长尾巴。',
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: '聚合函数把多行压缩成一个值：COUNT 数行数、SUM 求和、AVG 求平均，常和 GROUP BY 配合做分组统计。' }
+            ]
           },
           {
             heading: '分组 GROUP BY',
             text: 'GROUP BY 把相同取值的行分成一组，再对每组分别聚合。比如表里有班级字段，GROUP BY class 就能算出每个班各自的平均分。',
-            code: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE scores (id INTEGER PRIMARY KEY, cls TEXT, score REAL)")\ncur.executemany("INSERT INTO scores (cls, score) VALUES (?, ?)",\n                [("一班", 80), ("一班", 90), ("二班", 70), ("二班", 85), ("二班", 90)])\n\n# 按班级分组，统计每班人数和平均分\nfor row in cur.execute("SELECT cls, COUNT(*), AVG(score) FROM scores GROUP BY cls"):\n    print(f"{row[0]} 人数={row[1]} 平均分={row[2]:.2f}")\nconn.close()`
+            code: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE scores (id INTEGER PRIMARY KEY, cls TEXT, score REAL)")\ncur.executemany("INSERT INTO scores (cls, score) VALUES (?, ?)",\n                [("一班", 80), ("一班", 90), ("二班", 70), ("二班", 85), ("二班", 90)])\n\n# 按班级分组，统计每班人数和平均分\nfor row in cur.execute("SELECT cls, COUNT(*), AVG(score) FROM scores GROUP BY cls"):\n    print(f"{row[0]} 人数={row[1]} 平均分={row[2]:.2f}")\nconn.close()`,
+            callouts: [
+              { variant: 'error', label: '常见错误', content: 'SELECT 里出现的非聚合字段必须都在 GROUP BY 里，否则 SQLite 无法确定每组取哪一行的值，会报错或返回不确定结果。' }
+            ]
           },
         ],
         codeExample: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE sales (id INTEGER PRIMARY KEY, city TEXT, amount REAL)")\ncur.executemany("INSERT INTO sales (city, amount) VALUES (?, ?)",\n                [("上海", 300), ("上海", 500), ("北京", 200), ("北京", 400), ("北京", 600)])\n\nfor row in cur.execute("SELECT city, SUM(amount) FROM sales GROUP BY city"):\n    print(f"{row[0]} 总销售额={row[1]}")\nconn.close()`,
@@ -48,16 +57,22 @@ export const dbStage2: TutorialStage = {
       stage: '数据库 > 进阶查询',
       summary: '永远用 ? 占位符拼接查询参数，不要用字符串拼接，否则会有 SQL 注入风险。',
       content: {
-        overview: '前面所有例子都用 ? 做占位符，这一课专门讲为什么。如果把用户输入直接拼进 SQL 字符串，既会因为引号问题报错，还可能被恶意输入破坏数据库。参数化查询是必须养成的安全习惯。',
+        overview: '前面所有例子都用 ? 做占位符，这里专门讲为什么。如果把用户输入直接拼进 SQL 字符串，既会因为引号问题报错，还可能被恶意输入破坏数据库。参数化查询是必须养成的安全习惯。',
         sections: [
-          { heading: '错误示范：字符串拼接', text: '假设登录时要查「用户名叫张三的记录」。如果直接把用户名拼进 SQL，有人输入了一个带引号的恶意字符串，整句 SQL 的结构就会被篡改，相当于别人在你家柜子上塞了一把万能钥匙。\n\n下面这种写法看起来能跑，但有两个问题：\n1. 名字里带单引号（如 O\'Neil）会直接让 SQL 语法报错。\n2. 恶意输入可以改变 SQL 结构，这就是 SQL 注入。\n注意：这段只是用来展示错误写法，不要照着用。',
-            code: `# 错误示范！不要这样写\nname = "小林"\n# 把字符串直接拼进 SQL，遇到引号或恶意输入就会出问题\nsql = "SELECT * FROM students WHERE name = '" + name + "'"\nprint("拼接出的 SQL:", sql)`
+          { heading: '错误示范：字符串拼接', text: '假设登录时要查「用户名叫张三的记录」。如果直接把用户名拼进 SQL，有人输入了一个带引号的恶意字符串，整句 SQL 的结构就会被篡改，相当于别人在你家柜子上塞了一把万能钥匙。\n\n这种写法看起来能跑，但有两个问题：\n1. 名字里带单引号（如 O\'Neil）会直接让 SQL 语法报错。\n2. 恶意输入可以改变 SQL 结构，这就是 SQL 注入。\n注意：这段只是用来展示错误写法，不要照着用。',
+            code: `# 错误示范！不要这样写\nname = "小林"\n# 把字符串直接拼进 SQL，遇到引号或恶意输入就会出问题\nsql = "SELECT * FROM students WHERE name = '" + name + "'"\nprint("拼接出的 SQL:", sql)`,
+            callouts: [
+              { variant: 'error', label: '常见错误', content: "字符串拼接 SQL 是典型安全漏洞：恶意输入如 ' OR '1'='1 能绕过条件查到全表数据，这就是 SQL 注入。" }
+            ]
           },
           {
             heading: '正确写法：? 占位符',
             text: '正确做法是 SQL 里写 ?，再把参数作为元组传给 execute 的第二个参数。sqlite3 会自动处理引号和转义，既安全又不会报错。',
             code: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT, score REAL)")\ncur.executemany("INSERT INTO students (name, score) VALUES (?, ?)",\n                [("小林", 88.5), ("小陈", 92.0)])\n\n# 正确：用 ? 占位符，参数作为元组传入\nkeyword = "小林"\ncur.execute("SELECT name, score FROM students WHERE name = ?", (keyword,))\nprint(cur.fetchone())\nconn.close()`,
-            notes: '参数只有一个时也要写成元组 (keyword,)，末尾的逗号不能少，否则它只是个普通字符串而不是元组。'
+            notes: '参数只有一个时也要写成元组 (keyword,)，末尾的逗号不能少，否则它只是个普通字符串而不是元组。',
+            callouts: [
+              { variant: 'error', label: '避免踩坑', content: '单参数必须写成 (value,) 带尾逗号的元组，否则 (value) 只是被括号包裹的普通值，execute 会报错。' }
+            ]
           },
         ],
         codeExample: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE books (id INTEGER PRIMARY KEY, title TEXT, price REAL)")\ncur.executemany("INSERT INTO books (title, price) VALUES (?, ?)",\n                [("西游", 45), ("三国", 60)])\n\nlimit_price = 50\ncur.execute("SELECT title, price FROM books WHERE price < ?", (limit_price,))\nfor row in cur.fetchall():\n    print(row[0], row[1])\nconn.close()`,
@@ -81,14 +96,20 @@ export const dbStage2: TutorialStage = {
       content: {
         overview: '银行转账时，从 A 扣钱和给 B 加钱必须同时成功或同时失败，不能出现「A 扣了钱、B 没收到」的中间状态。事务（Transaction）就是用来保证这种「要么全做、要么全不做」的机制。',
         sections: [
-          { heading: 'commit 与 rollback', text: '你在 ATM 转账，机器先扣了你的钱，正要给对方加钱时突然断电。如果没有事务，你的钱就凭空消失了。有了事务，断电后数据库会自动回滚到扣款前的状态，两笔操作一起撤销。\n\nsqlite3 默认开启事务：你执行的 INSERT / UPDATE / DELETE 都先存在内存里，直到调用 commit() 才真正写入。\n• commit()：确认全部修改，写入数据库。\n• rollback()：撤销本次事务里的所有修改。\n如果中途出错，就 rollback，避免数据停留在改了一半的状态。',
-            code: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, name TEXT, balance REAL)")\ncur.executemany("INSERT INTO accounts (name, balance) VALUES (?, ?)",\n                [("A", 100), ("B", 100)])\n\n# 模拟转账：A 转出 30，B 收入 30\ncur.execute("UPDATE accounts SET balance = balance - 30 WHERE name = 'A'")\ncur.execute("UPDATE accounts SET balance = balance + 30 WHERE name = 'B'")\nconn.commit()  # 两笔都成功才提交\n\nfor row in cur.execute("SELECT name, balance FROM accounts"):\n    print(row[0], row[1])\nconn.close()`
+          { heading: 'commit 与 rollback', text: 'ATM 转账时，机器先扣了你的钱，正要给对方加钱时突然断电。如果没有事务，你的钱就凭空消失了。有了事务，断电后数据库会自动回滚到扣款前的状态，两笔操作一起撤销。\n\nsqlite3 默认开启事务：你执行的 INSERT / UPDATE / DELETE 都先存在内存里，直到调用 commit() 才真正写入。\n• commit()：确认全部修改，写入数据库。\n• rollback()：撤销本次事务里的所有修改。\n如果中途出错，就 rollback，避免数据停留在改了一半的状态。',
+            code: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, name TEXT, balance REAL)")\ncur.executemany("INSERT INTO accounts (name, balance) VALUES (?, ?)",\n                [("A", 100), ("B", 100)])\n\n# 模拟转账：A 转出 30，B 收入 30\ncur.execute("UPDATE accounts SET balance = balance - 30 WHERE name = 'A'")\ncur.execute("UPDATE accounts SET balance = balance + 30 WHERE name = 'B'")\nconn.commit()  # 两笔都成功才提交\n\nfor row in cur.execute("SELECT name, balance FROM accounts"):\n    print(row[0], row[1])\nconn.close()`,
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: '事务保证多条写操作要么全部生效要么全部撤销，转账、库存扣减等场景必须用事务，避免数据停在改了一半的中间状态。' }
+            ]
           },
           {
             heading: '出错时回滚',
             text: '用 try / except 包住多步修改：正常就 commit，异常就 rollback。下面故意让第二步出错，观察回滚后 A 的余额没有变化。',
             code: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, name TEXT, balance REAL)")\ncur.execute("INSERT INTO accounts (name, balance) VALUES ('A', 100)")\nconn.commit()   # 先把初始数据提交\n\ntry:\n    cur.execute("UPDATE accounts SET balance = balance - 30 WHERE name = 'A'")\n    raise ValueError("模拟中途出错")   # 故意制造异常\n    conn.commit()\nexcept ValueError:\n    conn.rollback()   # 撤销上面那步扣款，A 仍为 100\n    print("出错，已回滚")\n\nprint("A 余额:", cur.execute("SELECT balance FROM accounts WHERE name='A'").fetchone()[0])\nconn.close()`,
-            notes: '这段代码里 raise 是故意写的，用来演示回滚；真实程序里异常来自网络错误、数据非法等不可预知的情况。'
+            notes: '这段代码里 raise 是故意写的，用来演示回滚；真实程序里异常来自网络错误、数据非法等不可预知的情况。',
+            callouts: [
+              { variant: 'tertiary', label: '最佳实践', content: '多步写操作用 try/except 包裹：正常 commit、异常 rollback，这是事务的标准用法，能保证出错时数据不被污染。' }
+            ]
           },
         ],
         codeExample: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE wallet (id INTEGER PRIMARY KEY, owner TEXT, money REAL)")\ncur.executemany("INSERT INTO wallet (owner, money) VALUES (?, ?)",\n                [("甲", 200), ("乙", 50)])\n\n# 甲给乙转 100，两步一起提交\ncur.execute("UPDATE wallet SET money = money - 100 WHERE owner = '甲'")\ncur.execute("UPDATE wallet SET money = money + 100 WHERE owner = '乙'")\nconn.commit()\n\nfor row in cur.execute("SELECT owner, money FROM wallet"):\n    print(row[0], row[1])\nconn.close()`,

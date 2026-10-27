@@ -33,3 +33,7 @@ export const finishBackendTask = (id: string, status: 'done' | 'failed' = 'done'
   const task = backendTasks.value.find((t) => t.id === id);
   if (task) task.status = status;
 };
+export const removeBackendTask = (id: string) => {
+  const idx = backendTasks.value.findIndex((t) => t.id === id);
+  if (idx >= 0) backendTasks.value.splice(idx, 1);
+};

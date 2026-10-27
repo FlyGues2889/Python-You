@@ -1,3 +1,11 @@
+export type TutorialCalloutVariant = 'primary' | 'secondary' | 'tertiary' | 'error';
+
+export interface TutorialCallout {
+  variant: TutorialCalloutVariant;
+  label?: string;
+  content: string;
+}
+
 export interface TutorialTopic {
   id: string;
   title: string;
@@ -17,6 +25,7 @@ export interface TutorialTopic {
       };
       code?: string;
       notes?: string;
+      callouts?: TutorialCallout[];
     }[];
     codeExample?: string;
     takeaways?: string[];
@@ -101,18 +110,20 @@ export const TUTORIAL_SERIES: TutorialSeries[] = [
   },
 ];
 
+import { getPluginTutorials } from '../../utils/pluginManager';
+
 export function getTutorialSeries(): TutorialSeries[] {
-  return TUTORIAL_SERIES;
+  return [...TUTORIAL_SERIES, ...getPluginTutorials()];
 }
 
 export function getSeriesById(seriesId: string | null): TutorialSeries | undefined {
   if (!seriesId) return undefined;
-  return TUTORIAL_SERIES.find((series) => series.id === seriesId);
+  return getTutorialSeries().find((series) => series.id === seriesId);
 }
 
 /** 主题 → 所属系列（搜索结果跳转用：拿到主题 id 后要知道进哪个系列） */
 export function getSeriesByTopicId(topicId: string): TutorialSeries | undefined {
-  return TUTORIAL_SERIES.find((series) =>
+  return getTutorialSeries().find((series) =>
     series.stages.some((stage) =>
       stage.topics?.some((topic) => topic.id === topicId) ||
       stage.subcategories?.some((sub) => sub.topics.some((topic) => topic.id === topicId))

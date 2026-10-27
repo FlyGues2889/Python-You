@@ -1,5 +1,5 @@
 ﻿<script setup lang="ts">
-import { ref, onMounted, watch, computed, nextTick } from 'vue';
+import { ref, onMounted, watch, computed } from 'vue';
 import { FSItem, ConsoleOutput, AppConfig } from './types';
 import { DEFAULT_WORKSPACE_ITEMS } from './utils/defaultWorkspace';
 import { pythonRunner } from './utils/pythonRunner';
@@ -11,6 +11,8 @@ import REPLConsole from './components/REPLConsole.vue';
 import PackageManager from './components/PackageManager.vue';
 import TutorialView from './components/tutor/TutorialView.vue';
 import SettingsView from './components/SettingsView.vue';
+import PluginPanel from './components/PluginPanel.vue';
+import { getPluginPanels, getPluginThemes, getEnabledPlugins, resolvePluginsCss, activatePluginScripts, setWorkspaceRoot, ensurePluginsDir, scanPlugins } from './utils/pluginManager';
 import MD3LoadingModal from './components/selfComponents/loadingModal.vue';
 import { minimizeWindow, maximizeWindow, closeWindow } from './utils/tauriWindow';
 import ContextMenu from './components/ContextMenu.vue';
@@ -24,8 +26,9 @@ import { revealItemInDir, openPath } from '@tauri-apps/plugin-opener';
 
 import { uid } from './utils/id';
 import { resolveCodeTheme } from './utils/theme';
-import { checkUpdateOnStartup } from './utils/appUpdate';
+import { checkUpdateOnStartup, appUpdate } from './utils/appUpdate';
 import { backendTasks, addBackendTask, updateBackendTask, finishBackendTask, type BackendTask } from './utils/backendTasks';
+import { notifications, activeNotification, pushNotification, dismissActiveNotification, executeNotificationAction, type NotificationItem } from './utils/notifications';
 import { setQuizQuestionResult, syncQuizCompletion, getQuizQuestionResult } from './components/tutor/quizData';
 import { useSplitLayout } from './composables/useSplitLayout';
 import { useEditorTabs } from './composables/useEditorTabs';
@@ -247,7 +250,7 @@ const loadWorkspaceFromDisk = async (root: string) => {
       await ensureFileContent(mainFile);
       openFileInTab(mainFile);
     }
-    showToast(t('toastWorkspaceOpened') + root);
+    showToast(t('toastWorkspaceOpened'));
   } catch (err: any) {
     showToast(t('toastWorkspaceOpenFailed') + (err?.message || err));
   }
@@ -264,7 +267,8 @@ const isInitializing = ref(true);
 const loadingStatus = ref(t('loadingStart'));
 
 // Navigation State
-const activeNavTab = ref<'explorer' | 'tutorial' | 'console' | 'packages' | 'settings'>('explorer');
+const activeNavTab = ref<string>('explorer');
+const updateDialogTrigger = ref(0);
 
 // 内层 Split Pane 仅在 explorer 视图下渲染，切换到 explorer 时确保终端最小高度的观察器已就位
 watch(
@@ -293,25 +297,10 @@ const config = ref<AppConfig>({
 // 已解析的代码主题：'system'（跟随系统主题）按外观主题映射为实际浅/深色主题
 const resolvedCodeTheme = computed(() => resolveCodeTheme(config.value.codeTheme, config.value.themeMode));
 
-// Toast message notifier
-const toastMessage = ref<string | null>(null);
-// 用函数声明（会提升）而不是 const 箭头：setup 顶部把它按值传给 composable（useEditorCommands），
-// const 在那个位置还处于 TDZ，会直接抛 "Cannot access 'showToast' before initialization"
-function showToast(msg: string) {
-  // 先置空再赋值：已有 toast 未关闭时 open 不变，组件不会重新计时，
-  // 新消息会被上一条的收尾（closed → 置空）立刻清掉
-  toastMessage.value = null;
-  nextTick(() => {
-    toastMessage.value = msg;
-  });
+// Toast message notifier — 通过标题栏通知区显示，3 秒自动消失
+function showToast(msg: string, action?: string, actionCallback?: () => void) {
+  pushNotification(msg, action, actionCallback);
 }
-
-const snackbarDuration = 5000;
-const handleSnackbarToggle = (e: Event) => {
-  if ((e as any).newState === 'closed') {
-    toastMessage.value = null;
-  }
-};
 
 
 // Workspace File System & Editor Tabs State
@@ -362,6 +351,7 @@ const backendBusy = computed(() => !!activeBackendTask.value);
 const backendStatus = computed(() => activeBackendTask.value?.label || '');
 // 后台任务列表用弹窗查看（点击标题栏状态栏打开）
 const isBackendTasksOpen = ref(false);
+const hasUpdate = computed(() => !!appUpdate.info?.hasUpdate);
 // 有真实进度时在状态文字后追加百分比（无进度数据不显示，保持不确定态）
 const backendProgressSuffix = computed(() => {
   const p = activeBackendTask.value?.progress;
@@ -369,6 +359,67 @@ const backendProgressSuffix = computed(() => {
 });
 const backendTaskStatusText = (s: BackendTask['status']) =>
   s === 'running' ? t('backendTaskRunning') : s === 'done' ? t('backendTaskDone') : t('backendTaskFailed');
+
+const handleNavigateToUpdate = () => {
+  activeNavTab.value = 'settings';
+  updateDialogTrigger.value++;
+};
+
+const pluginPanels = computed(() => getPluginPanels());
+const activePluginPanel = computed(() => {
+  const tab = activeNavTab.value;
+  if (!tab.startsWith('plugin:')) return undefined;
+  const key = tab.slice(6);
+  return pluginPanels.value.find((p) => `${p.pluginId}:${p.panel.id}` === key);
+});
+
+let pluginStyleEl: HTMLStyleElement | null = null;
+let pluginRefreshTimer: number | undefined;
+
+const refreshPluginRuntime = async () => {
+  if (!pluginStyleEl) {
+    pluginStyleEl = document.createElement('style');
+    pluginStyleEl.id = 'plugin-css';
+    document.head.appendChild(pluginStyleEl);
+  }
+  pluginStyleEl.textContent = await resolvePluginsCss();
+  await activatePluginScripts();
+};
+
+const schedulePluginRefresh = () => {
+  window.clearTimeout(pluginRefreshTimer);
+  pluginRefreshTimer = window.setTimeout(() => { void refreshPluginRuntime(); }, 300);
+};
+
+watch(workspaceRootPath, async (path) => {
+  setWorkspaceRoot(path);
+  if (path) {
+    await ensurePluginsDir();
+    await scanPlugins();
+    await refreshPluginRuntime();
+  }
+}, { immediate: true });
+
+watch(
+  () => getEnabledPlugins().map((p) => `${p.manifest.id}:${p.enabled}:${p.manifest.version}`).join('|'),
+  schedulePluginRefresh
+);
+
+const pluginThemes = computed(() => getPluginThemes());
+watch(
+  () => [config.value.pluginThemeId, pluginThemes.value] as const,
+  ([themeId, themes]) => {
+    const root = document.documentElement;
+    root.querySelectorAll('[data-plugin-theme-var]').forEach((el) => el.remove());
+    if (!themeId) return;
+    const entry = themes.find((e) => `${e.pluginId}:${e.theme.id}` === themeId);
+    if (!entry) return;
+    for (const [key, value] of Object.entries(entry.theme.colors)) {
+      root.style.setProperty(key, value);
+    }
+  },
+  { immediate: true, flush: 'post' }
+);
 
 // 切换解释器（设置页 / 编辑器版本管理器弹窗）：写入配置并应用
 const selectInterpreter = async (id: string) => {
@@ -528,6 +579,7 @@ const findOrLoadFileByPath = async (items: FSItem[], path: string, root: string)
 
 // Initialize Workspace from LocalStorage / 本地工作区
 onMounted(async () => {
+
   // 检测本机 Python，用于引擎徽标展示（异步，不阻塞初始化）；
   // 标题栏后台任务列表同步记录检测任务
   if (nativeApi.available()) {
@@ -661,6 +713,7 @@ onMounted(async () => {
   if (!config.value.disableUpdateCheck) {
     void checkUpdateOnStartup();
   }
+
 });
 
 // Sync Workspace to LocalStorage
@@ -834,12 +887,6 @@ const addEntryToTree = (entry: WorkspaceEntry) => {
 const applyWorkspaceChange = async (change: WorkspaceChange) => {
   if (applyingWorkspaceChange) return;
   applyingWorkspaceChange = true;
-  const summary = tf('statusWorkspaceSynced', {
-    added: change.added.length,
-    modified: change.modified.length,
-    removed: change.removed.length
-  });
-  addBackendTask('workspace-sync', t('statusWorkspaceSyncing'));
   try {
     for (const path of change.removed) removeItemByPath(workspaceItems.value, path);
     for (const entry of change.added) addEntryToTree(entry);
@@ -857,10 +904,7 @@ const applyWorkspaceChange = async (change: WorkspaceChange) => {
       }
     }
 
-    updateBackendTask('workspace-sync', { label: summary });
-    showToast(summary);
   } finally {
-    finishBackendTask('workspace-sync');
     applyingWorkspaceChange = false;
   }
 };
@@ -917,7 +961,7 @@ const handleCreateFile = (parentId: string | null, name: string) => {
     writeDiskFile(newFile, absPath(parentAbs, `/${name}`), newFile.content || '');
   }
 
-  showToast(t('toastFileCreated').replace('{name}', name));
+
   openFileInTab(newFile);
 };
 
@@ -952,7 +996,7 @@ const handleCreateFolder = (parentId: string | null, name: string) => {
     nativeApi.createDir(parentAbs, name).then(noteSelfChange).catch(() => { });
   }
 
-  showToast(t('toastFolderCreated').replace('{name}', name));
+
 };
 
 // Rename File/Folder
@@ -973,7 +1017,7 @@ const handleRenameItem = (item: FSItem, newName: string) => {
   if (workspaceRootPath.value) {
     nativeApi.renamePath(absPath(workspaceRootPath.value, oldPath), newName).then(noteSelfChange).catch(() => { });
   }
-  showToast(t('toastRenamed'));
+
 };
 
 const confirmDelete = () => {
@@ -987,7 +1031,7 @@ const confirmDelete = () => {
     // Close tab if open
     closeTabForFileId(item.id);
     pythonRunner.syncFileSystem(workspaceItems.value);
-    showToast(t('toastFileDeleted').replace('{name}', item.name));
+
   }
   isDeleteDialogOpen.value = false;
   deleteTargetItem.value = null;
@@ -1002,7 +1046,7 @@ const handleRunFile = async (item: FSItem) => {
   consoleOutputs.value.push({
     id: uid(),
     type: 'system',
-    text: `▶ Executing ${item.name} from File Tree...`,
+    text: `[INFO] 提取文件树中的文件：${item.name}`,
     timestamp: new Date().toLocaleTimeString()
   });
 
@@ -1021,7 +1065,9 @@ const handleDownloadFile = async (item: FSItem) => {
   if (nativeApi.available()) {
     try {
       const path = await nativeApi.exportFile(item.name, content);
-      showToast(tf('toastExportedPath', { name: item.name, path }));
+      showToast(tf('toastExportedPath', { name: item.name, path }), t('openFolder'), () => {
+        revealItemInDir(path).catch(() => openPath(path.substring(0, Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')))));
+      });
       return;
     } catch (err: any) {
       // 写盘失败（如无写权限）退回浏览器下载，保证导出仍可用且有反馈
@@ -1230,9 +1276,18 @@ onMounted(() => {
         {{ t('navConsole') }}
       </m3e-nav-item>
       <m3e-nav-item data-tab="packages" :selected="activeNavTab === 'packages'" @click="activeNavTab = 'packages'">
-        <span slot="icon" class="material-symbols-rounded">extension</span>
-        <span slot="selected-icon" class="material-symbols-rounded-fill">extension</span>
+        <span slot="icon" class="material-symbols-rounded">package_2</span>
+        <span slot="selected-icon" class="material-symbols-rounded-fill">package_2</span>
         {{ t('navPackages') }}
+      </m3e-nav-item>
+
+      <m3e-nav-item v-for="entry in pluginPanels" :key="`plugin-nav-${entry.pluginId}-${entry.panel.id}`"
+        :data-tab="`plugin:${entry.pluginId}:${entry.panel.id}`"
+        :selected="activeNavTab === `plugin:${entry.pluginId}:${entry.panel.id}`"
+        @click="activeNavTab = `plugin:${entry.pluginId}:${entry.panel.id}`">
+        <span slot="icon" class="material-symbols-rounded">{{ entry.panel.icon || 'extension' }}</span>
+        <span slot="selected-icon" class="material-symbols-rounded-fill">{{ entry.panel.icon || 'extension' }}</span>
+        {{ entry.panel.title }}
       </m3e-nav-item>
 
       <m3e-nav-item class="nav-rail-settings" data-tab="settings" :selected="activeNavTab === 'settings'"
@@ -1315,14 +1370,7 @@ onMounted(() => {
         <div v-else class="title-bar-brand">
           <span>Python You</span>
         </div>
-        <!-- 后台任务指示器按钮：标题栏居中常驻；点击弹出弹窗查看各任务状态与进度 -->
-        <div class="titlebar-center">
-          <button id="backend-status-trigger" class="titlebar-backend-status" type="button"
-            :title="t('backendTasksTitle')" @click="isBackendTasksOpen = true">
-            <m3e-loading-indicator v-show="backendBusy" class="titlebar-loading-indicator"></m3e-loading-indicator>
-            <span class="titlebar-status-text">{{ backendStatus || t('statusIdle') }}{{ backendProgressSuffix }}</span>
-          </button>
-        </div>
+
 
         <div class="windows-controls">
           <m3e-icon-button id="titlebar-minimize" size="extra-small" :title="t('minimize')" @click="minimizeWindow">
@@ -1397,29 +1445,6 @@ onMounted(() => {
             </m3e-icon-button>
           </div>
 
-          <div class="toolbar-group">
-            <!-- 运行 / 停止：停止按钮只在当前后端可中断时出现（演示引擎瞬时执行且不可中断，不显示停止） -->
-            <template v-if="pythonRunner.isRunning.value && pythonRunner.capabilities.value.interrupt !== 'none'">
-              <m3e-button variant="text" size="extra-small" class="stopBtn" width="wide"
-                :title="t('stopCode')" @click="codeEditorRef?.stopCode()">
-                <span slot="icon" class="material-symbols-rounded">stop</span>
-                {{ t('stopCode') }}
-              </m3e-button>
-            </template>
-            <template v-else>
-              <m3e-button variant="text" size="extra-small" class="runBtn" width="wide"
-                :disabled="!activeTabObject" :title="t('runCode')" @click="codeEditorRef?.runCode()">
-                <span slot="icon" class="material-symbols-rounded">play_arrow</span>
-                {{ t('runCode') }}
-              </m3e-button>
-            </template>
-
-            <!-- 解释器版本管理器：点击按钮弹出选择弹窗（文字超长省略） -->
-            <m3e-button size="extra-small" class="interpreter-btn marginBtn" @click="isInterpreterOpen = true">
-              <span slot="trailing-icon" class="material-symbols-rounded">keyboard_arrow_down</span>
-              <span class="interpreter-btn-label">{{ engineLabel || t('engineLabelDefault') }}</span>
-            </m3e-button>
-          </div>
           <!-- 检查答案 / 返回教程：始终显示，无教程上下文时禁用（原为 v-if 隐藏） -->
           <div class="toolbar-group">
             <m3e-button size="extra-small" variant="text" class="answerBtn" :class="{ 'is-passed': activeQuizPassed }"
@@ -1436,6 +1461,30 @@ onMounted(() => {
             <m3e-icon-button size="extra-small" :title="t('helpTitle')" @click="isHelpOpen = true">
               <span class="material-symbols-rounded">help</span>
             </m3e-icon-button>
+          </div>
+
+          <div class="toolbar-group run-group">
+            <!-- 运行 / 停止：停止按钮只在当前后端可中断时出现（演示引擎瞬时执行且不可中断，不显示停止） -->
+            <template v-if="pythonRunner.isRunning.value && pythonRunner.capabilities.value.interrupt !== 'none'">
+              <m3e-button variant="outlined" size="extra-small" class="stopBtn" width="wide" :title="t('stopCode')"
+                @click="codeEditorRef?.stopCode()">
+                <span slot="icon" class="material-symbols-rounded">stop</span>
+                {{ t('stopCode') }}
+              </m3e-button>
+            </template>
+            <template v-else>
+              <m3e-button variant="filled" size="extra-small" class="runBtn" width="wide" :disabled="!activeTabObject"
+                :title="t('runCode')" @click="codeEditorRef?.runCode()">
+                <span slot="icon" class="material-symbols-rounded">play_arrow</span>
+                {{ t('runCode') }}
+              </m3e-button>
+            </template>
+
+            <!-- 解释器版本管理器：点击按钮弹出选择弹窗（文字超长省略） -->
+            <m3e-button size="extra-small" class="interpreter-btn marginBtn" @click="isInterpreterOpen = true">
+              <span slot="trailing-icon" class="material-symbols-rounded">keyboard_arrow_down</span>
+              <span class="interpreter-btn-label">{{ engineLabel || t('engineLabelDefault') }}</span>
+            </m3e-button>
           </div>
 
           <div class="right-toolbar-group">
@@ -1456,10 +1505,15 @@ onMounted(() => {
             <m3e-card slot="start">
               <FileTree ref="fileTreeRef" :workspace-items="workspaceItems"
                 :active-file-id="activeTabObject?.fileId || null" :workspace-root="workspaceRootPath"
+                :backend-status-text="backendStatus || t('statusIdle') + backendProgressSuffix"
+                :backend-busy="backendBusy" :has-update="hasUpdate"
+                :active-notification="activeNotification"
                 @select-file="handleSelectFile" @toggle-folder="handleToggleFolder" @create-file="handleCreateFile"
                 @create-folder="handleCreateFolder" @rename-item="handleRenameItem" @delete-item="requestDeleteItem"
                 @run-file="handleRunFile" @download-file="handleDownloadFile" @show-toast="showToast"
-                @contextmenu-filetree="(e, item) => openContextMenu(e, 'filetree', item)" />
+                @contextmenu-filetree="(e, item) => openContextMenu(e, 'filetree', item)"
+                @open-backend-tasks="isBackendTasksOpen = true" @navigate-to-update="handleNavigateToUpdate"
+                @dismiss-notification="dismissActiveNotification()" />
             </m3e-card>
 
             <!-- 代码编辑区域 / 终端区域（编辑区 75% / 终端 25%，受控绑定：拖拽比例随窗口变化保持） -->
@@ -1491,8 +1545,7 @@ onMounted(() => {
           <!-- Python Tutorial View -->
           <TutorialView ref="tutorialViewRef" v-if="activeNavTab === 'tutorial'"
             :active-topic-id-prop="activeTutorialTopicId" :code-theme="resolvedCodeTheme"
-            @update-active-topic="setTutorialTopicId"
-            @load-code-to-editor="handleLoadTutorialCodeToEditor"
+            @update-active-topic="setTutorialTopicId" @load-code-to-editor="handleLoadTutorialCodeToEditor"
             @contextmenu-tutorial="e => openContextMenu(e, 'tutorial')" />
 
           <!-- Interactive Python REPL Console View -->
@@ -1506,7 +1559,12 @@ onMounted(() => {
             @add-console-output="out => consoleOutputs.push(out)" @show-toast="showToast" />
 
           <!-- Settings View -->
-          <SettingsView v-else-if="activeNavTab === 'settings'" :config="config" />
+          <SettingsView v-else-if="activeNavTab === 'settings'" :config="config" :update-dialog-trigger="updateDialogTrigger" />
+
+          <!-- Plugin Panel View -->
+          <PluginPanel v-else-if="activePluginPanel" :plugin-id="activePluginPanel.pluginId"
+            :panel-id="activePluginPanel.panel.id" :title="activePluginPanel.panel.title"
+            :icon="activePluginPanel.panel.icon" />
         </main>
       </div>
     </div>
@@ -1514,30 +1572,30 @@ onMounted(() => {
     <!-- App Initialization Loading Modal -->
     <MD3LoadingModal :show="isInitializing" :status="loadingStatus" />
 
-    <!-- Snackbar Notification Toast -->
-    <m3e-snackbar class="app-snackbar" :open="!!toastMessage" :duration="snackbarDuration"
-      @toggle="handleSnackbarToggle">
-      {{ toastMessage }}
-    </m3e-snackbar>
-
-    <!-- 后台任务 Dialog：点击标题栏状态栏弹出，查看各后台任务的状态与进度 -->
+    <!-- 后台任务和通知 Dialog：点击标题栏状态栏弹出 -->
     <m3e-dialog :open="isBackendTasksOpen" @cancel="isBackendTasksOpen = false" @closed="isBackendTasksOpen = false">
       <span slot="header" class="m3e-dialog-title-row">
         <span class="material-symbols-rounded m3e-dialog-icon">sync</span>
         <span class="m3e-dialog-title">{{ t('backendTasksTitle') }}</span>
       </span>
       <div class="backend-task-panel">
-        <div v-if="visibleBackendTasks.length === 0" class="backend-task-empty">{{ t('backendTasksEmpty') }}</div>
-        <div v-for="task in visibleBackendTasks" :key="task.id" class="backend-task-row">
+        <div v-if="visibleBackendTasks.length === 0 && notifications.length === 0" class="backend-task-empty">{{
+          t('backendTasksEmpty') }}</div>
+        <div v-for="task in visibleBackendTasks" :key="`task-${task.id}`" class="backend-task-row">
           <div class="backend-task-item">
             <span class="backend-task-dot" :class="`is-${task.status}`"></span>
             <span class="backend-task-label">{{ task.label }}</span>
             <span class="backend-task-status">{{ task.status === 'running' && typeof task.progress === 'number' ?
               `${task.progress}%` : backendTaskStatusText(task.status) }}</span>
           </div>
-          <!-- 只用真实进度：拿到百分比才显示进度条（组件库自带 progressbar 角色与 M3 配色） -->
           <m3e-linear-progress-indicator v-if="task.status === 'running' && typeof task.progress === 'number'"
             class="backend-task-progress" :value="task.progress"></m3e-linear-progress-indicator>
+        </div>
+        <div v-for="item in notifications" :key="`notif-${item.id}`" class="notification-history-item"
+          :class="{ 'has-action': item.action }" @click="item.action && executeNotificationAction(item)">
+          <span class="material-symbols-rounded notification-history-icon">notifications</span>
+          <span class="notification-history-text">{{ item.message }}</span>
+          <span v-if="item.action" class="notification-history-action">{{ item.action }}</span>
         </div>
       </div>
       <div slot="actions" class="m3e-dialog-actions">
@@ -1602,8 +1660,10 @@ onMounted(() => {
         <p class="m3e-dialog-desc">{{ t('pkgConfirmRisk') }}</p>
       </template>
       <template v-else>
-        <p class="m3e-dialog-desc">{{ tf('depsUnsupportedMsg', { packages: pendingDependencies?.packages.join('、') || '' })
-        }}</p>
+        <p class="m3e-dialog-desc">{{ tf('depsUnsupportedMsg', {
+          packages: pendingDependencies?.packages.join('、') || ''
+        })
+          }}</p>
         <p class="m3e-dialog-desc">{{ t('depsUnsupportedHint') }}</p>
       </template>
       <div slot="actions" class="m3e-dialog-actions">
@@ -1667,8 +1727,8 @@ onMounted(() => {
                   Python {{ v }}
                 </m3e-option>
               </m3e-select>
-              <m3e-button v-if="pythonGuideState === 'idle'" class="python-guide-primary" variant="filled"
-                size="small" :disabled="!pythonVersion" @click="downloadPythonInstaller">
+              <m3e-button v-if="pythonGuideState === 'idle'" class="python-guide-primary" variant="filled" size="small"
+                :disabled="!pythonVersion" @click="downloadPythonInstaller">
                 <span slot="icon" class="material-symbols-rounded">download</span>
                 {{ t('pythonGuideDownload') }}
               </m3e-button>
@@ -1868,43 +1928,6 @@ m3e-nav-rail {
 /* 标题栏中央承载层：用 flex 居中，不用 transform——
    m3e 的浮层锚定走 offsetLeft/offsetTop（不含 transform），带位移的按钮会让
    后台任务列表浮层整体偏掉半个按钮宽度，文字越长偏得越多 */
-.titlebar-center {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
-
-/* 后台服务状态指示器：自绘小加载器 + 状态小字，常驻显示 */
-.titlebar-backend-status {
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.6875rem;
-  color: var(--text-tertiary);
-  user-select: none;
-  white-space: nowrap;
-
-  /* 按钮样式：可点击弹出后台任务列表；标题栏是拖拽区，须 no-drag 才能接收点击 */
-  padding: 2px 8px;
-  font-family: inherit;
-  background: none;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-}
-
-.titlebar-backend-status:hover {
-  background-color: var(--surface-variant);
-}
-
-.titlebar-backend-status:active {
-  background-color: color-mix(in srgb, var(--surface-variant) 70%, transparent);
-}
 
 /* rich-tooltip 内后台任务列表 */
 .backend-task-panel {
@@ -1980,20 +2003,6 @@ m3e-nav-rail {
   margin: 2px 0 4px 16px;
 }
 
-/* 标题栏加载指示器：库默认容器 48px / 指示器 38px，放进 36px 标题栏会被裁切，
-   这里按同比例缩到 16px / 13px 显示完整 */
-.titlebar-loading-indicator {
-  --m3e-loading-indicator-container-size: 16px;
-  --m3e-loading-indicator-size: 13px;
-  flex-shrink: 0;
-}
-
-.titlebar-status-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 18rem;
-}
-
 
 .app-layout-wrapper {
   width: 100%;
@@ -2037,10 +2046,46 @@ m3e-nav-rail {
   overflow: hidden;
 }
 
-/* 全局 snackbar 层级保险：m3e-snackbar 使用 Popover API（top layer），
-   显式抬高 z-index 确保不会被 dialog 遮罩/其他弹层盖住（判分失败对比弹窗场景） */
-m3e-snackbar.app-snackbar {
-  z-index: 40000;
+/* --- 标题栏通知 --- */
+
+/* --- 通知历史 --- */
+.notification-history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 0.75rem;
+  color: var(--text-color);
+  border-radius: 4px;
+}
+
+.notification-history-item.has-action {
+  cursor: pointer;
+}
+
+.notification-history-item.has-action:hover {
+  background-color: var(--surface-variant);
+}
+
+.notification-history-icon {
+  font-size: 14px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.notification-history-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-history-action {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  color: var(--primary);
+  font-weight: 600;
 }
 
 /* 网页端环境提示条：无底色/无边框的纯文字信息条，不遮挡操作 */
@@ -2079,7 +2124,12 @@ m3e-snackbar.app-snackbar {
   padding: 0.1rem 0.8rem;
   margin-left: 0.8rem;
   background-color: var(--bg-color);
-  border-radius: 16px;
+  border-radius: 9999px;
+}
+
+.run-group {
+  gap: 0;
+  padding: 0.1rem 0.4rem 0.1rem 0;
 }
 
 .right-toolbar-group {
@@ -2109,20 +2159,6 @@ m3e-snackbar.app-snackbar {
 
 .marginBtn {
   margin-left: 0.75rem;
-}
-
-.stopBtn {
-  --m3e-button-icon-color: var(--error);
-  --m3e-button-label-text-color: var(--error);
-  --m3e-button-focus-icon-color: var(--error);
-  --m3e-button-focus-label-text-color: var(--error);
-}
-
-.runBtn {
-  --m3e-button-icon-color: var(--success);
-  --m3e-button-label-text-color: var(--success);
-  --m3e-button-focus-icon-color: var(--success);
-  --m3e-button-focus-label-text-color: var(--success);
 }
 
 .answerBtn {

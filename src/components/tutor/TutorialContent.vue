@@ -1,12 +1,14 @@
 ﻿<script setup lang="ts">
 import { computed, ref, onMounted, onBeforeUnmount, onUnmounted, watch } from 'vue';
-import { type TutorialTopic, type TutorialStage } from './tutorialData';
+import { type TutorialTopic, type TutorialStage, type TutorialCalloutVariant } from './tutorialData';
 import { getTopicQuiz } from './quizData';
 import { safeStorage } from '../../utils/storage';
 import { copyToClipboard } from '../../utils/clipboard';
 import { paneScroller, whenPaneScroller } from '../../utils/contentPane';
 import { useI18n } from '../../utils/i18n';
 import { hljs } from '../../utils/highlightSetup';
+import { getWordAt, getUsage } from '../../utils/pythonCompletions';
+import CodeUsageTooltip from '../CodeUsageTooltip.vue';
 import TutorialFormattedText from './TutorialFormattedText.vue';
 
 const props = defineProps<{
@@ -21,6 +23,15 @@ const props = defineProps<{
 
 // 代码块配色跟随设置里的代码主题：主题类挂在块上，底色/前景/词法色由 theme.css 的 .theme-* 提供
 const codeThemeClass = computed(() => `theme-${props.codeTheme || 'github-dark'}`);
+
+const calloutIconOf = (variant: TutorialCalloutVariant): string => {
+  switch (variant) {
+    case 'primary': return 'psychology';
+    case 'secondary': return 'info';
+    case 'tertiary': return 'lightbulb';
+    case 'error': return 'warning';
+  }
+};
 
 const emit = defineEmits<{
   (e: 'select-topic', topicId: string): void;
@@ -100,6 +111,7 @@ const saveScroll = (topicId?: string) => {
 
 // 滚动发生在 m3e-content-pane 的 shadow 内：直接读 shadow 内滚动容器
 const handleScroll = () => {
+  hideCodeTooltip(); // 滚动后提示的锚点位置失效，先收起（与编辑器同处理）
   const sc = paneScroller(contentViewRef.value);
   if (!sc || !props.topic?.id) return;
   safeStorage.setItem(scrollKeyOf(props.topic.id), sc.scrollTop.toString());
@@ -243,12 +255,67 @@ const openInEditor = (code: string) => {
     topicTitle: props.topic.title
   });
 };
+
+/* ==================== 代码块悬停用法提示 ====================
+   教程代码是静态高亮（pre > code），没有编辑器那样的逐字符测宽；
+   直接用 caretRangeFromPoint 拿到鼠标下的字符位置，再复用同一套 getWordAt / getUsage。
+   提示卡片本身与编辑器共用 CodeUsageTooltip（字号固定，不随代码块缩放）。 */
+const codeTooltip = ref<{ visible: boolean; syntax: string; description: string; x: number; y: number }>({
+  visible: false,
+  syntax: '',
+  description: '',
+  x: 0,
+  y: 0
+});
+let codeHoverRafId = 0;
+
+const hideCodeTooltip = () => {
+  if (codeTooltip.value.visible) codeTooltip.value.visible = false;
+};
+
+// 鼠标落在代码的第几个字符：caretRangeFromPoint 给出落点范围，
+// 该范围到代码起点的内容长度就是偏移
+const codeOffsetAtPoint = (x: number, y: number, codeEl: HTMLElement): number | null => {
+  const doc = document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null };
+  const caret = doc.caretRangeFromPoint?.(x, y);
+  // 只接受落在代码文本节点内的落点：行尾右侧的空白区拿到的是元素级落点，
+  // 放行会在悬停空白时弹出「该行最后一个词」的提示
+  if (!caret || caret.startContainer.nodeType !== Node.TEXT_NODE) return null;
+  if (!codeEl.contains(caret.startContainer)) return null;
+  const range = document.createRange();
+  range.setStart(codeEl, 0);
+  range.setEnd(caret.startContainer, caret.startOffset);
+  return range.toString().length;
+};
+
+const onCodeHover = (e: MouseEvent) => {
+  const codeEl = e.currentTarget as HTMLElement;
+  cancelAnimationFrame(codeHoverRafId);
+  codeHoverRafId = requestAnimationFrame(() => {
+    const offset = codeOffsetAtPoint(e.clientX, e.clientY, codeEl);
+    if (offset === null) { hideCodeTooltip(); return; }
+    const { word } = getWordAt(codeEl.textContent || '', offset);
+    const usage = word ? getUsage(word) : null;
+    if (!usage) { hideCodeTooltip(); return; }
+    const usageLines = usage.split('\n');
+    codeTooltip.value = {
+      visible: true,
+      syntax: usageLines[0],
+      description: usageLines.slice(1).join('\n'),
+      x: e.clientX,
+      y: e.clientY
+    };
+  });
+};
 </script>
 
 <template>
   <m3e-content-pane ref="contentViewRef" id="tutorial-article" class="tutorial-content-view"
     @contextmenu.prevent="emit('contextmenu-tutorial', $event)">
     <div class="content-wrapper">
+      <!-- 代码块悬停用法提示（Teleport 到 body，位置跟随鼠标） -->
+      <CodeUsageTooltip :visible="codeTooltip.visible" :syntax="codeTooltip.syntax"
+        :description="codeTooltip.description" :x="codeTooltip.x" :y="codeTooltip.y" />
       <div class="main-content">
         <!-- 正文标题栏：返回学习首页按钮 + 面包屑，与测验页题头同一排法（按钮在左、图标同款）。
              面包屑：学习 / 当前系列 / 所属阶段 / 当前文章（第一级也可点击返回学习首页）。
@@ -290,9 +357,9 @@ const openInEditor = (code: string) => {
         </p>
 
         <!-- Overview Box -->
-        <div class="overview-box">
-          <TutorialFormattedText :text="topic.content.overview" tag="p" />
-        </div>
+        <m3e-callout v-if="topic.content.overview" variant="surface" class="tutorial-callout overview-callout">
+          <TutorialFormattedText :text="topic.content.overview" tag="p" variant="tertiary" />
+        </m3e-callout>
 
         <!-- Main Runnable Code Example if present -->
         <div v-if="topic.content.codeExample" class="code-example-card">
@@ -313,7 +380,8 @@ const openInEditor = (code: string) => {
               </m3e-button>
             </div>
           </div>
-          <pre class="code-block" :class="codeThemeClass"><code class="hljs" v-html="highlightPython(topic.content.codeExample!)"></code></pre>
+          <pre class="code-block" :class="codeThemeClass"><code class="hljs" v-html="highlightPython(topic.content.codeExample!)"
+              @mousemove="onCodeHover" @mouseleave="hideCodeTooltip"></code></pre>
         </div>
 
         <!-- Sections -->
@@ -355,43 +423,46 @@ const openInEditor = (code: string) => {
                 {{ t('tutorialImportAndRun') }}
               </m3e-button>
             </div>
-            <pre class="code-block" :class="codeThemeClass"><code class="hljs" v-html="highlightPython(section.code!)"></code></pre>
+            <pre class="code-block" :class="codeThemeClass"><code class="hljs" v-html="highlightPython(section.code!)"
+                @mousemove="onCodeHover" @mouseleave="hideCodeTooltip"></code></pre>
           </div>
 
           <!-- Section Notes -->
-          <div v-if="section.notes" class="notes-callout">
-            <span class="material-symbols-rounded callout-icon">info</span>
-            <p class="callout-text">
-              <TutorialFormattedText :text="section.notes" />
-            </p>
-          </div>
+          <m3e-callout v-if="section.notes" variant="secondary" class="tutorial-callout">
+            <span slot="icon" class="material-symbols-rounded">info</span>
+            <TutorialFormattedText :text="section.notes" variant="secondary" />
+          </m3e-callout>
+
+          <!-- Section Callouts -->
+          <m3e-callout v-for="(callout, ci) in section.callouts" :key="`callout-${ci}`"
+            :variant="callout.variant" class="tutorial-callout">
+            <span slot="icon" class="material-symbols-rounded">{{ calloutIconOf(callout.variant) }}</span>
+            <span v-if="callout.label" slot="label">{{ callout.label }}</span>
+            <TutorialFormattedText :text="callout.content" :variant="callout.variant" />
+          </m3e-callout>
         </div>
 
         <!-- Tips Box -->
-        <div v-if="topic.content.tips && topic.content.tips.length > 0" class="tips-box">
-          <div class="tips-header">
-            <span class="material-symbols-rounded">lightbulb</span>
-            <span>{{ t('tutorialTipsTitle') }}</span>
-          </div>
-          <ul>
+        <m3e-callout v-if="topic.content.tips && topic.content.tips.length > 0" variant="surface" class="tutorial-callout">
+          <span slot="icon" class="material-symbols-rounded">lightbulb</span>
+          <span slot="label">{{ t('tutorialTipsTitle') }}</span>
+          <ul class="callout-list">
             <li v-for="(tip, i) in topic.content.tips" :key="i">
-              <TutorialFormattedText :text="tip" />
+              <TutorialFormattedText :text="tip" variant="surface" />
             </li>
           </ul>
-        </div>
+        </m3e-callout>
 
         <!-- Key Takeaways -->
-        <div v-if="topic.content.takeaways && topic.content.takeaways.length > 0" class="takeaways-box">
-          <div class="takeaways-header">
-            <span class="material-symbols-rounded">psychology</span>
-            <span>{{ t('keyTakeaways') }}</span>
-          </div>
-          <ul>
+        <m3e-callout v-if="topic.content.takeaways && topic.content.takeaways.length > 0" variant="primary" class="tutorial-callout">
+          <span slot="icon" class="material-symbols-rounded">psychology</span>
+          <span slot="label">{{ t('keyTakeaways') }}</span>
+          <ul class="callout-list">
             <li v-for="(item, i) in topic.content.takeaways" :key="i">
-              <TutorialFormattedText :text="item" />
+              <TutorialFormattedText :text="item" variant="primary" />
             </li>
           </ul>
-        </div>
+        </m3e-callout>
 
         <!-- 完成状态与测验入口：统一用组件库按钮（完成状态是切换，用 toggle + selected 表达）。
              参考手册（kind: 'reference'）是查阅材料，不标完成、也没有测验 -->
@@ -528,15 +599,9 @@ m3e-breadcrumb {
   margin-bottom: 24px;
 }
 
-.overview-box {
-  background-color: var(--surface-color);
-  border-left: 4px solid var(--primary);
-  padding: 16px 20px;
-  border-radius: 0 12px 12px 0;
+.overview-callout {
+  margin-top: 0;
   margin-bottom: 28px;
-  font-size: 0.9375rem;
-  color: var(--text-color);
-  line-height: 1.7;
 }
 
 .section-block {
@@ -624,50 +689,18 @@ pre code {
   display: block;
 }
 
-.notes-callout {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  background-color: var(--secondary-container);
-  color: var(--on-secondary-container);
-  padding: 12px 16px;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  line-height: 1.5;
+.tutorial-callout {
   margin-top: 12px;
-}
-
-.callout-icon {
-  font-size: 1.25rem;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.tips-box {
-  background-color: var(--surface-color);
-  border: 1px solid var(--border-color-muted);
-  border-radius: 12px;
-  padding: 16px 20px;
   margin-bottom: 36px;
 }
 
-.tips-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 700;
-  color: var(--primary);
-  margin-bottom: 12px;
-}
-
-.tips-box ul {
+.callout-list {
   margin: 0;
   padding-left: 20px;
 }
 
-.tips-box li {
+.callout-list li {
   font-size: 0.875rem;
-  color: var(--text-color);
   line-height: 1.6;
   margin-bottom: 6px;
 }
@@ -837,33 +870,4 @@ pre code {
   margin-bottom: 24px;
 }
 
-/* --- Takeaways Box --- */
-.takeaways-box {
-  background-color: var(--primary-container);
-  border: 1px solid var(--primary);
-  border-radius: 12px;
-  padding: 16px 20px;
-  margin-bottom: 36px;
-}
-
-.takeaways-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 700;
-  color: var(--on-primary-container);
-  margin-bottom: 12px;
-}
-
-.takeaways-box ul {
-  margin: 0;
-  padding-left: 20px;
-}
-
-.takeaways-box li {
-  font-size: 0.875rem;
-  color: var(--on-primary-container);
-  line-height: 1.6;
-  margin-bottom: 6px;
-}
 </style>

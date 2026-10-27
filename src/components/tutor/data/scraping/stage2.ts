@@ -12,9 +12,12 @@ export const spStage2: TutorialStage = {
       stage: '爬虫和数据分析 > 网络与网页',
       summary: '浏览器和服务器之间一问一答：你发一个请求，服务器返回一个响应。爬虫就是自动做这件事。',
       content: {
-        overview: '打开一个网页时，你的浏览器其实在做一件事：向服务器发送一个请求（Request），服务器处理后返回一个响应（Response）。理解这个「一问一答」，就理解了爬虫的原理——爬虫只是用程序代替浏览器自动发送请求、接收返回内容。',
+        overview: '打开一个网页时，你的浏览器其实在做一件事：向服务器发送一个请求（Request），服务器处理后返回一个响应（Response）。爬虫的原理就在这个「一问一答」上——用程序代替浏览器自动发送请求、接收返回内容。',
         sections: [
           { heading: '请求里有什么', text: '就像去餐厅点菜：你（浏览器）跟服务员说「要一份宫保鸡丁」（请求），厨房做好后服务员端给你（响应）。爬虫就是一个能自动点菜、自动接菜的机器人。\n\n一个 HTTP 请求主要包含：\n• 请求方法：GET（获取数据，最常见）、POST（提交数据）。\n• 网址 URL：要访问哪个页面。\n• 请求头（Headers）：告诉服务器我是谁、能接受什么格式。\n爬虫发出的请求和浏览器几乎一样，只是用代码自动完成。',
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: '爬虫和浏览器发的是同一种请求，区别只在频率和目的；服务器分不清对方是人是程序，所以才需要反爬机制。' }
+            ],
             table: {
               headers: ['组成部分', '作用', '示例'],
               rows: [
@@ -28,12 +31,18 @@ export const spStage2: TutorialStage = {
           {
             heading: '用字典模拟一次问答',
             text: '下面用 Python 字典模拟请求和响应，帮你建立「一问一答」的直观认识。真实爬虫用 requests 库发送，需在本机 Python 环境安装后运行。',
-            code: `# 模拟浏览器发出的请求\nrequest = {\n    "method": "GET",\n    "url": "https://example.com/users",\n    "headers": {"User-Agent": "Python-learning"}\n}\n\n# 服务器返回的响应\nresponse = {\n    "status_code": 200,\n    "body": "用户名: 小林, 小陈, 小王"\n}\n\nprint("请求方法:", request["method"])\nprint("响应状态:", response["status_code"])\nprint("响应内容:", response["body"])`
+            code: `# 模拟浏览器发出的请求\nrequest = {\n    "method": "GET",\n    "url": "https://example.com/users",\n    "headers": {"User-Agent": "Python-learning"}\n}\n\n# 服务器返回的响应\nresponse = {\n    "status_code": 200,\n    "body": "用户名: 小林, 小陈, 小王"\n}\n\nprint("请求方法:", request["method"])\nprint("响应状态:", response["status_code"])\nprint("响应内容:", response["body"])`,
+            callouts: [
+              { variant: 'secondary', label: '补充说明', content: '真实响应远不止这两个字段，还含响应头、编码、cookies 等；requests 库把这些封装成 Response 对象方便访问。' }
+            ]
           },
           {
             heading: '常见状态码',
             text: '服务器返回的三位数字告诉你结果：\n• 200：成功\n• 404：要访问的页面不存在\n• 403：没有权限（被网站拒绝）\n• 500：服务器内部出错\n爬虫遇到 403/404 就要处理，不能盲目继续抓。',
-            notes: '本应用内置的运行环境无法真正联网发请求，以上代码用字典模拟了请求与响应的结构。'
+            notes: '本应用内置的运行环境无法真正联网发请求，以上代码用字典模拟了请求与响应的结构。',
+            callouts: [
+              { variant: 'error', label: '常见错误', content: '遇到 403 多半是被反爬识别，试试加 User-Agent 伪装成浏览器；遇到 404 说明网址或路径变了，别重试。' }
+            ]
           },
         ],
         codeExample: `request = {"method": "GET", "url": "https://example.com/book/42"}\nresponse = {"status_code": 200, "body": "《西游记》价格 45 元"}\n\nprint("访问:", request["url"])\nprint("状态:", response["status_code"])\nprint("内容:", response["body"])`,
@@ -58,6 +67,9 @@ export const spStage2: TutorialStage = {
         overview: '浏览器看到的漂亮网页，本质是一份用 HTML 标签写的纯文本。标题在 <h1> 标签里、表格在 <table> 里、链接在 <a> 里。爬虫的第二步，就是下载这份 HTML 后，从中提取想要的数据。',
         sections: [
           { heading: '常用 HTML 标签', text: '网页像一份用不同颜色信封分类的信件：标题信封装在 <h1> 里、正文装在 <p> 里、表格装在 <table> 里。爬虫要做的就是拆开信封、取出里面的文字。\n\n不需要记住所有标签，认识这几个高频的就够：',
+            callouts: [
+              { variant: 'tertiary', label: '小技巧', content: '浏览器里按 F12 打开开发者工具，Elements 面板能直接在页面上点选元素并高亮对应标签，比看源代码快得多。' }
+            ],
             table: {
               headers: ['标签', '含义', '示例内容'],
               rows: [
@@ -73,7 +85,10 @@ export const spStage2: TutorialStage = {
           {
             heading: '一段真实网页长这样',
             text: '下面是一段简化的 HTML，注意数据「苹果 5 元」就藏在 <td> 标签之间：',
-            code: `html = """\n<table>\n  <tr><td>苹果</td><td>5</td></tr>\n  <tr><td>香蕉</td><td>3</td></tr>\n</table>\n"""\n# 数一下里面有几个 <tr>（即几行数据）\nprint("数据行数:", html.count("<tr>"))\nprint("文本内容预览:")\nprint(html.strip())`
+            code: `html = """\n<table>\n  <tr><td>苹果</td><td>5</td></tr>\n  <tr><td>香蕉</td><td>3</td></tr>\n</table>\n"""\n# 数一下里面有几个 <tr>（即几行数据）\nprint("数据行数:", html.count("<tr>"))\nprint("文本内容预览:")\nprint(html.strip())`,
+            callouts: [
+              { variant: 'secondary', label: '补充说明', content: '真实网页的标签会多层嵌套，还有 class、id 等属性；靠字符串 count 只能数最外层，复杂结构要用解析库。' }
+            ]
           },
         ],
         codeExample: `html = "<ul><li>铅笔</li><li>笔记本</li><li>钢笔</li></ul>"\nprint("列表项数量:", html.count("<li>"))\nprint("HTML 原文:")\nprint(html)`,
@@ -99,11 +114,17 @@ export const spStage2: TutorialStage = {
         sections: [
           { heading: '基本用法', text: 'requests 就像一个自动帮你跑餐厅点菜的服务员：你给它一个网址，它替你去服务器那里把页面内容端回来。\n\n典型写法（需本机运行）：\nimport requests\nresp = requests.get("网址")\nprint(resp.status_code)\nprint(resp.text)\nresp.text 就是网页的 HTML 文本，之后再用 BeautifulSoup 解析。',
             code: `# 以下代码需在本机 Python 环境（已 pip install requests）联网运行\n# import requests\n# resp = requests.get("https://example.com")\n# print(resp.status_code)   # 200 表示成功\n# print(resp.text[:200])    # 打印前 200 个字符看内容`,
-            notes: '这整段代码被注释掉了，因为本应用内无法联网。在本机终端运行时，去掉每行开头的 # 即可。'
+            notes: '这整段代码被注释掉了，因为本应用内无法联网。在本机终端运行时，去掉每行开头的 # 即可。',
+            callouts: [
+              { variant: 'error', label: '注意', content: 'resp.text 的编码由 requests 自动猜测，中文网页可能乱码；遇到时手动设 resp.encoding = "utf-8" 再取 text。' }
+            ]
           },
           {
             heading: '常用参数',
             text: '实际抓取时常用：\n• params：URL 后面的查询参数，如搜索关键词。\n• headers：伪装请求头，带上浏览器标识。\n• timeout：超时秒数，避免一直干等。\n抓到内容后要判断状态码是 200 再继续。',
+            callouts: [
+              { variant: 'tertiary', label: '最佳实践', content: '不带 User-Agent 的请求很容易被拒，复制一段真实浏览器的 UA 字符串放进 headers 即可绕过基础反爬。' }
+            ],
             table: {
               headers: ['操作', '写法', '作用'],
               rows: [
@@ -136,15 +157,21 @@ export const spStage2: TutorialStage = {
       stage: '爬虫和数据分析 > 网络与网页',
       summary: '拿到 HTML 后用选择器定位标签、提取文字。理解思路即可，工具需本机安装。',
       content: {
-        overview: '抓到网页 HTML 后，下一步是从一大堆标签里挑出想要的数据。手工用字符串查找很麻烦，常用 BeautifulSoup 这类库帮忙定位。这一课学习提取的思路，代码需本机运行。',
+        overview: '抓到网页 HTML 后，下一步是从一大堆标签里挑出想要的数据。手工用字符串查找很麻烦，常用 BeautifulSoup 这类库帮忙定位。下面学习提取的思路，代码需本机运行。',
         sections: [
           { heading: '提取思路', text: '面对一整页 HTML，提取数据就像在一本厚书里按目录找章节：先定位「所有表格行」，再逐行取出单元格文字，最后整理成表格。\n\n一般三步：\n1. 把 HTML 文本交给解析器（BeautifulSoup）。\n2. 用选择器找到目标标签（如所有 <tr>）。\n3. 遍历取出每个标签的文字，拼成列表或字典。',
-            code: `# 用纯字符串模拟「从 HTML 里提取数据」的思路\nhtml = "<tr><td>苹果</td><td>5</td></tr><tr><td>香蕉</td><td>3</td></tr>"\n\n# 按 </tr> 切分成每一行\nrows = html.split("</tr>")\nprint("切出的行数:", len([r for r in rows if r.strip()]))\n\n# 提取所有 <td> 之间的文字（示意）\nimport re\ncells = re.findall(r"<td>(.*?)</td>", html)\nprint("单元格内容:", cells)`
+            code: `# 用纯字符串模拟「从 HTML 里提取数据」的思路\nhtml = "<tr><td>苹果</td><td>5</td></tr><tr><td>香蕉</td><td>3</td></tr>"\n\n# 按 </tr> 切分成每一行\nrows = html.split("</tr>")\nprint("切出的行数:", len([r for r in rows if r.strip()]))\n\n# 提取所有 <td> 之间的文字（示意）\nimport re\ncells = re.findall(r"<td>(.*?)</td>", html)\nprint("单元格内容:", cells)`,
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: '提取三步走：解析 HTML → 定位目标标签 → 遍历取文字；换什么库思路都一样。' }
+            ]
           },
           {
             heading: 'BeautifulSoup 写法（本机）',
             text: '真实项目用 BeautifulSoup 更简洁，典型写法（需本机 pip install beautifulsoup4）：\nfrom bs4 import BeautifulSoup\nsoup = BeautifulSoup(html, "html.parser")\nfor tr in soup.find_all("tr"):\n    print([td.text for td in tr.find_all("td")])',
-            notes: '上面的 find_all 思路和我们手动切字符串完全一致，只是库帮你处理了标签嵌套和异常情况。'
+            notes: '上面的 find_all 思路和我们手动切字符串完全一致，只是库帮你处理了标签嵌套和异常情况。',
+            callouts: [
+              { variant: 'tertiary', label: '小技巧', content: '按 class 定位用 soup.find_all("div", class_="item")；按 id 用 soup.find(id="main")，比纯标签名精准得多。' }
+            ]
           },
         ],
         codeExample: `import re\nhtml = "<li>铅笔</li><li>笔记本</li><li>钢笔</li>"\nitems = re.findall(r"<li>(.*?)</li>", html)\nprint("共", len(items), "项:")\nfor item in items:\n    print(item)`,
@@ -166,9 +193,12 @@ export const spStage2: TutorialStage = {
       stage: '爬虫和数据分析 > 网络与网页',
       summary: '爬虫不能想抓就抓：要尊重网站负担、遵守规则，否则可能违法或被封。',
       content: {
-        overview: '写爬虫不只是技术问题。请求太频繁会把对方服务器搞垮，抓取受保护的数据可能违法。这一课讲爬虫的底线，让你做一个「有礼貌」的爬虫。',
+        overview: '写爬虫不只是技术问题。请求太频繁会把对方服务器搞垮，抓取受保护的数据可能违法。下面讲爬虫的底线，做一个「有礼貌」的爬虫。',
         sections: [
           { heading: '几条基本底线', text: '你去图书馆查资料，不能把整本书一页页拍下来抢走，也不能一秒钟翻一百页让管理员忙不过来。爬虫对网站也是一样：控制速度、遵守规矩、不碰隐私数据。\n\n1. 控制频率：两次请求之间 sleep 一会儿，别并发几十个请求把服务器压垮。\n2. 遵守 robots 协议：网站根目录的 robots.txt 会说明哪些路径不允许抓取。\n3. 不碰隐私数据：个人手机号、身份证、住址等不能抓。\n4. 不绕过登录和付费：需要登录或付费才能看的内容，不要用技术手段绕过。\n5. 注明来源：公开发布抓取的数据时说明出处。',
+            callouts: [
+              { variant: 'error', label: '避免踩坑', content: '抓取个人手机号、身份证、住址等可能触犯《个人信息保护法》；即便数据公开可见，批量抓取个人信息仍属违法。' }
+            ],
             table: {
               headers: ['做法', '是否合适', '原因'],
               rows: [

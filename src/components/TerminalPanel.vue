@@ -2,7 +2,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { ConsoleOutput } from '../types';
 import { paneScroller, watchPaneScroll } from '../utils/contentPane';
-import { toDisplayLines } from '../utils/consoleLines';
+import { toDisplayLines, displayTextOf } from '../utils/consoleLines';
 import { semanticClassOf, isCollapsible, isImage } from '../utils/consoleView';
 import { useReplInput } from '../utils/replInput';
 import { useI18n } from '../utils/i18n';
@@ -154,10 +154,10 @@ onUnmounted(() => {
               }}</span>
             <span>{{ expandedLogs.has(line.out.id) ? t('tracebackCollapse') : t('tracebackExpand') }}</span>
           </button>
-          <pre v-show="expandedLogs.has(line.out.id)" class="log-text">{{ line.text }}</pre>
+          <pre v-show="expandedLogs.has(line.out.id)" class="log-text">{{ displayTextOf(line) }}</pre>
         </div>
         <div v-else class="log-line" :class="semanticClassOf(line.out)">
-          <pre v-if="!isImage(line.out) || !canShowImages" class="log-text">{{ line.text }}</pre>
+          <pre v-if="!isImage(line.out) || !canShowImages" class="log-text">{{ displayTextOf(line) }}</pre>
           <img v-else class="terminal-img" :src="line.out.image" alt="matplotlib chart" title="点击查看大图"
             @click="previewImage = line.out.image" />
         </div>
@@ -168,7 +168,7 @@ onUnmounted(() => {
       <div class="log-line terminal-input-line">
         <!-- 程序正在等输入：它的提示串已经停在行尾（未结束的行），输入直接接上；
              其余时候显示本终端的提示符 >>> / ... -->
-        <span v-if="openTail" class="terminal-input-tail">{{ openTail.text }}</span>
+        <span v-if="openTail" class="terminal-input-tail">{{ displayTextOf(openTail) }}</span>
         <span v-else class="terminal-input-prompt">{{ prompt }}</span>
         <input ref="inputRef" v-model="inputLine" class="terminal-input" type="text" :placeholder="inputPlaceholder"
           autocomplete="off" autocapitalize="off" spellcheck="false" @keydown.enter.prevent="handleEnter"

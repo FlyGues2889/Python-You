@@ -26,14 +26,10 @@ export const stage2: TutorialStage = {
                 ['index(x)', '查找 x 的索引', '索引值', '否']
               ]
             },
-            code: `numbers = [42, 10, 88, 5, 23]
-numbers.append(99)
-numbers.sort()
-print("原位升序排序:", numbers)
-
-# 弹出尾部元素
-last = numbers.pop()
-print("弹出的元素:", last, "剩余列表:", numbers)`
+            code: `numbers = [42, 10, 88, 5, 23]\nnumbers.append(99)\nnumbers.sort()\nprint("原位升序排序:", numbers)\n\n# 弹出尾部元素\nlast = numbers.pop()\nprint("弹出的元素:", last, "剩余列表:", numbers)`,
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: 'append 和 pop 都在尾部操作，时间复杂度 O(1)，适合做栈；在列表中间 insert 或 remove 是 O(n)，大数据量时要避免。' }
+            ]
           },
           {
             heading: '列表切片高级用法',
@@ -53,26 +49,18 @@ print("拷贝的列表:", copy_nums)`
           },
           {
             heading: '列表推导式',
-            text: '列表推导式是 Python 特色语法，用一行代码快速生成列表，语法简洁且执行效率高于普通 for 循环。\n基础格式：`[表达式 for 变量 in 可迭代对象 if 条件]`',
-            code: `# 基础推导式：生成 0-9 的平方
-squares = [x ** 2 for x in range(10)]
-print("平方列表:", squares)
-
-# 带条件的推导式：提取偶数并平方
-evens_squared = [x ** 2 for x in numbers if x % 2 == 0]
-print("偶数平方:", evens_squared)
-
-# 二维矩阵展平
-matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
-flattened = [num for row in matrix for num in row]
-print("展平后:", flattened)`
+            text: '列表推导式是 Python 的特色语法，一行代码生成列表，比等价 for 循环简洁、执行也更快。\n基础格式：`[表达式 for 变量 in 可迭代对象 if 条件]`',
+            code: `# 基础推导式：生成 0-9 的平方\nsquares = [x ** 2 for x in range(10)]\nprint("平方列表:", squares)\n\n# 带条件的推导式：提取偶数并平方\nevens_squared = [x ** 2 for x in numbers if x % 2 == 0]\nprint("偶数平方:", evens_squared)\n\n# 二维矩阵展平\nmatrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]\nflattened = [num for row in matrix for num in row]\nprint("展平后:", flattened)`,
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: '列表推导式比等价的 for 循环更简洁、执行更快，但超过两层嵌套可读性会下降，这时改写普通循环更清楚。' }
+            ]
           },
         ],
         codeExample: `matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
 flattened = [num for row in matrix for num in row]
 print("二维矩阵展平列表:", flattened)`,
         tips: [
-          '列表的 `.append()` 与 `.pop()` 时间复杂度均为 O(1)，可高效实现栈（Stack）数据结构。',
+          '列表的 `.append()` 与 `.pop()` 时间复杂度都是 O(1)，拿来当栈很合适。',
           '尽量避免在列表中间频繁插入删除，时间复杂度为 O(n)，效率较低。'
         ]
       }
@@ -85,7 +73,7 @@ print("二维矩阵展平列表:", flattened)`,
       content: {
         overview: '元组（Tuple）和列表很像，但有个重要区别：创建之后就不能增删改。它适合放那些「说好就不变」的数据，比如一年的 12 个月份、一周的 7 天。',
         sections: [
-          { heading: '四大容器综合对比', text: '就像印刷好的菜单，印出来就不能改了。days = ("一", "二", "三", "四", "五", "六", "日") 表示一周七天，顺序固定、内容不变，程序用起来更安全。\n\n根据功能需求与性能指标精准选择容器：',
+          { heading: '四大容器综合对比', text: '就像印刷好的菜单，印出来就不能改了。days = ("一", "二", "三", "四", "五", "六", "日") 表示一周七天，顺序固定、内容不变，程序用起来更安全。\n\n选容器时对照下面这张表：',
             table: {
               headers: ['容器', '语法', '有序性', '可变性', '允许重复', '查找复杂度', '典型场景'],
               rows: [
@@ -99,19 +87,14 @@ print("二维矩阵展平列表:", flattened)`,
           {
             heading: '元组基础语法与注意事项',
             text: '• 单元素元组必须在末尾加逗号：`(42,)`，否则会被解析为普通表达式。\n• 元组可省略括号：`point = 10, 20` 等价于 `point = (10, 20)`。\n• 元组支持索引、切片、count、index 等只读操作，不支持 append、remove 等修改操作。\n• 不可变是指元组存储的引用不可变；如果元组包含列表等可变对象，列表内容仍可修改。',
-            code: `# 单元素元组必须带逗号
-single = (42,)
-not_tuple = (42)  # 这只是整数
-print(type(single), type(not_tuple))
-
-# 元组包含可变对象的情况
-t = (1, 2, [3, 4])
-t[2].append(5)  # 可以修改列表本身
-print("元组内容:", t)  # 元组引用的列表变了，但元组本身的引用没变`
+            code: `# 单元素元组必须带逗号\nsingle = (42,)\nnot_tuple = (42)  # 这只是整数\nprint(type(single), type(not_tuple))\n\n# 元组包含可变对象的情况\nt = (1, 2, [3, 4])\nt[2].append(5)  # 可以修改列表本身\nprint("元组内容:", t)  # 元组引用的列表变了，但元组本身的引用没变`,
+            callouts: [
+              { variant: 'error', label: '常见错误', content: '单元素元组必须写成 (42,) 带逗号，(42) 只是一个整数；元组的不可变是指引用不可变，内含的可变对象仍可修改。' }
+            ]
           },
           {
             heading: '高级解包应用',
-            text: '元组最常用的场景就是解包赋值，函数多返回值本质就是返回元组。\n支持平行赋值、扩展解包、交换变量等多种用法。',
+            text: '元组最常用的场景就是解包赋值，函数多返回值本质就是返回元组，一行就能把多个返回值分别接住。',
             code: `# 函数多返回值（本质返回元组）
 def get_server_status():
     return 200, "OK", 0.045
@@ -130,7 +113,7 @@ print("只取首尾:", first, last)`
 code, status, latency = get_server_status()
 print(f"响应码: {code}, 状态: {status}, 延迟: {latency}s")`,
         tips: [
-          '元组内部若包含可变对象（如列表），该可变对象的内容仍可被修改，但元组引用的对象地址不变。',
+          '元组里如果包含可变对象（如列表），该可变对象的内容仍可被修改，但元组引用的对象地址不变。',
           '不需要修改的数据优先用元组，更省内存、更安全，还能作为字典的键。'
         ]
       }
@@ -144,14 +127,10 @@ print(f"响应码: {code}, 状态: {status}, 延迟: {latency}s")`,
         overview: '集合（Set）像一袋「不重样」的弹珠：里面不会出现重复的东西，而且没有先后顺序。它最擅长两件事：去重，以及算交集、并集、差集。',
         sections: [
           { heading: '集合基础特性与创建', text: '两个班级选课，想找出同时选了数学课的同学——这就是交集。A = {"小明", "小红"}，B = {"小红", "小刚"}，A & B 就是「两个班都选课的人」。集合就是做这种统计的好帮手。\n\n• 无序性：元素没有固定顺序，不支持索引访问\n• 唯一性：重复元素会被自动去重\n• 可哈希要求：集合元素必须是不可变类型（可哈希），列表、字典不能放入集合\n• 空集合必须用 `set()` 创建，`{}` 是空字典',
-            code: `# 自动去重
-nums = [1, 2, 2, 3, 3, 3, 4]
-unique_nums = set(nums)
-print("去重后集合:", unique_nums)
-
-# 空集合的正确创建方式
-empty_set = set()
-print("空集合类型:", type(empty_set))`
+            code: `# 自动去重\nnums = [1, 2, 2, 3, 3, 3, 4]\nunique_nums = set(nums)\nprint("去重后集合:", unique_nums)\n\n# 空集合的正确创建方式\nempty_set = set()\nprint("空集合类型:", type(empty_set))`,
+            callouts: [
+              { variant: 'error', label: '常见错误', content: '创建空集合必须用 set()，直接写 {} 会被解析为空字典 dict；集合去重会丢失原始顺序，要保留顺序就用 dict.fromkeys()。' }
+            ]
           },
           {
             heading: '集合数学运算方法',
@@ -176,7 +155,7 @@ print("A 是 B 的子集吗:", set_a.issubset(set_b))`
           },
           {
             heading: '集合常用操作与适用场景',
-            text: '常用方法：`.add()` 添加元素、`.remove()` 删除元素、`.clear()` 清空。\n典型适用场景：\n1. 列表/数据去重\n2. 共同好友、共同关注等交集计算\n3. 标签系统的差集、并集运算',
+            text: '常用方法：`.add()` 添加元素、`.remove()` 删除元素、`.clear()` 清空。\n常用来：\n1. 列表/数据去重\n2. 共同好友、共同关注等交集计算\n3. 标签系统的差集、并集运算',
             code: `# 实际场景：统计访问去重 IP
 raw_logs = ["192.168.1.1", "10.0.0.1", "192.168.1.1", "172.16.0.1"]
 unique_ips = list(set(raw_logs))
@@ -241,11 +220,10 @@ print("列表生成字典:", new_dict)`
           {
             heading: '字典核心特性与注意事项',
             text: '• 键的唯一性：同一个键多次赋值会覆盖旧值\n• 可哈希要求：键必须是不可变类型（str、int、tuple 等），列表、字典不能作为键\n• 有序性：Python 3.7+ 保证插入顺序，旧版本不保证\n• 查找效率：O(1) 时间复杂度，数据量大时优势明显',
-            code: `# 键必须可哈希
-good_dict = {(1, 2): "坐标点"}  # 元组可以当键
-print("元组作为键:", good_dict[(1, 2)])
-
-# bad_dict = {[1,2]: "test"}  # 列表不能当键，会报错`
+            code: `# 键必须可哈希\ngood_dict = {(1, 2): "坐标点"}  # 元组可以当键\nprint("元组作为键:", good_dict[(1, 2)])\n\n# bad_dict = {[1,2]: "test"}  # 列表不能当键，会报错`,
+            callouts: [
+              { variant: 'error', label: '注意', content: '字典的键必须是不可变类型（str、int、tuple 等），列表和字典是可变的不能当键，否则会报 TypeError。' }
+            ]
           },
         ],
         codeExample: `scores = {"Math": 95, "Physics": 88, "Chemistry": 92}
@@ -253,8 +231,8 @@ print("元组作为键:", good_dict[(1, 2)])
 top_scores = {k: v for k, v in scores.items() if v >= 90}
 print("优秀成绩字典:", top_scores)`,
         tips: [
-          '字典的底层哈希表结构使得其数据检索复杂度为稳定的 O(1)。',
-          '频繁根据键查找值的场景，优先用字典而不是列表遍历。'
+          '字典底层是哈希表，按键查找的复杂度稳定在 O(1)。',
+          '要按键查值，用字典比遍历列表快得多。'
         ]
       }
     },
@@ -284,20 +262,14 @@ print("反转列表:", nums[::-1])`
           {
             heading: 'list.copy() 与切片拷贝的区别',
             text: '直接写 `b = a` 只是给列表起了个别名，a 和 b 指向同一块内存，改一个另一个也变。要真正复制一份新列表，可以用 `a.copy()` 方法，也可以用切片 `a[:]`，两者效果完全一样，都是浅拷贝。浅拷贝的意思是：列表本身是新的，但里面如果装的是列表等可变对象，那些内层对象仍然是共享的。',
-            code: `a = [1, 2, 3]
-b = a          # 别名，不是拷贝
-c = a.copy()   # 真拷贝
-d = a[:]       # 切片拷贝，等价于 copy()
-
-a.append(4)
-print("原列表 a:", a)
-print("别名 b 跟着变:", b)
-print("拷贝 c 不变:", c)
-print("切片 d 不变:", d)`
+            code: `a = [1, 2, 3]\nb = a          # 别名，不是拷贝\nc = a.copy()   # 真拷贝\nd = a[:]       # 切片拷贝，等价于 copy()\n\na.append(4)\nprint("原列表 a:", a)\nprint("别名 b 跟着变:", b)\nprint("拷贝 c 不变:", c)\nprint("切片 d 不变:", d)`,
+            callouts: [
+              { variant: 'error', label: '避免踩坑', content: '直接赋值 b = a 只是起别名，修改 a 会影响 b；浅拷贝只复制第一层，嵌套的可变对象仍然共享，深拷贝要用 copy.deepcopy()。' }
+            ]
           },
           {
             heading: 'sort 的 key 与 reverse 参数',
-            text: '`list.sort()` 默认按从小到大原位排序。传入 `reverse=True` 改为从大到小。更强大的是 `key` 参数：它接收一个函数，列表会按这个函数作用在每个元素上的返回值来排序。比如按字符串长度排序、按元组的第二个元素排序。',
+            text: '`list.sort()` 默认按从小到大原位排序。传入 `reverse=True` 改为从大到小。`key` 参数更灵活：它接收一个函数，列表按这个函数作用在每个元素上的返回值来排序。比如按字符串长度排序、按元组的第二个元素排序。',
             code: `words = ["banana", "pi", "apple", "cherry"]
 
 # 按字符串长度升序
@@ -311,7 +283,10 @@ print("降序排列:", nums)
 # 按元组第二个元素排序
 pairs = [("小明", 85), ("小红", 92), ("小刚", 78)]
 pairs.sort(key=lambda x: x[1])
-print("按成绩排序:", pairs)`
+print("按成绩排序:", pairs)`,
+            callouts: [
+              { variant: 'tertiary', label: '小技巧', content: 'key 参数接收一个函数，排序时按函数返回值比较，传 len 按长度排、传 lambda x: x[1] 按元组第二元素排，比手写比较逻辑简洁得多。' }
+            ]
           }
         ],
         codeExample: `nums = [10, 20, 30, 40, 50]
@@ -319,7 +294,7 @@ print("最后一个元素:", nums[-1])
 print("隔一个取:", nums[::2])
 print("反转列表:", nums[::-1])`,
         tips: [
-          '`lst[::-1]` 生成新列表实现反转，而 `lst.reverse()` 是原位反转，返回 None。',
+          '`lst[::-1]` 反转出一份新列表，而 `lst.reverse()` 是原位反转，返回 None。',
           '`list.sort()` 是原位排序返回 None，`sorted(lst)` 返回新列表，两者不要混用赋值。'
         ]
       }
@@ -352,17 +327,10 @@ for row in matrix:
           {
             heading: '嵌套字典的多级索引',
             text: '字典里某个键对应的值本身又是一个字典，就用 `d["a"]["b"]` 这种写法连续取。这在处理 JSON 风格的数据时非常常见。',
-            code: `student = {
-    "name": "Alice",
-    "scores": {"math": 95, "english": 88}
-}
-
-print("姓名:", student["name"])
-print("数学成绩:", student["scores"]["math"])
-
-# 修改嵌套字典里的值
-student["scores"]["english"] = 90
-print("修改后成绩:", student["scores"])`
+            code: `student = {\n    "name": "Alice",\n    "scores": {"math": 95, "english": 88}\n}\n\nprint("姓名:", student["name"])\nprint("数学成绩:", student["scores"]["math"])\n\n# 修改嵌套字典里的值\nstudent["scores"]["english"] = 90\nprint("修改后成绩:", student["scores"])`,
+            callouts: [
+              { variant: 'error', label: '避免踩坑', content: '多层嵌套取值时中间任何一层键不存在都会抛 KeyError，最好用 .get() 逐层安全访问或先检查键是否存在。' }
+            ]
           },
           {
             heading: '列表解包与星号收集',
@@ -400,15 +368,10 @@ print("首元素:", first, "其余:", rest)`,
           {
             heading: 'discard 与 remove 的行为差异',
             text: '两个方法都是从集合里删掉一个元素，区别在于元素不存在时：`remove(x)` 会直接报错 KeyError，`discard(x)` 会安静地什么都不做。当你不确定元素在不在集合里、又不想写 try-except 时，用 discard 更安全。',
-            code: `s = {1, 2, 3}
-
-s.remove(2)
-print("remove 后:", s)
-
-s.discard(99)  # 不存在，不报错
-print("discard 不存在的元素:", s)
-
-# s.remove(99)  # 这行会报 KeyError，被注释掉了`
+            code: `s = {1, 2, 3}\n\ns.remove(2)\nprint("remove 后:", s)\n\ns.discard(99)  # 不存在，不报错\nprint("discard 不存在的元素:", s)\n\n# s.remove(99)  # 这行会报 KeyError，被注释掉了`,
+            callouts: [
+              { variant: 'error', label: '注意', content: 'remove 删除不存在的元素会抛 KeyError，discard 则什么都不做；不确定元素在不在集合里时，用 discard 更安全。' }
+            ]
           },
           {
             heading: 'pop 与子集超集运算符',
@@ -492,7 +455,10 @@ print("有 gpa 键吗:", "gpa" in student)
 if "gpa" in student:
     print("gpa =", student["gpa"])
 else:
-    print("没有 gpa 这个键")`
+    print("没有 gpa 这个键")`,
+            callouts: [
+              { variant: 'error', label: '常见错误', content: '对字典用 in 查的是键不是值，查值要用 value in d.values()；判断键存在用 k in d 而不是 d.get(k) is not None，因为值本身可能就是 None。' }
+            ]
           }
         ],
         codeExample: `count = {}
@@ -540,7 +506,7 @@ print("字符串转列表:", list("abc"))`
           },
           {
             heading: 'frozenset 与 namedtuple',
-            text: '`frozenset` 是不可变的集合，创建后不能增删，因此可以作为字典的键或放进集合里。`namedtuple` 是「能带字段名的元组」：既能像元组一样解包，又能用 `.字段名` 访问属性，比普通元组可读性好。',
+            text: '`frozenset` 是不可变的集合，创建后不能增删，所以能当字典的键或放进集合里。`namedtuple` 是「能带字段名的元组」：既能像元组一样解包，又能用 `.字段名` 访问属性，比普通元组可读性好。',
             code: `from collections import namedtuple
 
 # frozenset：不可变集合，可作字典键
@@ -552,7 +518,10 @@ print("frozenset 当键:", d[fs])
 Point = namedtuple("Point", ["x", "y"])
 p = Point(10, 20)
 print("坐标:", p.x, p.y)
-print("解包:", p[0], p[1])`
+print("解包:", p[0], p[1])`,
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: 'frozenset 因为不可变才是可哈希的，能当字典键或放入集合；namedtuple 比字典省内存、还支持解包，适合表示固定字段的记录。' }
+            ]
           }
         ],
         codeExample: `t = (1, 2, 3, 2, 2)
@@ -619,7 +588,10 @@ lst = []
 if lst:
     print("列表非空")
 else:
-    print("列表为空")`
+    print("列表为空")`,
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: '空容器、零值、None 都是 Falsy，写 if lst: 就等于判断非空，比 len(lst) == 0 更地道。' }
+            ]
           }
         ],
         codeExample: `d = {"a": 1, "b": 2}

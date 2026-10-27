@@ -14,7 +14,7 @@ export const stage3: TutorialStage = {
       content: {
         overview: '程序经常要「看情况办事」：如果……就……，否则就……。if 就是干这个的。它根据条件是真是假，决定执行哪一段代码，就像红绿灯决定车往哪走。',
         sections: [
-          { heading: '分支结构完整语法', text: '出门前看天气：如果下雨就带伞，否则就不带。程序里写成：if rain: 带伞，else: 不带。下雨（True）走带伞的分支，没下雨（False）走另一个分支，这就是 if/else。\n\n• 基础语法：`if 条件:` 满足时执行\n• 多分支：`elif 条件:` 前面都不满足时判断\n• 收尾：`else:` 所有条件都不满足时执行\n• 注意：if/elif/else 是互斥的，只会执行第一个满足的分支',
+          { heading: '分支结构完整语法', text: '出门前看天气：如果下雨就带伞，否则就不带。程序里写成：if rain: 带伞，else: 不带。下雨（True）走带伞的分支，没下雨（False）走另一个分支。\n\n• 基础语法：`if 条件:` 满足时执行\n• 多分支：`elif 条件:` 前面都不满足时判断\n• 收尾：`else:` 所有条件都不满足时执行\n• 注意：if/elif/else 是互斥的，只会执行第一个满足的分支',
             code: `score = 88
 if score >= 90:
     grade = "A"
@@ -24,11 +24,14 @@ elif score >= 70:
     grade = "C"
 else:
     grade = "D"
-print(f"分数 {score} 评定等级: {grade}")`
+print(f"分数 {score} 评定等级: {grade}")`,
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: 'if/elif/else 是互斥分支，只会执行第一个满足条件的分支，elif 可以无限延伸，else 可省略。' }
+            ]
           },
           {
             heading: '三元表达式',
-            text: '简单的二选一赋值可以用三元运算符一行写完，语法：\n`结果1 if 条件 else 结果2`\n条件为真返回结果1，为假返回结果2。适合简单赋值，复杂分支不建议滥用。',
+            text: '简单的二选一赋值一行就能写完，语法：\n`结果1 if 条件 else 结果2`\n条件为真返回结果1，为假返回结果2。简单赋值用着顺手，复杂分支别滥用。',
             code: `score = 88
 status = "Pass" if score >= 60 else "Fail"
 print("最终考核状态:", status)
@@ -60,7 +63,10 @@ match day:
 a = 0.1 + 0.2
 b = 0.3
 print("直接 == 比较:", a == b)  # False
-print("差值比较:", abs(a - b) < 1e-6)  # True，推荐写法`
+print("差值比较:", abs(a - b) < 1e-6)  # True，推荐写法`,
+            callouts: [
+              { variant: 'error', label: '常见错误', content: '浮点数不要直接用 == 比较，0.1 + 0.2 == 0.3 结果为 False；应判断 abs(a - b) < 1e-9 差值是否足够小。' }
+            ]
           },
         ],
         codeExample: `num = -15
@@ -71,7 +77,7 @@ elif num < 0:
 else:
     print("数值为零")`,
         tips: [
-          '使用嵌套分支时避免层级过深，可采用提前返回（Early Return）优化代码。',
+          '嵌套分支太深时，用提前返回（Early Return）把层级压平。',
           '条件较多时优先用字典映射替代多层 elif，代码更简洁易维护。'
         ]
       }
@@ -94,7 +100,7 @@ else:
           },
           {
             heading: '死循环的识别与避免',
-            text: '如果循环条件永远为 True，且循环内没有 break，就会形成死循环，导致程序卡死。\n编写 while 循环必须确保：\n1. 循环变量有初始值\n2. 循环体内更新循环变量\n3. 条件存在收敛的趋势',
+            text: '循环条件永远为 True、循环内又没有 break，就会形成死循环，程序卡死。\n写 while 循环要确保：\n1. 循环变量有初始值\n2. 循环体内更新循环变量\n3. 条件最终会变 False',
             code: `# 正确的循环：count 不断增加，最终条件不成立
 count = 0
 while count < 3:
@@ -103,11 +109,14 @@ while count < 3:
 
 # 死循环示例（不要运行！）
 # while True:
-# •    print("死循环")`
+# •    print("死循环")`,
+            callouts: [
+              { variant: 'error', label: '避免踩坑', content: '写 while 循环必须确保循环变量有更新且条件能收敛，否则会形成死循环导致程序卡死；循环次数已知时优先用 for。' }
+            ]
           },
           {
             heading: '循环嵌套示例：九九乘法表',
-            text: 'while 循环可以嵌套使用，外层循环控制行，内层循环控制列。',
+            text: 'while 嵌套时，外层控制行，内层控制列。',
             code: `i = 1
 while i <= 9:
     j = 1
@@ -127,7 +136,7 @@ while idx < 10:
         break     # 大于7退出循环
     print("奇数打印:", idx)`,
         tips: [
-          '在编写 while 循环时，必须确保循环条件存在收敛趋势，防止引发无限死循环。',
+          '写 while 循环要确保条件最终会变 False，否则就是死循环。',
           '循环次数确定的场景优先用 for 循环，逻辑更清晰，不易写出死循环。'
         ]
       }
@@ -144,17 +153,23 @@ while idx < 10:
             code: `print("0到4:", list(range(5)))
 print("3到7:", list(range(3, 8)))
 print("0到10偶数:", list(range(0, 11, 2)))
-print("10到1倒序:", list(range(10, 0, -1)))`
+print("10到1倒序:", list(range(10, 0, -1)))`,
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: 'range 是惰性序列不占内存，stop 参数是开区间不包含本身；range(10) 生成 0-9 而非 1-10，这是新手常犯的差一错误。' }
+            ]
           },
           {
             heading: '常用迭代辅助工具',
-            text: '• `enumerate(iterable, start=0)`：同时获取索引序号与元素，避免手动计数\n• `zip(iter1, iter2)`：并行配对多个可迭代对象，按最短的结束\n• 两个工具可以组合使用',
+            text: '• `enumerate(iterable, start=0)`：同时拿到索引和元素，不用手动计数\n• `zip(iter1, iter2)`：并行配对多个可迭代对象，按最短的结束\n• 两个能组合着用',
             code: `fruits = ["apple", "banana", "cherry"]
 prices = [10.5, 5.0, 15.8]
 
 # enumerate 与 zip 结合
 for idx, (fruit, price) in enumerate(zip(fruits, prices), start=1):
-    print(f"序号 [{idx}] 水果: {fruit:<8} | 单价: ￥{price:.2f}")`
+    print(f"序号 [{idx}] 水果: {fruit:<8} | 单价: ￥{price:.2f}")`,
+            callouts: [
+              { variant: 'tertiary', label: '小技巧', content: '需要索引时永远优先用 enumerate，不要写 for i in range(len(lst))；zip 配对时长度不一致会按最短的截断。' }
+            ]
           },
           {
             heading: 'for-else 语法',
@@ -183,7 +198,7 @@ for i in range(1, 6):
     squares += i * i
 print("1 到 5 的平方和:", squares)`,
         tips: [
-          '`range()` 对象不会在内存中预先装载完整列表，而是采用按需生成机制。',
+          '`range()` 不会在内存里预先装完整列表，用到哪个才生成哪个。',
           '需要索引时优先用 enumerate，不要用 for i in range(len(lst)) 这种写法。'
         ]
       }
@@ -196,14 +211,17 @@ print("1 到 5 的平方和:", squares)`,
       content: {
         overview: 'input() 让程序停下来问用户问题，等用户输入文字并按回车，再把输入的内容交给程序处理。记住：它拿到的永远是文字（字符串）。',
         sections: [
-          { heading: '基础输入与类型转换', text: '猜年龄小游戏：input("你多大了？") 会停下来等你输入。比如输入 18，程序拿到的是文字 "18"，想用来算年龄，就得先 int() 转成数字。\n\ninput() 永远返回字符串，获取数字必须手动强转。\n非合法输入强转会抛出 ValueError，需要用 try-except 捕获处理。',
+          { heading: '基础输入与类型转换', text: '猜年龄小游戏：input("你多大了？") 会停下来等你输入。比如输入 18，程序拿到的是文字 "18"，想用来算年龄，就得先 int() 转成数字。\n\ninput() 永远返回字符串，要算数字必须手动强转。\n非法输入强转会抛 ValueError，得用 try-except 兜住。',
             code: `# 模拟控制台输入（Python You 环境演示）
 raw_value = "25"
 try:
     age = int(raw_value)
     print(f"校验成功，用户年龄: {age} 岁")
 except ValueError:
-    print("输入格式错误，无法转换为有效的整数")`
+    print("输入格式错误，无法转换为有效的整数")`,
+            callouts: [
+              { variant: 'error', label: '常见错误', content: '用户输入的字符串可能不是合法数字，int() 或 float() 转换会抛 ValueError，务必用 try-except 包裹处理。' }
+            ]
           },
           {
             heading: '一行输入多个数据',
@@ -244,7 +262,7 @@ for guess_str in ["50", "abc", "75"]:
 float_numbers = [float(x.strip()) for x in mock_input.split(",") if x.strip()]
 print("解析浮点数据列表:", float_numbers)`,
         tips: [
-          '在 Python You 交互终端中，命令行支持实时模拟用户输入的交互操作。',
+          'Python You 交互终端能实时模拟用户输入，方便调试。',
           '处理用户输入一定要加异常校验，不要假设用户会按要求输入。'
         ]
       }
@@ -265,7 +283,10 @@ print("解析浮点数据列表:", float_numbers)`,
                 ['str.format()', '"{}: {}".format(name, age)', '功能丰富、兼容旧版本', '写法稍繁琐', '★★★ 兼容用'],
                 ['% 格式化', '"%s: %d" % (name, age)', '最传统、写法简单', '功能弱、易出错', '• 不推荐']
               ]
-            }
+            },
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: '新项目统一用 f-string，语法简洁、速度最快；str.format() 仅在兼容旧代码时使用，% 格式化了解即可不要新写。' }
+            ]
           },
           {
             heading: 'f-string 格式修饰符',
@@ -289,7 +310,7 @@ print(f"百分比显示: {0.856:.1%}")`
           },
           {
             heading: 'f-string 高级用法',
-            text: 'f-string 大括号内可以直接写表达式、调用函数，非常灵活。',
+            text: 'f-string 大括号里能直接写表达式、调用函数，很灵活。',
             code: `name = "Alice"
 score = 92
 print(f"学生: {name.upper()}, 评级: {'优秀'• if score >= 90 else '良好'}")
@@ -303,7 +324,7 @@ print(f"{x = }, {y = }, {x + y = }")`
         codeExample: `val = 42
 print(f"二进制: {val:b} | 八进制: {val:o} | 十六进制: {val:x}")`,
         tips: [
-          'f-string 可以在 `{}` 中直接调用函数或计算表达式（如 `{x.upper()}`）。',
+          'f-string 的 `{}` 里能直接调用函数或算表达式（如 `{x.upper()}`）。',
           '新项目统一使用 f-string，旧代码兼容才考虑 str.format()。'
         ]
       }
@@ -318,7 +339,7 @@ print(f"二进制: {val:b} | 八进制: {val:o} | 十六进制: {val:x}")`,
         sections: [
           {
             heading: 'pass 的作用',
-            text: 'pass 是一个空操作语句：解释器看到它就直接跳过，不产生任何效果。它专门用来满足「缩进块不能空」的语法要求，常见于暂时没写完的分支、函数、类。',
+            text: 'pass 是空操作语句：解释器看到它直接跳过，什么都不做。它专门用来满足「缩进块不能空」的语法要求，常见于暂时没写完的分支、函数、类。',
             code: `for i in range(3):
     if i == 1:
         pass      # 以后再处理 i==1 的情况
@@ -341,7 +362,10 @@ def case_a():
 def case_b():
     ...
 
-print("两个占位函数都能正常调用")`
+print("两个占位函数都能正常调用")`,
+            callouts: [
+              { variant: 'error', label: '注意', content: '缩进块里只写注释不行，注释会被解释器忽略导致语法错误；pass 是真正的空语句，满足「块不能为空」的语法要求。' }
+            ]
           }
         ],
         codeExample: `for i in range(3):
@@ -361,17 +385,20 @@ print("两个占位函数都能正常调用")`
       stage: 'Python 控制流',
       summary: 'break 和 continue 只作用于它所在的那一层循环，不会同时跳出外层。',
       content: {
-        overview: '循环套循环时，新手常误以为 break 能一下子跳出所有层。实际上 break 和 continue 都只属于离它最近的那一层 for 或 while，外层循环完全不受影响。想一次跳出多层需要额外技巧。',
+        overview: '循环套循环时，新手常以为 break 能一下子跳出所有层。其实 break 和 continue 都只属于离它最近的那一层 for 或 while，外层循环完全不受影响。想一次跳出多层得用别的办法。',
         sections: [
           {
             heading: 'break 只跳出内层',
-            text: '下面这段代码里，break 在内层循环，它只结束内层那一遍，外层继续走下一行。要跳出外层，可以用标志变量或把循环包进函数里用 return。',
+            text: '下面这段代码里，break 在内层循环，它只结束内层那一遍，外层继续走下一行。要跳出外层，得用标志变量或把循环包进函数里用 return。',
             code: `for outer in range(3):
     print("外层:", outer)
     for inner in range(5):
         if inner == 2:
             break       # 只跳出内层
-        print("  内层:", inner)`
+        print("  内层:", inner)`,
+            callouts: [
+              { variant: 'error', label: '常见误解', content: 'break 和 continue 只作用于离它最近的一层循环，不会跳出外层；要一次跳出多层需用标志变量或把循环封装成函数用 return。' }
+            ]
           },
           {
             heading: 'continue 也只跳过内层本次',
@@ -418,7 +445,7 @@ print("找到了，两层都退出")`
         sections: [
           {
             heading: 'min 与 max',
-            text: '`min(可迭代对象)` 返回最小值，`max(可迭代对象)` 返回最大值。也可以直接传多个参数 `min(3, 1, 2)`。对字符串列表，按字典序比较；要按长度比，传 key 参数。',
+            text: '`min(可迭代对象)` 返回最小值，`max(可迭代对象)` 返回最大值。也能直接传多个参数 `min(3, 1, 2)`。字符串列表按字典序比；要按长度比，传 key 参数。',
             code: `nums = [5, 2, 9, 1, 7]
 print("最小值:", min(nums))
 print("最大值:", max(nums))
@@ -427,17 +454,23 @@ print("直接传多个参数:", min(3, 1, 2))
 
 words = ["banana", "pi", "apple"]
 print("最短单词:", min(words, key=len))
-print("最长单词:", max(words, key=len))`
+print("最长单词:", max(words, key=len))`,
+            callouts: [
+              { variant: 'error', label: '注意', content: 'min([]) 和 max([]) 对空列表会抛 ValueError，调用前要先判断非空；sum([]) 返回 0 是安全的。' }
+            ]
           },
           {
             heading: 'sum 求和',
-            text: '`sum(可迭代对象)` 把里面所有数加起来。可选第二个参数指定初始值，默认从 0 开始。注意 sum 只能算数字，不能用来拼接字符串（拼接字符串用 "".join()）。',
+            text: '`sum(可迭代对象)` 把里面所有数加起来。可选第二个参数指定初始值，默认从 0 开始。sum 只能算数字，拼接字符串要用 "".join()。',
             code: `nums = [1, 2, 3, 4, 5]
 print("总和:", sum(nums))
 print("从 100 开始加:", sum(nums, 100))
 
 # 1 到 100 求和
-print("1+...+100 =", sum(range(1, 101)))`
+print("1+...+100 =", sum(range(1, 101)))`,
+            callouts: [
+              { variant: 'error', label: '注意', content: 'sum 只能对数字求和，不能拼接字符串，拼接字符串用 "".join(list)；sum 的第二个参数可指定初始值，默认从 0 开始。' }
+            ]
           }
         ],
         codeExample: `nums = [5, 2, 9, 1, 7]
@@ -454,11 +487,11 @@ print("最小值:", min(nums), "最大值:", max(nums), "总和:", sum(nums))`,
       stage: 'Python 控制流',
       summary: '循环自然结束才执行 else，被 break 打断就跳过，最适合「找没找到」。',
       content: {
-        overview: 'Python 的循环可以带一个 else 块：循环从头到尾自然走完（没有被 break 打断）时执行 else；只要中途 break 了，else 就不执行。这看起来反直觉，但非常适合「查找失败」的场景。',
+        overview: 'Python 的循环能带一个 else 块：循环从头到尾自然走完（没被 break 打断）时执行 else；中途 break 了，else 就不执行。看着反直觉，但用在「查找失败」的场景正合适。',
         sections: [
           {
             heading: '执行规则',
-            text: '记住一句话：else 对应的是「没被 break 的循环」。while 条件变 False 自然结束、for 遍历完所有元素，都会走 else；任何一条 break 都会让 else 被跳过。continue 不影响 else。',
+            text: 'else 对应的是「没被 break 的循环」。while 条件变 False 自然结束、for 遍历完所有元素，都会走 else；任何一条 break 都会让 else 被跳过。continue 不影响 else。',
             code: `# 自然结束：走 else
 n = 3
 while n > 0:
@@ -472,11 +505,14 @@ for x in [1, 2, 3]:
     if x == 2:
         break
 else:
-    print("这行不会打印")`
+    print("这行不会打印")`,
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: 'else 对应的是「没被 break 的循环」：循环自然结束走 else，中途 break 则跳过 else，这最适合「查找失败」的场景。' }
+            ]
           },
           {
             heading: '典型应用：查找失败',
-            text: '最经典的用法是在列表里找某个值：找到就 break，没找到就走 else 报告「不存在」。比用一个 found 标志变量更简洁。',
+            text: '最经典的用法是在列表里找某个值：找到就 break，没找到就走 else 报告「不存在」。比单独设个 found 标志变量简洁。',
             code: `numbers = [4, 8, 15, 16, 23]
 target = 42
 
@@ -511,7 +547,7 @@ else:
         sections: [
           {
             heading: 'enumerate：带序号遍历',
-            text: '`enumerate(可迭代对象, start=0)` 每次返回一个 (序号, 元素) 元组。start 可以指定序号从几开始，默认从 0。它替代了 `for i in range(len(lst)): lst[i]` 这种写法。',
+            text: '`enumerate(可迭代对象, start=0)` 每次返回一个 (序号, 元素) 元组。start 指定序号从几开始，默认从 0。它替代了 `for i in range(len(lst)): lst[i]` 这种写法。',
             code: `fruits = ["apple", "banana", "cherry"]
 
 for i, fruit in enumerate(fruits):
@@ -523,7 +559,7 @@ for i, fruit in enumerate(fruits, start=1):
           },
           {
             heading: 'zip：并行配对多个可迭代对象',
-            text: '`zip(a, b, c...)` 把多个可迭代对象按位置一一配对，每次返回一个元组 `(a[0], b[0])`、`(a[1], b[1])`……最短的那个用完就停。它最适合把两个列表合成键值对。',
+            text: '`zip(a, b, c...)` 把多个可迭代对象按位置一一配对，每次返回一个元组 `(a[0], b[0])`、`(a[1], b[1])`……最短的那个用完就停。把两个列表合成键值对时特别好用。',
             code: `names = ["Alice", "Bob", "Cara"]
 scores = [95, 88, 76]
 
@@ -535,11 +571,14 @@ print("配对结果:", list(zip([1, 2, 3], ["a", "b"])))
 
 # 合成字典
 d = dict(zip(names, scores))
-print("字典:", d)`
+print("字典:", d)`,
+            callouts: [
+              { variant: 'error', label: '注意', content: 'zip 配对时按最短的可迭代对象截断，长的部分会被丢弃；需要按最长补齐用 itertools.zip_longest。' }
+            ]
           },
           {
             heading: 'enumerate 与 zip 组合',
-            text: '两个工具可以一起用：既想编号，又想同时遍历两个列表。注意 zip 出来的是元组，要先解包再和 enumerate 的序号组合。',
+            text: '两个工具能一起用：既想编号，又想同时遍历两个列表。zip 出来的是元组，要先解包再和 enumerate 的序号组合。',
             code: `names = ["Alice", "Bob", "Cara"]
 scores = [95, 88, 76]
 
@@ -586,13 +625,16 @@ print("推导式写法:", [x for x in nums if x % 2 == 0])`
           },
           {
             heading: 'sorted 与 key 参数',
-            text: '`sorted(可迭代对象)` 返回一个排好序的新列表，原列表不动；它支持 key 和 reverse 参数。和 list.sort() 的区别是：sort 原位修改返回 None，sorted 返回新列表。',
+            text: '`sorted(可迭代对象)` 返回一个排好序的新列表，原列表不动；支持 key 和 reverse 参数。和 list.sort() 的区别是：sort 原位修改返回 None，sorted 返回新列表。',
             code: `pairs = [("小明", 85), ("小红", 92), ("小刚", 78)]
 by_score = sorted(pairs, key=lambda x: x[1])
 print("按成绩升序:", by_score)
 
 by_score_desc = sorted(pairs, key=lambda x: x[1], reverse=True)
-print("按成绩降序:", by_score_desc)`
+print("按成绩降序:", by_score_desc)`,
+            callouts: [
+              { variant: 'error', label: '注意', content: 'list.sort() 是原位排序返回 None，sorted() 返回新列表不改动原数据；不要写 lst = lst.sort()，结果 lst 会变成 None。' }
+            ]
           }
         ],
         codeExample: `nums = [1, 2, 3, 4, 5, 6]
@@ -637,7 +679,7 @@ print("整数补宽度: [%5d]" % 42)`
           },
           {
             heading: '字典式 % 格式化',
-            text: '还可以用 `%(名字)s` 这种命名占位，后面传一个字典。在拼 SQL 或模板时旧代码里常见。',
+            text: '`%(名字)s` 这种命名占位也行，后面传一个字典。拼 SQL 或模板的旧代码里常见。',
             code: `info = {"name": "Bob", "score": 90}
 print("%(name)s 的成绩是 %(score)d 分" % info)`
           }
@@ -677,7 +719,10 @@ except ValueError:
             text: '浮点数在计算机里是二进制近似存储，所以 0.1 + 0.2 不等于 0.3。做相等判断时要用 abs(a - b) < 1e-9 这种差值比较，不要直接 ==。',
             code: `print("0.1 + 0.2 =", 0.1 + 0.2)
 print("等于 0.3 吗:", 0.1 + 0.2 == 0.3)
-print("差值比较:", abs((0.1 + 0.2) - 0.3) < 1e-9)`
+print("差值比较:", abs((0.1 + 0.2) - 0.3) < 1e-9)`,
+            callouts: [
+              { variant: 'error', label: '常见错误', content: '浮点数用二进制近似存储，0.1 + 0.2 != 0.3 是所有语言的共性问题；做相等判断必须用差值比较而非 ==。' }
+            ]
           }
         ],
         codeExample: `raw = "12.5"
@@ -707,11 +752,14 @@ c = a
 
 print("a == b:", a == b)   # 内容相同
 print("a is b:", a is b)   # 不同对象
-print("a is c:", a is c)   # c 就是 a`
+print("a is c:", a is c)   # c 就是 a`,
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: '== 调用 __eq__ 比较值，is 比较内存地址是否相同；两个内容相同的列表 == 为 True 但 is 为 False，因为它们是不同对象。' }
+            ]
           },
           {
             heading: '判断 None 用 is None',
-            text: 'None 在整个程序里只有一个对象，Python 官方规范要求判断是否为 None 用 `is None` 而不是 `== None`。这是因为自定义类可能重写 __eq__ 导致 == 行为异常，而 is 永远可靠。',
+            text: 'None 在整个程序里只有一个对象，Python 官方规范要求判断是否为 None 用 `is None` 而不是 `== None`。自定义类可能重写 __eq__ 导致 == 行为异常，is 比较身份永远可靠。',
             code: `result = None
 
 if result is None:
@@ -719,7 +767,10 @@ if result is None:
 
 x = 0
 print("x 是 None 吗:", x is None)
-print("x 不是 None 吗:", x is not None)`
+print("x 不是 None 吗:", x is not None)`,
+            callouts: [
+              { variant: 'error', label: '最佳实践', content: '判断 None 必须用 is None 而非 == None，因为自定义类可能重写 __eq__ 导致 == 行为异常，is 比较身份永远可靠。' }
+            ]
           }
         ],
         codeExample: `a = [1, 2, 3]

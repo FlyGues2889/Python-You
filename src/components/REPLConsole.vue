@@ -3,7 +3,7 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { ConsoleOutput, AppConfig } from '../types';
 import { nativePython } from '../utils/nativePython';
 import { paneScroller, watchPaneScroll } from '../utils/contentPane';
-import { toDisplayLines } from '../utils/consoleLines';
+import { toDisplayLines, displayTextOf } from '../utils/consoleLines';
 import { semanticClassOf, isCollapsible, isImage } from '../utils/consoleView';
 import { useReplInput } from '../utils/replInput';
 import { useI18n } from '../utils/i18n';
@@ -167,7 +167,7 @@ const clearLogs = () => {
               }}</span>
             <span>{{ expandedLogs.has(line.out.id) ? t('tracebackCollapse') : t('tracebackExpand') }}</span>
           </button>
-          <pre v-if="!isImage(line.out)" v-show="!isCollapsible(line.out) || expandedLogs.has(line.out.id)">{{ line.text }}</pre>
+          <pre v-if="!isImage(line.out)" v-show="!isCollapsible(line.out) || expandedLogs.has(line.out.id)">{{ displayTextOf(line) }}</pre>
           <img v-else class="repl-img" :src="line.out.image" alt="matplotlib chart" />
         </div>
 

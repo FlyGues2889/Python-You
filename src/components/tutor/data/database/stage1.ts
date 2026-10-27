@@ -12,9 +12,9 @@ export const dbStage1: TutorialStage = {
       stage: '数据库 > 入门与 SQLite',
       summary: '数据库是一张可以长期保存、随时查询的超级表格，比 Excel 和 Python 字典更适合管数据。',
       content: {
-        overview: '你已经会用列表和字典在程序里存数据了，但这些数据一关程序就没了。数据库（Database）就是一个能把数据长期存到硬盘、并且能按条件快速查找的「超级表格柜」。这一课先建立概念：什么时候该用数据库，它和我们已经会的工具有什么区别。',
+        overview: '你已经会用列表和字典在程序里存数据了，但这些数据一关程序就没了。数据库（Database）就是一个能把数据长期存到硬盘、并且能按条件快速查找的「超级表格柜」。先建立概念：什么时候该用数据库，和已经会的工具有什么区别。',
         sections: [
-          { heading: '数据库和文件、字典的区别', text: '假设你要管理一个班级 50 个同学的姓名、年龄和成绩。用 Python 字典存在内存里，关掉软件数据就没了；写到 Excel 里，程序想自动读取和计算又很麻烦。数据库正好夹在中间：它像 Excel 一样把数据存成表格长期保存，又能让程序用 SQL 语句快速查询、统计。\n\n我们已经会的存数据方式各有局限：\n• Python 字典：数据只在内存里，程序一停就消失，适合临时计算。\n• 文本文件 / CSV：能长期保存，但查找某条数据要从头读到尾，数据量大了很慢。\n• 数据库：数据长期保存到硬盘，并且自带「索引」，能按条件毫秒级找到目标，还支持多人同时读写。',
+          { heading: '数据库和文件、字典的区别', text: '假设你要管理一个班级 50 个同学的姓名、年龄和成绩。用 Python 字典存在内存里，关掉软件数据就没了；写到 Excel 里，程序想自动读取和计算又很麻烦。数据库正好夹在中间：它像 Excel 一样把数据存成表格长期保存，又能让程序用 SQL 语句快速查询、统计。\n\n已经会的存数据方式各有局限：\n• Python 字典：数据只在内存里，程序一停就消失，适合临时计算。\n• 文本文件 / CSV：能长期保存，但查找某条数据要从头读到尾，数据量大了很慢。\n• 数据库：数据长期保存到硬盘，并且自带「索引」，能按条件毫秒级找到目标，还支持多人同时读写。',
             table: {
               headers: ['存储方式', '数据是否长期保存', '查找速度', '适合数据量', '典型场景'],
               rows: [
@@ -22,13 +22,19 @@ export const dbStage1: TutorialStage = {
                 ['CSV / 文本文件', '是', '慢，需逐行扫描', '中小', '少量数据交换'],
                 ['数据库', '是', '快，支持索引', '中到大', '账单、库存、用户数据']
               ]
-            }
+            },
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: '数据需要长期保存且经常按条件查找时用数据库；只在单次运行中临时计算的用内存字典即可，不必过度设计。' }
+            ]
           },
           {
             heading: '关系型数据库长什么样',
             text: '最常见的一类叫「关系型数据库」，它把数据存成一张张二维表，就像 Excel 工作表：每一行是一条记录（比如一个同学），每一列是一个字段（比如姓名、年龄）。表和表之间可以通过共同的字段关联起来，比如「成绩表」里存学号，就能关联到「学生表」里的姓名。\n操作这种数据库用的语言叫 SQL（Structured Query Language，结构化查询语言），它不是用来写程序逻辑的，而是专门用来「增、删、改、查」表格数据。',
             code: `# 先直观感受一下：用 Python 字典模拟一张内存表\nstudents = [\n    {"name": "小林", "age": 16, "score": 88},\n    {"name": "小陈", "age": 17, "score": 92},\n    {"name": "小王", "age": 16, "score": 75},\n]\n\n# 找出成绩大于 80 的同学\nfor s in students:\n    if s["score"] > 80:\n        print(s["name"], s["score"])`,
-            notes: '这段代码只是感受「表格 + 条件筛选」的思路。真正的数据库会把这张表存到硬盘，并用专门的 SQL 语句完成同样的事。'
+            notes: '这段代码只是感受「表格 + 条件筛选」的思路。真正的数据库会把这张表存到硬盘，并用专门的 SQL 语句完成同样的事。',
+            callouts: [
+              { variant: 'secondary', label: '补充说明', content: 'SQL 只负责增删改查数据，不写循环、分支等程序逻辑。复杂业务逻辑仍用 Python 处理，SQL 负责数据存取。' }
+            ]
           },
         ],
         codeExample: `# 用字典做一次简单筛选，体会「表 + 查询」的思路\nbooks = [\n    {"title": "西游记", "price": 45},\n    {"title": "三国演义", "price": 60},\n    {"title": "水浒传", "price": 38},\n]\n\nexpensive = [b["title"] for b in books if b["price"] >= 40]\nprint("40 元及以上的书:", expensive)`,
@@ -50,7 +56,7 @@ export const dbStage1: TutorialStage = {
       stage: '数据库 > 入门与 SQLite',
       summary: 'SQLite 是一个零配置的轻量级数据库，整个数据库就是一个文件，Python 自带它。',
       content: {
-        overview: '数据库有很多种，比如 MySQL、PostgreSQL、Oracle，它们都需要安装服务器、配置账号密码。但学习阶段我们用 SQLite：它不需要安装服务器，整个数据库就是硬盘上的一个文件，Python 标准库直接带了 sqlite3 模块，打开就能用。',
+        overview: '数据库有很多种，比如 MySQL、PostgreSQL、Oracle，它们都需要安装服务器、配置账号密码。但学习阶段用 SQLite 就够：它不需要安装服务器，整个数据库就是硬盘上的一个文件，Python 标准库直接带了 sqlite3 模块，打开就能用。',
         sections: [
           { heading: '为什么学习选 SQLite', text: 'MySQL 像一家大型连锁超市：货品齐全、能同时服务很多人，但要租店面、办执照、雇人管理。SQLite 像家里的冰箱：不用开业手续，插上电就能用，适合自己一个人存东西。学习和做小工具时，SQLite 完全够用。\n\nSQLite 有三个对新手特别友好的特点：\n1. 零配置：不用安装、不用启动服务、不用设账号密码。\n2. 单文件：整个数据库就是一个 .db 文件，备份就是复制这个文件。\n3. 标准库自带：Python 里 import sqlite3 就能用，本应用内置的运行环境也支持。\n它和 MySQL、PostgreSQL 用的几乎是同一套 SQL 语句，学会 SQLite，以后换其他数据库只改连接方式即可。',
             table: {
@@ -60,12 +66,18 @@ export const dbStage1: TutorialStage = {
                 ['MySQL', '需要，单独服务', '服务端 + 数据目录', '网站后端、业务系统'],
                 ['PostgreSQL', '需要，单独服务', '服务端 + 数据目录', '复杂业务、地理数据']
               ]
-            }
+            },
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: 'SQLite 的 SQL 语法与 MySQL、PostgreSQL 几乎一致，学会后迁移只需改连接方式，学习投入不会浪费。' }
+            ]
           },
           {
             heading: '两种连接方式',
             text: 'sqlite3.connect(路径) 用来连接数据库：\n• 传入一个文件名（如 "school.db"）：数据会保存到这个文件，下次打开还在。\n• 传入 ":memory:"：在内存里建一个临时数据库，程序结束就清空，特别适合练习和测试。\n本系列的示例为了每次运行结果一致、不污染硬盘，统一用 ":memory:"。',
-            code: `import sqlite3\n\n# :memory: 表示在内存中建一个临时数据库，不产生文件\nconn = sqlite3.connect(":memory:")\nprint("数据库连接成功")\n\n# 用完一定要关闭连接\nconn.close()`
+            code: `import sqlite3\n\n# :memory: 表示在内存中建一个临时数据库，不产生文件\nconn = sqlite3.connect(":memory:")\nprint("数据库连接成功")\n\n# 用完一定要关闭连接\nconn.close()`,
+            callouts: [
+              { variant: 'error', label: '常见错误', content: 'connect 用完不 close 可能导致数据库文件被锁，其他程序无法访问。养成用完即关的习惯，或用 with 语句自动关闭。' }
+            ]
           },
         ],
         codeExample: `import sqlite3\n\n# 连接内存数据库，创建并关闭\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("SELECT 1 + 1")\nrow = cur.fetchone()\nprint("查询结果:", row[0])\nconn.close()`,
@@ -87,11 +99,14 @@ export const dbStage1: TutorialStage = {
       stage: '数据库 > 入门与 SQLite',
       summary: '用 connect 连接数据库，用 CREATE TABLE 建一张带字段的空表。',
       content: {
-        overview: '用数据库存数据的第一步是「建表」。就像先画好表格的表头（姓名、年龄、成绩），后面才能往里填一行行数据。这一课学会连接数据库、写 CREATE TABLE 语句定义表结构。',
+        overview: '用数据库存数据的第一步是「建表」。就像先画好表格的表头（姓名、年龄、成绩），后面才能往里填一行行数据。学会连接数据库、写 CREATE TABLE 语句定义表结构。',
         sections: [
           { heading: '建表语句 CREATE TABLE', text: '新建 Excel 表格时，你会先在第一行写下表头：姓名、年龄、成绩。建表就是用 SQL 把这个表头告诉数据库：这张表叫什么、有哪几列、每列存什么类型的数据。\n\n基本格式是：\nCREATE TABLE 表名 (\n    字段名 类型,\n    字段名 类型\n);\nSQLite 常用的数据类型：\n• INTEGER：整数\n• REAL：小数\n• TEXT：文本\n• 建表时加上 IF NOT EXISTS，表示「不存在才建」，重复运行不会报错。',
             code: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\n\n# 建一张 students 表：id 为主键，name 为文本，age 为整数，score 为小数\ncur.execute("""\n    CREATE TABLE students (\n        id INTEGER PRIMARY KEY,\n        name TEXT,\n        age INTEGER,\n        score REAL\n    )\n""")\n\n# 查看数据库里有哪些表\ncur.execute("SELECT name FROM sqlite_master WHERE type='table'")\nprint("已建表:", cur.fetchall())\nconn.close()`,
-            notes: 'SQL 语句里的三引号字符串可以换行写，让建表语句更像表格本身。'
+            notes: 'SQL 语句里的三引号字符串可以换行写，让建表语句更像表格本身。',
+            callouts: [
+              { variant: 'tertiary', label: '小技巧', content: '建表加 IF NOT EXISTS 后可重复执行不报错，调试时反复运行脚本不用先手动删表。' }
+            ]
           },
           {
             heading: '主键是什么',
@@ -104,7 +119,10 @@ export const dbStage1: TutorialStage = {
                 ['age', 'INTEGER', '年龄，整数'],
                 ['score', 'REAL', '成绩，小数']
               ]
-            }
+            },
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: '主键给每行一个不重复编号，INTEGER PRIMARY KEY 还会自动递增，插入时不用手动指定，数据库自动分配。' }
+            ]
           },
         ],
         codeExample: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\n\ncur.execute("""\n    CREATE TABLE books (\n        id INTEGER PRIMARY KEY,\n        title TEXT,\n        price REAL\n    )\n""")\n\ncur.execute("SELECT name FROM sqlite_master WHERE type='table'")\nprint("表清单:", cur.fetchall())\nconn.close()`,
@@ -126,16 +144,22 @@ export const dbStage1: TutorialStage = {
       stage: '数据库 > 入门与 SQLite',
       summary: '用 INSERT INTO 往表里添加一行行记录，一次插多行用 executemany。',
       content: {
-        overview: '表建好了，接下来往里填数据。SQL 用 INSERT INTO 语句插入一行记录。这一课学会插一条、插多条，以及如何取回数据库自动生成的 id。',
+        overview: '表建好了，接下来往里填数据。SQL 用 INSERT INTO 语句插入一行记录。学会插一条、插多条，以及如何取回数据库自动生成的 id。',
         sections: [
           { heading: '插入一行 INSERT INTO', text: '建表就像打印了一张空白登记表，INSERT 就是在表里新填一行。你不用写学号（主键自动生成），只要填姓名、年龄、成绩即可。\n\n基本格式：\nINSERT INTO 表名 (字段1, 字段2) VALUES (值1, 值2);\n字符串值要用单引号括起来，数字直接写。执行后要调用 conn.commit() 提交，数据才真正写进数据库。',
-            code: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT, age INTEGER, score REAL)")\n\n# 插入一行：id 不写，让它自动生成\ncur.execute("INSERT INTO students (name, age, score) VALUES ('小林', 16, 88.5)")\n\n# lastrowid 是刚插入那一行的主键 id\nprint("刚插入的 id:", cur.lastrowid)\nconn.commit()\nconn.close()`
+            code: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT, age INTEGER, score REAL)")\n\n# 插入一行：id 不写，让它自动生成\ncur.execute("INSERT INTO students (name, age, score) VALUES ('小林', 16, 88.5)")\n\n# lastrowid 是刚插入那一行的主键 id\nprint("刚插入的 id:", cur.lastrowid)\nconn.commit()\nconn.close()`,
+            callouts: [
+              { variant: 'error', label: '常见错误', content: '忘了 commit 是新手最常见的问题：数据看起来插进去了，但一关连接全没了，因为改动还在内存里没落盘。' }
+            ]
           },
           {
             heading: '一次插入多行',
             text: '如果要一次插入很多行，重复写 execute 会很慢。用 executemany 配合占位符 ?，把多行数据放在一个列表里一次提交。这也是后面「参数化查询」的基础。',
             code: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT, age INTEGER, score REAL)")\n\n# 用 ? 做占位符，第二行传入数据列表\nrows = [("小陈", 17, 92.0), ("小王", 16, 75.5), ("小赵", 18, 81.0)]\ncur.executemany("INSERT INTO students (name, age, score) VALUES (?, ?, ?)", rows)\n\nprint("当前行数:", cur.execute("SELECT COUNT(*) FROM students").fetchone()[0])\nconn.commit()\nconn.close()`,
-            notes: '问号 ? 是 sqlite3 的占位符，不要用字符串拼接把数值直接塞进 SQL，那样既慢又有安全隐患。'
+            notes: '问号 ? 是 sqlite3 的占位符，不要用字符串拼接把数值直接塞进 SQL，那样既慢又有安全隐患。',
+            callouts: [
+              { variant: 'error', label: '避免踩坑', content: '字符串拼接 SQL 有注入风险：恶意输入可篡改 SQL 结构查到不该看的数据。永远用 ? 占位符传参。' }
+            ]
           },
         ],
         codeExample: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE fruits (id INTEGER PRIMARY KEY, name TEXT, price REAL)")\n\ncur.executemany(\n    "INSERT INTO fruits (name, price) VALUES (?, ?)",\n    [("苹果", 5.5), ("香蕉", 3.0), ("橙子", 4.2)]\n)\n\nprint("已录入水果种类:", cur.execute("SELECT COUNT(*) FROM fruits").fetchone()[0])\nconn.commit()\nconn.close()`,
@@ -157,10 +181,13 @@ export const dbStage1: TutorialStage = {
       stage: '数据库 > 入门与 SQLite',
       summary: '用 SELECT 读取数据，用 WHERE 按条件筛选，用 fetchone / fetchall 拿结果。',
       content: {
-        overview: '数据库最常用的操作不是存，而是查。SELECT 语句用来从表里读取数据，配合 WHERE 就能「只要成绩大于 80 的同学」这种条件筛选。这是 SQL 里用得最多的一课。',
+        overview: '数据库最常用的操作不是存，而是查。SELECT 语句用来从表里读取数据，配合 WHERE 就能「只要成绩大于 80 的同学」这种条件筛选。这是 SQL 里用得最多的操作。',
         sections: [
-          { heading: '基本查询 SELECT', text: 'SELECT 就像你对着表格柜说：「把所有记录给我念出来」；WHERE 是补充条件：「只要成绩大于 80 的那些」。查完用 fetchone 拿一条、fetchall 拿全部。\n\n读取所有列用 SELECT *，也可以只写要的字段名：\n• SELECT * FROM students：拿全部列。\n• SELECT name, score FROM students：只拿姓名和成绩两列。\n结果是一组元组，用 fetchone() 取一行、fetchall() 取全部行。',
-            code: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT, age INTEGER, score REAL)")\ncur.executemany("INSERT INTO students (name, age, score) VALUES (?, ?, ?)",\n                [("小林", 16, 88.5), ("小陈", 17, 92.0), ("小王", 16, 75.5)])\n\n# 查全部行的全部列\nfor row in cur.execute("SELECT name, age, score FROM students"):\n    print(row)\nconn.close()`
+          { heading: '基本查询 SELECT', text: 'SELECT 就像对着表格柜说：「把所有记录给我念出来」；WHERE 是补充条件：「只要成绩大于 80 的那些」。查完用 fetchone 拿一条、fetchall 拿全部。\n\n读取所有列用 SELECT *，也可以只写要的字段名：\n• SELECT * FROM students：拿全部列。\n• SELECT name, score FROM students：只拿姓名和成绩两列。\n结果是一组元组，用 fetchone() 取一行、fetchall() 取全部行。',
+            code: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT, age INTEGER, score REAL)")\ncur.executemany("INSERT INTO students (name, age, score) VALUES (?, ?, ?)",\n                [("小林", 16, 88.5), ("小陈", 17, 92.0), ("小王", 16, 75.5)])\n\n# 查全部行的全部列\nfor row in cur.execute("SELECT name, age, score FROM students"):\n    print(row)\nconn.close()`,
+            callouts: [
+              { variant: 'error', label: '常见错误', content: '生产环境避免 SELECT *，明确列出所需字段：减少传输量，且表新增列时不会意外查出不需要的数据。' }
+            ]
           },
           {
             heading: '按条件筛选 WHERE',
@@ -175,7 +202,10 @@ export const dbStage1: TutorialStage = {
                 ["WHERE score > 80 AND age < 18", '成绩高于 80 且年龄小于 18'],
                 ["WHERE name LIKE '小%'", '姓名以「小」开头']
               ]
-            }
+            },
+            callouts: [
+              { variant: 'tertiary', label: '小技巧', content: "LIKE '小%' 匹配以「小」开头，% 代表任意若干字符、_ 代表单个字符；SQLite 的 LIKE 默认不区分大小写。" }
+            ]
           },
         ],
         codeExample: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL)")\ncur.executemany("INSERT INTO products (name, price) VALUES (?, ?)",\n                [("铅笔", 2.0), ("笔记本", 8.5), ("钢笔", 15.0), ("橡皮", 1.5)])\n\nprint("10 元以下的商品：")\nfor row in cur.execute("SELECT name, price FROM products WHERE price < 10"):\n    print(row[0], row[1])\nconn.close()`,
@@ -197,16 +227,22 @@ export const dbStage1: TutorialStage = {
       stage: '数据库 > 入门与 SQLite',
       summary: '用 UPDATE 修改已有行，用 DELETE 删行；永远先加 WHERE，避免误改全表。',
       content: {
-        overview: '数据存进去后难免要改：某个同学成绩录错了要改，某个同学退学了要删。SQL 用 UPDATE 修改行、用 DELETE 删除行。这一课最重要的不是语法，而是安全习惯：改和删都要带 WHERE。',
+        overview: '数据存进去后难免要改：某个同学成绩录错了要改，某个同学退学了要删。SQL 用 UPDATE 修改行、用 DELETE 删除行。最重要的不是语法，而是安全习惯：改和删都要带 WHERE。',
         sections: [
           { heading: 'UPDATE 修改数据', text: '想象一张纸质登记表，UPDATE 就是拿橡皮擦掉某一行的成绩、改写新值；DELETE 就是把整行划掉。危险在于：如果不指明「哪一行」，就可能把整张表的成绩都改成同一个数。\n\n格式：UPDATE 表 SET 字段 = 新值 WHERE 条件;\n• SET 后面写要改成什么。\n• WHERE 指定改哪些行；忘了 WHERE 会把全表所有行都改掉。\n修改完同样要 commit()。',
-            code: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT, score REAL)")\ncur.executemany("INSERT INTO students (name, score) VALUES (?, ?)",\n                [("小林", 88.5), ("小陈", 92.0)])\n\n# 把小林的成绩改成 95\ncur.execute("UPDATE students SET score = 95 WHERE name = '小林'")\nconn.commit()\n\nfor row in cur.execute("SELECT name, score FROM students"):\n    print(row[0], row[1])\nconn.close()`
+            code: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT, score REAL)")\ncur.executemany("INSERT INTO students (name, score) VALUES (?, ?)",\n                [("小林", 88.5), ("小陈", 92.0)])\n\n# 把小林的成绩改成 95\ncur.execute("UPDATE students SET score = 95 WHERE name = '小林'")\nconn.commit()\n\nfor row in cur.execute("SELECT name, score FROM students"):\n    print(row[0], row[1])\nconn.close()`,
+            callouts: [
+              { variant: 'error', label: '常见错误', content: 'UPDATE 忘写 WHERE 会把全表所有行改成同一个值，这是最危险的新手错误。建议先写 WHERE 再写 SET。' }
+            ]
           },
           {
             heading: 'DELETE 删除数据',
             text: '格式：DELETE FROM 表 WHERE 条件;\n删除同样要带 WHERE。下面例子演示删除成绩低于 80 的行。删除是不可逆的，重要数据先备份。',
             code: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE students (id INTEGER PRIMARY KEY, name TEXT, score REAL)")\ncur.executemany("INSERT INTO students (name, score) VALUES (?, ?)",\n                [("小林", 88.5), ("小陈", 92.0), ("小王", 75.5)])\n\n# 删除成绩低于 80 的行\ncur.execute("DELETE FROM students WHERE score < 80")\nconn.commit()\n\nprint("删除后剩余：")\nfor row in cur.execute("SELECT name, score FROM students"):\n    print(row[0], row[1])\nconn.close()`,
-            notes: '强烈建议：写 UPDATE / DELETE 时先写一句 SELECT 同样的 WHERE 看看会命中哪些行，确认无误再执行修改。'
+            notes: '强烈建议：写 UPDATE / DELETE 时先写一句 SELECT 同样的 WHERE 看看会命中哪些行，确认无误再执行修改。',
+            callouts: [
+              { variant: 'error', label: '避免踩坑', content: 'DELETE 不可逆且无回收站，操作前先复制 .db 文件备份，或用同样的 WHERE 跑 SELECT 确认命中范围。' }
+            ]
           },
         ],
         codeExample: `import sqlite3\n\nconn = sqlite3.connect(":memory:")\ncur = conn.cursor()\ncur.execute("CREATE TABLE books (id INTEGER PRIMARY KEY, title TEXT, price REAL)")\ncur.executemany("INSERT INTO books (title, price) VALUES (?, ?)",\n                [("西游", 45), ("三国", 60), ("水浒", 38)])\n\n# 把「水浒」涨价到 42 元，然后查看\ncur.execute("UPDATE books SET price = 42 WHERE title = '水浒'")\nconn.commit()\n\nfor row in cur.execute("SELECT title, price FROM books"):\n    print(row[0], row[1])\nconn.close()`,

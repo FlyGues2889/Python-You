@@ -11,10 +11,18 @@ import { addBackendTask, updateBackendTask, finishBackendTask } from '../utils/b
 import { getVersion } from '@tauri-apps/api/app';
 import PageHeader from './PageHeader.vue';
 import EditorPreview from './EditorPreview.vue';
+import PluginManager from './PluginManager.vue';
+import { getPluginThemes } from '../utils/pluginManager';
 
-const props = defineProps<{ config: AppConfig }>();
+const props = defineProps<{ config: AppConfig; updateDialogTrigger?: number }>();
 
 const { t } = useI18n();
+
+const isPluginManagerOpen = ref(false);
+const pluginThemes = computed(() => getPluginThemes());
+const onPluginThemeChange = (e: Event) => {
+  props.config.pluginThemeId = (e.target as any).value || undefined;
+};
 
 // Settings 面板控件事件（m3e 组件事件 → 更新 config）
 // config 是 App.vue 传入的响应式对象：直接改属性会触发 App 的 watch 自动持久化。
@@ -239,6 +247,8 @@ const onUpdateButtonClick = () => {
   }
 };
 
+watch(() => props.updateDialogTrigger, (v) => { if (v && v > 0) onUpdateButtonClick(); });
+
 // 离开设置页时摘掉进度监听（下载本身在后端继续，回到标题栏后台任务可见）
 onBeforeUnmount(() => {
   stopProgress();
@@ -282,9 +292,35 @@ const clearLocalData = () => {
                 <m3e-button toggle variant="tonal" shape="square" size="small" data-mode="light"
                   :selected="config.themeMode === 'light'" @change="onThemeModeToggle">{{ t('themeLight')
                   }}</m3e-button>
-                <m3e-button toggle variant="tonal" shape="square" size="small" data-mode="dark" :selected="config.themeMode === 'dark'"
-                  @change="onThemeModeToggle">{{ t('themeDark') }}</m3e-button>
+                <m3e-button toggle variant="tonal" shape="square" size="small" data-mode="dark"
+                  :selected="config.themeMode === 'dark'" @change="onThemeModeToggle">{{ t('themeDark') }}</m3e-button>
               </m3e-button-group>
+            </div>
+          </m3e-list-item>
+          <m3e-list-item>
+            <span slot="leading" class="material-symbols-rounded">extension</span>
+            {{ t('pluginSettings') }}
+            <span slot="supporting-text">{{ t('pluginSettingsSubtitle') }}</span>
+            <div slot="trailing" class="settings-trailing">
+              <m3e-button variant="outlined" size="small" @click="isPluginManagerOpen = true">
+                <span slot="icon" class="material-symbols-rounded">tune</span>
+                {{ t('pluginManage') }}
+              </m3e-button>
+            </div>
+          </m3e-list-item>
+          <m3e-list-item v-if="pluginThemes.length > 0">
+            <span slot="leading" class="material-symbols-rounded">palette</span>
+            {{ t('pluginTheme') }}
+            <span slot="supporting-text">{{ t('pluginThemeSubtitle') }}</span>
+            <div slot="trailing" class="settings-trailing">
+              <m3e-select class="theme-select" panel-class="theme-select-panel" @change="onPluginThemeChange">
+                <m3e-option value="" :selected="!config.pluginThemeId">{{ t('themeSystem') }}</m3e-option>
+                <m3e-option v-for="entry in pluginThemes" :key="`${entry.pluginId}:${entry.theme.id}`"
+                  :value="`${entry.pluginId}:${entry.theme.id}`"
+                  :selected="config.pluginThemeId === `${entry.pluginId}:${entry.theme.id}`">
+                  {{ entry.theme.name }}
+                </m3e-option>
+              </m3e-select>
             </div>
           </m3e-list-item>
         </m3e-list>
@@ -314,7 +350,8 @@ const clearLocalData = () => {
                 <!-- 按深/浅色分组展示：深色组在前（默认选中项保持首位） -->
                 <m3e-optgroup>
                   <span slot="label">{{ t('themeDark') }}</span>
-                  <m3e-option value="github-dark" :selected="config.codeTheme === 'github-dark'">GitHub Dark</m3e-option>
+                  <m3e-option value="github-dark" :selected="config.codeTheme === 'github-dark'">GitHub
+                    Dark</m3e-option>
                   <m3e-option value="monokai" :selected="config.codeTheme === 'monokai'">Monokai</m3e-option>
                   <m3e-option value="one-dark" :selected="config.codeTheme === 'one-dark'">One Dark</m3e-option>
                   <m3e-option value="vs-code" :selected="config.codeTheme === 'vs-code'">VS Code</m3e-option>
@@ -359,10 +396,10 @@ const clearLocalData = () => {
             <span slot="supporting-text">{{ t('tabSizeSubtitle') }}</span>
             <div slot="trailing" class="settings-trailing">
               <m3e-button-group variant="connected" size="small" class="settings-btn-group">
-                <m3e-button toggle variant="tonal" shape="square" size="small" data-size="2" :selected="config.tabSize === 2"
-                  @change="onTabSizeToggle">2 Spaces</m3e-button>
-                <m3e-button toggle variant="tonal" shape="square" size="small" data-size="4" :selected="config.tabSize === 4"
-                  @change="onTabSizeToggle">4 Spaces</m3e-button>
+                <m3e-button toggle variant="tonal" shape="square" size="small" data-size="2"
+                  :selected="config.tabSize === 2" @change="onTabSizeToggle">2 Spaces</m3e-button>
+                <m3e-button toggle variant="tonal" shape="square" size="small" data-size="4"
+                  :selected="config.tabSize === 4" @change="onTabSizeToggle">4 Spaces</m3e-button>
               </m3e-button-group>
             </div>
           </m3e-list-item>
@@ -447,7 +484,7 @@ const clearLocalData = () => {
                 :disabled="updateStage === 'checking' || updateStage === 'downloading' || updateStage === 'preparing'"
                 @click="onUpdateButtonClick">
                 <span slot="icon" class="material-symbols-rounded">{{ canInstallUpdate ? 'system_update_alt' : 'refresh'
-                  }}</span>
+                }}</span>
                 {{ canInstallUpdate ? t('updateNow') : t('checkUpdate') }}
               </m3e-button>
             </div>
@@ -462,15 +499,8 @@ const clearLocalData = () => {
               <m3e-switch :checked="!!config.disableUpdateCheck" @change="onDisableUpdateCheckChange" />
             </div>
           </m3e-list-item>
-        </m3e-list>
-      </m3e-card>
 
-      <!-- Data Management（FR-8.2：清除本地数据） -->
-      <m3e-card variant="outlined">
-        <div slot="header" class="settings-card-header">
-          <h4 class="settings-card-title">{{ t('dataSettings') }}</h4>
-        </div>
-        <m3e-list slot="content">
+
           <m3e-list-item>
             <span slot="leading" class="material-symbols-rounded">delete_forever</span>
             {{ t('clearData') }}
@@ -544,6 +574,9 @@ const clearLocalData = () => {
         </template>
       </div>
     </m3e-dialog>
+
+    <PluginManager :open="isPluginManagerOpen" @cancel="isPluginManagerOpen = false"
+      @closed="isPluginManagerOpen = false" />
   </m3e-content-pane>
 </template>
 
@@ -553,7 +586,8 @@ const clearLocalData = () => {
   /* 与 REPL 终端卡片一致：surface 色卡片充满整个页面，留 12px 外边距与 10px 圆角；
      背景/圆角/内边距由 m3e-content-pane 的 shadow 内元素绘制，经变量控制 */
   margin: 0 12px 12px;
-  --m3e-content-pane-container-shape: 12px; /* CornerMedium，与其余主面板一致 */
+  --m3e-content-pane-container-shape: 12px;
+  /* CornerMedium，与其余主面板一致 */
   --m3e-content-pane-container-color: var(--surface-color);
   --m3e-content-pane-container-padding: 2rem;
 }
@@ -687,7 +721,7 @@ const clearLocalData = () => {
 /* 代码主题选择框：补上边框颜色（m3e-select 默认无边框） */
 .theme-select {
   width: 12rem;
-  padding:0.8rem 1rem 0.8rem 1.4rem;
+  padding: 0.8rem 1rem 0.8rem 1.4rem;
   border: 1.4px solid var(--border-color-muted);
   border-radius: var(--m3e-select-container-shape, 8px);
 }
@@ -716,8 +750,8 @@ const clearLocalData = () => {
 }
 
 m3e-card {
-  --m3e-card-padding:1rem;
-  --m3e-card-container-color:var(--bg-color);
+  --m3e-card-padding: 1rem;
+  --m3e-card-container-color: var(--bg-color);
 }
 </style>
 

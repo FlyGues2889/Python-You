@@ -25,6 +25,7 @@ import {
 import { type TutorialStage, type TutorialTopic } from './tutorialData';
 import TutorialFormattedText from './TutorialFormattedText.vue';
 import { useI18n } from '../../utils/i18n';
+import { pushNotification } from '../../utils/notifications';
 
 const { t, tf } = useI18n();
 
@@ -182,10 +183,9 @@ const moveOrderItem = (q: QuizOrderQuestion, position: number, delta: number) =>
   saveAnswer(q.id, order);
 };
 
-// 提交测验的 snackbar 反馈（self-contained，不依赖 App 事件链）
-const quizSnackMsg = ref('');
+// 提交测验的反馈通知（通过标题栏通知区显示）
 const showQuizSnack = (msg: string) => {
-  quizSnackMsg.value = msg;
+  pushNotification(msg);
 };
 
 const submitAnswers = () => {
@@ -414,12 +414,6 @@ const isQuestionPass = (q: QuizQuestion) =>
       </template>
     </div>
   </m3e-content-pane>
-
-  <!-- 提交测验 / 重置的 snackbar 反馈 -->
-  <m3e-snackbar :open="!!quizSnackMsg" :duration="4000"
-    @toggle="(e: Event) => { if ((e as any).newState === 'closed') quizSnackMsg = ''; }">
-    {{ quizSnackMsg }}
-  </m3e-snackbar>
 </template>
 
 <style scoped>

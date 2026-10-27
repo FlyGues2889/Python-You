@@ -21,8 +21,8 @@ importers:
         specifier: ^1.1.19
         version: 1.1.19
       '@m3e/web':
-        specifier: ^2.7.4
-        version: 2.7.4(@floating-ui/utils@0.2.12)(lit@3.3.3)(tslib@2.8.1)
+        specifier: ^2.10.0
+        version: 2.10.0(@floating-ui/utils@0.2.12)(lit@3.3.3)(tslib@2.8.1)
       '@tauri-apps/api':
         specifier: ^2.11.1
         version: 2.11.1
@@ -287,8 +287,8 @@ packages:
   '@lit/reactive-element@2.1.2':
     resolution: {integrity: sha512-pbCDiVMnne1lYUIaYNN5wrwQXDtHaYtg7YEFPeW+hws6U47WeFvISGUWekPGKWOP1ygrs0ef0o1VJMk1exos5A==}
 
-  '@m3e/web@2.7.4':
-    resolution: {integrity: sha512-Yb79TRBy2TjOGxsuR0320EDLs5IjdOYoZLXjYvtuWeXXRGIj/EmdiZtP0plpSuClhEEMrM6g3zTJESg57eM16A==}
+  '@m3e/web@2.10.0':
+    resolution: {integrity: sha512-WJYVT1Grx6DviMh3av3KXSPi2/4qXLwj/dL6KwWqkkFc8GDgQliKTTEY9yfUxome398nfK0Y0gr7vkfIFG8E+w==}
     peerDependencies:
       lit: ^3.3.0
       tslib: ^2.8.1
@@ -1156,7 +1156,7 @@ snapshots:
     dependencies:
       '@lit-labs/ssr-dom-shim': 1.6.0
 
-  '@m3e/web@2.7.4(@floating-ui/utils@0.2.12)(lit@3.3.3)(tslib@2.8.1)':
+  '@m3e/web@2.10.0(@floating-ui/utils@0.2.12)(lit@3.3.3)(tslib@2.8.1)':
     dependencies:
       '@floating-ui/dom': 1.8.0
       '@material/material-color-utilities': 0.4.0

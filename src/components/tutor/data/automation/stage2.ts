@@ -15,12 +15,18 @@ export const autoStage2: TutorialStage = {
         overview: '自动化脚本经常要和时间打交道：今天日期是多少、七天后是几号、程序运行了多久。标准库 datetime 提供日期时间的表示和计算，是定时任务的基础。',
         sections: [
           { heading: '获取当前日期', text: 'datetime 像一个日历计算器：它能告诉你今天几号，也能算出「从今天起 30 天后」是哪一天，不用自己数日子。\n\ndatetime.date.today() 拿到今天的日期；datetime.datetime.now() 拿到日期加时间。注意：真实运行时的当前时间取决于系统，示例里为了输出确定，直接用固定日期演示。',
-            code: `from datetime import date, timedelta\n\ntoday = date(2026, 9, 26)\nprint("今天:", today)\nprint("7 天后:", today + timedelta(days=7))\nprint("3 天前:", today - timedelta(days=3))`
+            code: `from datetime import date, timedelta\n\ntoday = date(2026, 9, 26)\nprint("今天:", today)\nprint("7 天后:", today + timedelta(days=7))\nprint("3 天前:", today - timedelta(days=3))`,
+            callouts: [
+              { variant: 'tertiary', label: '小技巧', content: 'strftime("%Y-%m-%d") 把日期转成字符串，常用于生成带日期的文件名，如 backup_2026-09-26.zip。' }
+            ]
           },
           {
             heading: 'timedelta 时间推算',
             text: 'timedelta(days=n) 表示一段时间，和日期相加减就能推算未来或过去的日期。',
-            code: `from datetime import date, timedelta\n\ntoday = date(2026, 9, 26)\nfor i in range(5):\n    day = today + timedelta(days=i)\n    print(f"第{i+1}天: {day.strftime('%Y-%m-%d')}")`
+            code: `from datetime import date, timedelta\n\ntoday = date(2026, 9, 26)\nfor i in range(5):\n    day = today + timedelta(days=i)\n    print(f"第{i+1}天: {day.strftime('%Y-%m-%d')}")`,
+            callouts: [
+              { variant: 'error', label: '常见错误', content: 'timedelta 只能和 date/datetime 对象相加减，不能直接和字符串日期运算，需先用 strptime 把字符串转成日期。' }
+            ]
           },
         ],
         codeExample: `from datetime import date, timedelta\n\nd = date(2026, 1, 1)\nprint("一个月后约:", d + timedelta(days=30))\nprint("格式化:", d.strftime("%Y 年 %m 月 %d 日"))`,
@@ -44,9 +50,12 @@ export const autoStage2: TutorialStage = {
       content: {
         overview: 'os 负责路径，而真正「复制文件、移动文件夹、打包压缩」要靠 shutil（shell 工具）。它是写备份脚本的核心模块：一行代码就能复制或打包整个目录。',
         sections: [
-          { heading: '常用操作', text: 'shutil 像文件的搬运车：copy 是复印一份、move 是搬到别处、make_archive 是把整个文件夹打成一个包裹。\n\n• shutil.copy(源, 目标)：复制单个文件。\n• shutil.move(源, 目标)：移动或重命名。\n• shutil.make_archive(名字, "zip", 目录)：把目录打包成 zip。\n下面用字符串演示备份逻辑，真实操作需在本机指定真实路径。',
+          { heading: '常用操作', text: 'shutil 像文件的搬运车：copy 是复印一份、move 是搬到别处、make_archive 是把整个文件夹打成一个包裹。\n\n• shutil.copy(源, 目标)：复制单个文件。\n• shutil.move(源, 目标)：移动或重命名。\n• shutil.make_archive(名字, "zip", 目录)：把目录打包成 zip。\n用字符串演示备份逻辑，真实操作需在本机指定真实路径。',
             code: `import shutil\n\n# 演示备份思路：把源目录打包成 zip\n# shutil.make_archive("backup_2026", "zip", root_dir="documents")\nprint("备份动作：把 documents 目录打包成 backup_2026.zip")\nprint("源: documents/  →  产物: backup_2026.zip")`,
-            notes: '真实的复制、打包会操作硬盘文件，需在本机 Python 环境指定真实路径运行，本应用内仅演示写法。'
+            notes: '真实的复制、打包会操作硬盘文件，需在本机 Python 环境指定真实路径运行，本应用内仅演示写法。',
+            callouts: [
+              { variant: 'error', label: '避免踩坑', content: 'shutil.move 到的目标路径若已有同名文件会被覆盖，移动前先确认目标无重名，避免误删原有文件。' }
+            ]
           },
         ],
         codeExample: `import shutil\n\nprint("备份流程:")\nprint("1. 复制源文件到备份目录")\nprint("2. 把目录打包成带日期的 zip")`,
@@ -68,15 +77,21 @@ export const autoStage2: TutorialStage = {
       stage: '自动化 > 定时任务',
       summary: '脚本跑完后要留下记录，logging 模块能把运行时间和信息写进日志文件。',
       content: {
-        overview: '自动化脚本常在后台无人值守地跑，出问题时怎么知道发生了什么？答案是日志：程序运行时把关键信息记下来。标准库 logging 能自动加上时间戳写进文件。',
+        overview: '自动化脚本常在后台无人值守地跑，出问题时只能靠日志还原现场：程序运行时把关键信息记下来。标准库 logging 能自动加上时间戳写进文件。',
         sections: [
-          { heading: '用 print 还是 logging', text: '日志像飞机的黑匣子：哪怕程序跑完没人看，事后也能从日志还原「几点几分做了什么、哪里报错」。\n\n简单脚本用 print 就够；需要长期后台运行时用 logging，它自动带时间、能分级、能写文件。下面演示基本写法。',
-            code: `import logging\n\nlogging.basicConfig(level=logging.INFO, format="%(message)s")\n\nlogging.info("脚本开始运行")\nlogging.info("处理了 3 个文件")\nlogging.info("脚本结束")`
+          { heading: '用 print 还是 logging', text: '日志像飞机的黑匣子：哪怕程序跑完没人看，事后也能从日志还原「几点几分做了什么、哪里报错」。\n\n简单脚本用 print 就够；需要长期后台运行时用 logging，它自动带时间、能分级、能写文件。',
+            code: `import logging\n\nlogging.basicConfig(level=logging.INFO, format="%(message)s")\n\nlogging.info("脚本开始运行")\nlogging.info("处理了 3 个文件")\nlogging.info("脚本结束")`,
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: '临时脚本用 print 即可；长期后台运行、需事后排查的脚本必须用 logging，它自带时间戳且能写进文件。' }
+            ]
           },
           {
             heading: '日志级别',
             text: '常见级别从低到高：DEBUG（调试）、INFO（普通信息）、WARNING（警告）、ERROR（错误）。设为 INFO 后，DEBUG 就不显示。',
-            code: `import logging\n\nlogging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")\nlogging.debug("这条不显示")\nlogging.info("这条也不显示")\nlogging.warning("磁盘空间快满了")\nlogging.error("备份失败")`
+            code: `import logging\n\nlogging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")\nlogging.debug("这条不显示")\nlogging.info("这条也不显示")\nlogging.warning("磁盘空间快满了")\nlogging.error("备份失败")`,
+            callouts: [
+              { variant: 'tertiary', label: '小技巧', content: 'level 是阈值而非开关：设为 WARNING 后 DEBUG 和 INFO 都不输出，生产环境常设 INFO 或 WARNING 控制日志量。' }
+            ]
           },
         ],
         codeExample: `import logging\n\nlogging.basicConfig(level=logging.INFO, format="%(message)s")\nlogging.info("开始汇总报表")\nlogging.info("汇总完成，共 12 行数据")`,
@@ -98,15 +113,21 @@ export const autoStage2: TutorialStage = {
       stage: '自动化 > 定时任务',
       summary: '把前面学的组合起来：读数据、统计、打印结果，就是一个实用的自动化脚本。',
       content: {
-        overview: '这一课把文件操作、pandas 统计、日志串成一个完整的小脚本：自动汇总一组销售数据并打印结果。看懂它，你就能改造成自己的自动化工具。',
+        overview: '这一课把文件操作、pandas 统计、日志串成一个完整的小脚本：自动汇总一组销售数据并打印结果。看懂就能改造成自己的自动化工具。',
         sections: [
-          { heading: '完整脚本示例', text: '就像一个自动柜员机：放进去一堆数据（输入），它自动清点统计（处理），吐出一张汇总单（输出）。\n\n下面脚本做三件事：构造数据、按城市分组汇总、打印结果和日志。它不依赖外部文件，离线可跑。',
-            code: `import logging\nimport pandas as pd\nfrom io import StringIO\n\nlogging.basicConfig(level=logging.INFO, format="%(message)s")\n\ncsv_text = "城市,销售额\\n上海,300\\n上海,500\\n北京,200\\n北京,400"\ndf = pd.read_csv(StringIO(csv_text))\n\nlogging.info("开始汇总，共 %d 条记录", len(df))\nsummary = df.groupby("城市")["销售额"].sum()\nfor city, amount in summary.items():\n    print(f"{city}: {amount}")\nlogging.info("汇总完成")`
+          { heading: '完整脚本示例', text: '就像一个自动柜员机：放进去一堆数据（输入），它自动清点统计（处理），吐出一张汇总单（输出）。\n\n脚本做三件事：构造数据、按城市分组汇总、打印结果和日志。它不依赖外部文件，离线可跑。',
+            code: `import logging\nimport pandas as pd\nfrom io import StringIO\n\nlogging.basicConfig(level=logging.INFO, format="%(message)s")\n\ncsv_text = "城市,销售额\\n上海,300\\n上海,500\\n北京,200\\n北京,400"\ndf = pd.read_csv(StringIO(csv_text))\n\nlogging.info("开始汇总，共 %d 条记录", len(df))\nsummary = df.groupby("城市")["销售额"].sum()\nfor city, amount in summary.items():\n    print(f"{city}: {amount}")\nlogging.info("汇总完成")`,
+            callouts: [
+              { variant: 'primary', label: '核心概念', content: '实用自动化脚本常是三段式：读取数据 → 统计处理 → 输出结果。把每步封装成函数，便于复用和单独测试。' }
+            ]
           },
           {
             heading: '怎么改成自己的脚本',
-            text: '改造思路：\n1. 把 csv_text 换成你自己的数据文件（pd.read_csv("你的文件.csv")）。\n2. 把 groupby 的列换成你要统计的维度。\n3. 把结果用 to_csv 保存，或用 logging 记录。\n这就是一个真实可用的自动化报表脚本。',
-            notes: '真实脚本里数据来自文件，这里用 StringIO 模拟，方便离线演示完整流程。'
+            text: '改造思路：\n1. 把 csv_text 换成你自己的数据文件（pd.read_csv("你的文件.csv")）。\n2. 把 groupby 的列换成你要统计的维度。\n3. 把结果用 to_csv 保存，或用 logging 记录。\n改完就是一个真实可用的自动化报表脚本。',
+            notes: '真实脚本里数据来自文件，这里用 StringIO 模拟，方便离线演示完整流程。',
+            callouts: [
+              { variant: 'tertiary', label: '小技巧', content: '改造时先用自己的小数据文件替换 StringIO 模拟数据，跑通后再接真实大文件，逐步替换降低排错难度。' }
+            ]
           },
         ],
         codeExample: `import pandas as pd\nfrom io import StringIO\n\ncsv_text = "商品,数量\\n笔,10\\n笔,7\\n本,5\\n本,9"\ndf = pd.read_csv(StringIO(csv_text))\nprint("各商品总销量:")\nprint(df.groupby("商品")["数量"].sum())`,

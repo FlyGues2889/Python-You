@@ -3,12 +3,17 @@ import { ref, computed } from 'vue';
 import { FSItem } from '../types';
 import FileTreeNode from './FileTreeNode.vue';
 import { useI18n } from '../utils/i18n';
+
 import { vAutofocus, isOverlayCloseBlur, focusInlineInput } from '../utils/inlineEdit';
 
 const props = defineProps<{
   workspaceItems: FSItem[];
   activeFileId: string | null;
   workspaceRoot?: string | null;
+  backendStatusText: string;
+  backendBusy: boolean;
+  hasUpdate: boolean;
+  activeNotification: { message: string } | null;
 }>();
 
 const emit = defineEmits<{
@@ -22,10 +27,14 @@ const emit = defineEmits<{
   (e: 'download-file', item: FSItem): void;
   (e: 'contextmenu-filetree', event: MouseEvent, item: FSItem | null): void;
   (e: 'show-toast', msg: string): void;
+  (e: 'open-backend-tasks'): void;
+  (e: 'navigate-to-update'): void;
+  (e: 'dismiss-notification'): void;
 }>();
 
 const { t } = useI18n();
 const searchQuery = ref('');
+
 
 // 原生本地工作区时，标题显示根目录名
 const rootName = computed(() => {
@@ -233,6 +242,25 @@ const filteredItems = computed(() => {
           @download-file="f => emit('download-file', f)"
           @contextmenu-item="(e, f) => emit('contextmenu-filetree', e, f)" />
       </m3e-content-pane>
+
+      <div class="tree-bottom-bar">
+        <m3e-button class="tree-backend-status" :class="{ 'has-update': hasUpdate }" variant="outlined" size="small" @click="emit('open-backend-tasks')">
+          <m3e-loading-indicator v-show="backendBusy" class="tree-loading-indicator" slot="icon"></m3e-loading-indicator>
+          <span class="tree-status-text">{{ backendStatusText }}</span>
+        </m3e-button>
+        <m3e-icon-button v-if="hasUpdate"variant="tonal" size="small"
+          :title="t('updateAvailableShort')" @click="emit('navigate-to-update')">
+          <span class="material-symbols-rounded">install_desktop</span>
+        </m3e-icon-button>
+
+        <Transition name="notify-fade">
+          <div v-if="activeNotification" class="tree-notification" @click="emit('dismiss-notification')">
+            <span class="material-symbols-rounded tree-notification-icon">notifications</span>
+            <span class="tree-notification-text">{{ activeNotification.message }}</span>
+          </div>
+        </Transition>
+      </div>
+
     </div>
   </div>
 </template>
@@ -346,8 +374,79 @@ const filteredItems = computed(() => {
   padding: 0 7px;
   background-color: var(--surface-color);
 }
+
+
 m3e-list-item {
   margin-top: -0.2rem;
   --md-sys-density-scale: -2;
+  --m3e-list-item-container-color: var(--surface-color);
+}
+
+.tree-bottom-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.tree-notification {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  background-color: var(--surface-color);
+  z-index: 1;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.tree-notification-icon {
+  font-size: 1rem;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.tree-notification-text {
+  font-size: 0.8125rem;
+  color: var(--text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notify-fade-enter-active,
+.notify-fade-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.notify-fade-enter-from,
+.notify-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.tree-backend-status {
+  --m3e-text-button-label-text-color: var(--text-tertiary);
+  width: 100%;
+}
+
+.tree-backend-status.has-update {
+  max-width: calc(100% - 36px);
+}
+
+.tree-status-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-loading-indicator {
+  --m3e-loading-indicator-container-size: 1.4rem;
+  --m3e-loading-indicator-size: 1.4rem;
+  flex-shrink: 0;
 }
 </style>

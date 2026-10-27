@@ -43,6 +43,66 @@ export const toDisplayLines = (outputs: ConsoleOutput[]): DisplayLine[] => {
 };
 
 /**
+ * 解析控制台控制序列，得到「终端实际会显示出的」文本。处理：
+ * - `\r`：光标回到当前行首，后续字符覆盖旧内容（进度条、tqdm 的典型输出）
+ * - `\b`：退格删除光标前一个字符
+ * - ANSI 转义（`\x1b[...` CSI、`\x1b]...` OSC、裸 `\x1b` 前缀）整体剥离，避免把 ESC 序列当作文本显示
+ * 换行保留原语义。用于显示层：合并完成的行先经此还原，再交给终端渲染。
+ */
+export const resolveControlSequences = (text: string): string => {
+  const rows: string[][] = [[]];
+  let row = 0;
+  let col = 0;
+  let i = 0;
+  const n = text.length;
+  while (i < n) {
+    const ch = text[i];
+    if (ch === '\x1b') {
+      const next = text[i + 1];
+      if (next === '[') {
+        let j = i + 2;
+        while (j < n && !(text.charCodeAt(j) >= 0x40 && text.charCodeAt(j) <= 0x7e)) j++;
+        i = j < n ? j + 1 : n;
+      } else if (next === ']') {
+        let j = i + 2;
+        while (j < n && text[j] !== '\x07' && !(text[j] === '\x1b' && text[j + 1] === '\\')) j++;
+        i = j < n ? (text[j] === '\x07' ? j + 1 : j + 2) : n;
+      } else {
+        i += 2;
+      }
+      continue;
+    }
+    if (ch === '\r') {
+      col = 0;
+      i++;
+      continue;
+    }
+    if (ch === '\b') {
+      if (col > 0) {
+        rows[row].splice(col - 1, 1);
+        col--;
+      }
+      i++;
+      continue;
+    }
+    if (ch === '\n') {
+      rows.push([]);
+      row++;
+      col = 0;
+      i++;
+      continue;
+    }
+    rows[row][col] = ch;
+    col++;
+    i++;
+  }
+  return rows.map((r) => r.join('')).join('\n');
+};
+
+/** 一行在终端里的显示文本：原始累积文本（可能含 \r / \b / ANSI 序列）经控制序列解析后的结果 */
+export const displayTextOf = (line: DisplayLine): string => resolveControlSequences(line.text);
+
+/**
  * 流式片段 → 完整行 / 待显示的部分行。
  *
  * 片段约定（与本机引擎 python.rs 的 drain_segments 一致）：

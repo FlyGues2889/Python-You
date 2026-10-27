@@ -10,6 +10,7 @@ import { hljs } from '../utils/highlightSetup';
 import { focusInlineInput, isOverlayCloseBlur } from '../utils/inlineEdit';
 import { formatCodeText } from '../utils/codeFormat';
 import { backspaceIndent, indentForNewLine, indentLines, isInsideStringAt, outdentLines, reindentText, stringAndCommentRanges } from '../utils/pythonIndent';
+import CodeUsageTooltip from './CodeUsageTooltip.vue';
 import 'highlight.js/styles/github-dark.css';
 
 const { t, tf } = useI18n();
@@ -737,18 +738,6 @@ const hoverTooltip = ref<{ visible: boolean; syntax: string; description: string
 });
 let hoverRafId = 0;
 
-// 提示跟随编辑器字号 1:1 缩放；偏移量按同一比例缩放，保证默认字号下的观感不变
-const hoverTipStyle = computed(() => {
-  const fontSize = props.config?.fontSize || 15;
-  const ratio = fontSize / 15;
-  const { x, y } = hoverTooltip.value;
-  return {
-    fontSize: `${fontSize}px`,
-    left: `${x + 12 * ratio}px`,
-    top: y > 44 * ratio ? `${y - 34 * ratio}px` : `${y + 16 * ratio}px`
-  };
-});
-
 const hideHoverTooltip = () => {
   if (hoverTooltip.value.visible) hoverTooltip.value.visible = false;
 };
@@ -808,8 +797,9 @@ const computeHoverTooltip = (e: MouseEvent) => {
     visible: true,
     syntax: usageLines[0],
     description: usageLines.slice(1).join('\n'),
-    x: e.clientX - wrapperRect.left,
-    y: e.clientY - wrapperRect.top
+    // 视口坐标：提示卡片 Teleport 到 body 用 fixed 定位（见 CodeUsageTooltip）
+    x: e.clientX,
+    y: e.clientY
   };
 };
 
@@ -914,7 +904,7 @@ const handleRunCode = async () => {
   emit('add-console-output', {
     id: uid(),
     type: 'system',
-    text: `▶ Executing ${activeTab.value.name}...`,
+    text: `[INFO] 提取文件树中的文件： ${activeTab.value.name}...`,
     timestamp: new Date().toLocaleTimeString()
   });
 
@@ -1548,10 +1538,9 @@ onBeforeUnmount(() => {
             @blur="closeCompletions" @mousemove="handleTextareaMousemove" @mouseleave="hideHoverTooltip"></textarea>
 
           <!-- 代码悬停用法提示（VS Code hover 风格）：悬停关键字/函数/模块名显示简略用法 -->
-          <div v-if="hoverTooltip.visible" class="code-hover-tooltip" :style="hoverTipStyle">
-            <div class="hover-syntax">{{ hoverTooltip.syntax }}</div>
-            <div v-if="hoverTooltip.description" class="hover-desc">{{ hoverTooltip.description }}</div>
-          </div>
+          <CodeUsageTooltip :visible="hoverTooltip.visible" :syntax="hoverTooltip.syntax"
+            :description="hoverTooltip.description" :x="hoverTooltip.x" :y="hoverTooltip.y"
+            :font-size="config?.fontSize || 15" />
 
           <!-- Code Completion Popup -->
           <div v-if="completionVisible && completionItems.length > 0" class="completion-popup"
@@ -1888,12 +1877,11 @@ kbd {
   box-sizing: border-box;
 }
 
-/* 覆盖 highlight.js 样式：选择器特异性 (0,1,2) 已高于 hljs 的 .hljs (0,1,0)，
-   无需 !important（hljs 主题样式表自身不使用 !important） */
 .code-highlight-overlay code.hljs {
   padding: 0;
   padding-right: 120px;
   background: transparent;
+  color: inherit;
   font-family: var(--font-mono);
   font-size: inherit;
   line-height: inherit;
@@ -2006,29 +1994,6 @@ kbd {
 }
 
 /* Code Completion Popup */
-.code-hover-tooltip {
-  position: absolute;
-  z-index: 65;
-  max-width: 380px;
-  padding: 6px 10px;
-  font-family: var(--font-mono);
-  /* 字号由 hoverTipStyle 按编辑器字号 1:1 注入 */
-  line-height: 1.5;
-  color: var(--text-color);
-  background-color: var(--surface-container-high);
-  border: 1px solid var(--border-color-muted);
-  border-radius: 12px; /* 富提示：M3 RichTooltip.ContainerShape = CornerMedium */
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  pointer-events: none;
-  white-space: pre-line;
-  overflow-wrap: break-word;
-}
-
-.hover-syntax {
-  font-weight: 700;
-  color: var(--primary);
-}
-
 .completion-popup {
   position: absolute;
   z-index: 60;

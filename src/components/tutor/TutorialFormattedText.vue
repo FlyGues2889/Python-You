@@ -5,10 +5,12 @@ const props = withDefaults(
   defineProps<{
     text?: string;
     tag?: string;
+    variant?: 'surface' | 'primary' | 'secondary' | 'tertiary' | 'error';
   }>(),
   {
     text: '',
-    tag: 'span'
+    tag: 'span',
+    variant: 'surface'
   }
 );
 
@@ -51,7 +53,7 @@ const parsedSegments = computed<TextSegment[]>(() => {
 <template>
   <component :is="tag" class="formatted-tutorial-text">
     <template v-for="(seg, idx) in parsedSegments" :key="idx">
-      <code v-if="seg.type === 'code'" class="inline-code-badge">{{ seg.content }}</code>
+      <code v-if="seg.type === 'code'" class="inline-code-badge" :class="`code-${variant}`">{{ seg.content }}</code>
       <template v-else>{{ seg.content }}</template>
     </template>
   </component>
@@ -66,9 +68,6 @@ const parsedSegments = computed<TextSegment[]>(() => {
 .inline-code-badge {
   font-family: var(--font-mono, 'Fira Code', 'Consolas', monospace);
   font-size: 0.88em;
-  font-weight: 600;
-  color: var(--on-secondary-container);
-  background-color: var(--secondary-container);
   border: 1px solid var(--border-color-muted);
   padding: 1.5px 6px;
   border-radius: 4px;
@@ -78,5 +77,30 @@ const parsedSegments = computed<TextSegment[]>(() => {
   vertical-align: baseline;
   word-break: break-word;
   white-space: pre-wrap;
+}
+
+.code-surface {
+  color: var(--on-surface-variant);
+  background-color: var(--surface-variant);
+}
+
+.code-primary {
+  color: var(--on-primary-container);
+  background-color: var(--primary-container);
+}
+
+.code-secondary {
+  color: var(--on-secondary-container);
+  background-color: var(--secondary-container);
+}
+
+.code-tertiary {
+  color: var(--on-tertiary-container);
+  background-color: var(--tertiary-container);
+}
+
+.code-error {
+  color: var(--on-error-container);
+  background-color: var(--error-container);
 }
 </style>

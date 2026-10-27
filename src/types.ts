@@ -80,4 +80,6 @@ export interface AppConfig {
   /** 关闭启动时的自动更新检查（默认开启，见 utils/appUpdate.ts） */
   disableUpdateCheck?: boolean;
   interpreter?: string; // 'auto' | 'pyodide' | 本机解释器 id（python_detect versions[].id）
+  /** 选中的插件主题 ID（格式：pluginId:themeId），空则不用插件主题 */
+  pluginThemeId?: string;
 }
